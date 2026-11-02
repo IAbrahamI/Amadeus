@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Hourly snapshot of the Obsidian vault, so any change Amadeus makes can be undone.
+# Keeps 48 hourly + 30 daily archives. install.sh fills in @VAULT@.
+set -euo pipefail
+VAULT="@VAULT@"
+DEST="${XDG_DATA_HOME:-$HOME/.local/share}/amadeus/vault-snapshots"
+mkdir -p "$DEST/hourly" "$DEST/daily"
+stamp=$(date +%Y-%m-%d_%H%M)
+tar --zstd -C "$(dirname "$VAULT")" --exclude='.obsidian/plugins/*/node_modules' -cf "$DEST/hourly/vault_$stamp.tar.zst" "$(basename "$VAULT")"
+today="$DEST/daily/vault_$(date +%Y-%m-%d).tar.zst"
+[ -e "$today" ] || cp "$DEST/hourly/vault_$stamp.tar.zst" "$today"
+ls -1t "$DEST"/hourly/*.tar.zst | tail -n +49 | xargs -r rm --
+ls -1t "$DEST"/daily/*.tar.zst | tail -n +31 | xargs -r rm --

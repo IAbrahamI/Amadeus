@@ -1,0 +1,13 @@
+amadeus.env
+*.local
+
+# Amadeus Core: personal logo (third-party artwork, keep out of the public repo)
+core/web/logo-*.png
+core/web/favicon.png
+
+# Python bytecode
+__pycache__/
+
+# Android build tools (SDK, Gradle caches), installed locally for building the phone app
+.android-build/
+

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Open Amadeus in its KDE window (the dashboard). Optional page: "/#approvals", "/#reminders" or "/#chat=<id>".
+systemctl --user start amadeus-core 2>/dev/null
+for i in $(seq 1 20); do curl -sf -o /dev/null http://127.0.0.1:8095/favicon.png && break; sleep 0.5; done
+exec python3 @REPO@/core/desktop/tray.py --open "${1:-/#home}"

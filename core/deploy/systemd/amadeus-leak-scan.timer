@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the Amadeus leak scan nightly
+
+[Timer]
+OnCalendar=*-*-* 03:15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

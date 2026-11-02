@@ -1,0 +1,31 @@
+{
+  "manifest_version": 2,
+  "name": "Amadeus Bridge",
+  "description": "Lets your local Amadeus assistant read and organize your mail (mark read, move, create folders), save drafts and send. Every change is approved by you in Amadeus. Talks only to Amadeus on this PC.",
+  "version": "0.6.0",
+  "author": "Amadeus",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "amadeus-bridge@local",
+      "strict_min_version": "128.0"
+    }
+  },
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "permissions": [
+    "accountsRead",
+    "messagesRead",
+    "compose",
+    "compose.save",
+    "compose.send",
+    "nativeMessaging",
+    "messagesUpdate",
+    "messagesMove",
+    "messagesDelete",
+    "addressBooks",
+    "accountsFolders"
+  ]
+}

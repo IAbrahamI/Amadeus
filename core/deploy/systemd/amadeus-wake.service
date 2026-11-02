@@ -1,0 +1,13 @@
+[Unit]
+Description=Amadeus wake word (the assistant's name; local, light, sound-gated)
+After=pipewire-pulse.service amadeus-core.service
+
+[Service]
+ExecStart=%h/.local/share/amadeus/voice/venv-lite/bin/python -W ignore @REPO@/core/voice/wake.py
+Restart=on-failure
+RestartSec=5
+Nice=10
+Environment=OMP_NUM_THREADS=1
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Amadeus Core (private local assistant)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 @REPO@/core/run.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

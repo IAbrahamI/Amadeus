@@ -1,0 +1,6 @@
+[Unit]
+Description=Amadeus nightly leak scan (canary markers must never reach the cloud side)
+
+[Service]
+Type=oneshot
+ExecStart=@BIN@/amadeus-leak-scan

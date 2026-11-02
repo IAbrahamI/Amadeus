@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Nightly leak scan: the canary markers (secrets/canaries.json) must never show up in what went to the cloud:
+# the Claude Code work runs' conversations and the vault's Projects folder they work in.
+set -uo pipefail
+S="$HOME/.local/share/amadeus/secrets"
+LOG="$HOME/.local/share/amadeus/core/reports/logs/leak-scan.md"
+VAULT=$(python3 -c "import json,os;p=os.path.expanduser('~/.config/amadeus-core/config.json');c=json.load(open(p)) if os.path.exists(p) else {};print(c.get('vault_dir',os.path.expanduser('~/Documents/Obsidian Vault/Amadeus')))")
+PROJECTS="$VAULT/Projects"
+RUNS="$HOME/.claude/projects"
+mkdir -p "$(dirname "$LOG")"
+mapfile -t MARKERS < <(python3 -c "import json;[print(v) for v in json.load(open('$S/canaries.json')).values()]" 2>/dev/null)
+hits=(); problems=()
+[ ${#MARKERS[@]} -gt 0 ] || problems+=("no canary markers (run install.sh --only secrets)")
+for m in "${MARKERS[@]}"; do
+  for d in "$RUNS"/*Amadeus-Projects*; do [ -d "$d" ] && grep -rqF -- "$m" "$d" && hits+=("$m in a work run's conversation ($(basename "$d"))"); done
+  grep -rqF -- "$m" "$PROJECTS" 2>/dev/null && hits+=("$m in the vault's Projects folder")
+done
+stamp=$(date '+%Y-%m-%d %H:%M')
+if [ ${#hits[@]} -gt 0 ]; then
+  { echo "- $stamp: **LEAK ALERT**"; for h in "${hits[@]}"; do echo "  - $h"; done; } >> "$LOG"
+  command -v notify-send >/dev/null && notify-send -u critical "Amadeus leak scan" "Canary found: ${hits[*]}"
+  exit 1
+elif [ ${#problems[@]} -gt 0 ]; then
+  { echo "- $stamp: **INCOMPLETE** scan"; for p in "${problems[@]}"; do echo "  - $p"; done; } >> "$LOG"
+  exit 2
+fi
+echo "- $stamp: OK, no canary found (checked ${#MARKERS[@]} markers in work-run conversations and Projects)" >> "$LOG"

@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{name}</title>
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <meta name="theme-color" content="#EEF2F7">
+  <script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <aside id="sidebar">
+    <div class="brand"><img src="/logo-wide.png" alt="Amadeus" onerror="this.onerror=null;this.src='/icon.svg';this.nextElementSibling.hidden=false"><span hidden data-name>Amadeus</span>
+      <div class="eyebrow">Local · Private</div></div>
+    <button id="newChat" class="primary" title="Today's chat: everything you say today">Today</button>
+    <nav class="views">
+      <button data-view="chat" class="active"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18l-1 3 4-2h9a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7"/></svg>Chats</button>
+      <button data-view="todo"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/></svg>ToDo <span id="todoBadge" class="badge soft hidden">0</span></button>
+      <button data-view="projects"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/></svg>Projects</button>
+      <button data-view="approvals"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="m9 12 2 2 4-4"/></svg>Approvals <span id="approvalBadge" class="badge hidden">0</span></button>
+      <button data-view="mail"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>Mail</button>
+      <button data-view="calendar"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4m6-4v4"/></svg>Calendar</button>
+      <button data-view="reminders"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M5 3 2 6m17-3 3 3"/></svg>Reminders</button>
+    </nav>
+    <div class="label">Conversations</div>
+    <ul id="convList"></ul>
+    <div class="foot" id="sidebarFoot"></div>
+    <div class="side-foot">
+      <button id="settingsBtn" class="settings-btn" title="Settings: skills, connectors, playbooks, memory, phone">
+        <span class="gear" aria-hidden="true">⚙</span> Settings</button>
+      <button id="themeBtn" class="theme-btn" title="Light or dark" aria-label="Switch light or dark"></button>
+    </div>
+  </aside>
+
+  <main>
+    <!-- Chat -->
+    <section id="view-chat" class="view active">
+      <div class="chat-col">
+      <header class="topbar box chat-head">
+        <button id="menuBtn" class="icon" aria-label="Menu">☰</button>
+        <div class="chat-titles">
+          <div class="eyebrow">Chat · <select id="modelSelect" aria-label="Model"></select> · local</div>
+          <input id="convTitle" value="New chat" aria-label="Conversation title">
+        </div>
+        <div class="chat-tools">
+          <button id="voiceToggle" class="chip-btn" title="Voice lines"><span class="dot"></span>Voice</button>
+          <button id="avatarToggle" class="chip-btn hidden" title="Show or hide the avatar"><span class="dot"></span>Avatar</button>
+        </div>
+      </header>
+      <div class="chat-body box"><div class="chat-main">
+      <div id="messages"><div class="empty">
+        <h1>Hi, I'm <span data-name>Amadeus</span>.</h1>
+        <p>Your private assistant. Everything stays on this PC. Anything that changes something waits for your approval.</p>
+      </div></div>
+      <form id="composer">
+        <textarea id="input" rows="1" placeholder="Ask Amadeus…" data-name-placeholder="Ask {name}…" autocomplete="off"></textarea>
+        <button id="micBtn" type="button" title="Click to talk, click again to send (or hold Ctrl+Space)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 17v4"/></svg></button>
+        <button id="send" class="primary" type="submit">Send</button>
+      </form>
+      </div></div>
+      </div>
+
+      <!-- right column: today, what waits for you, Claude Code, and the avatar at the bottom -->
+      <aside class="rail">
+        <section class="box rail-clock" id="railClockBox" role="button" tabindex="0" title="Your day: today's summaries">
+          <div class="eyebrow split"><span id="railDate"></span><span class="day-link">Your day ›</span></div>
+          <div class="clock" id="railClock">--:--</div>
+          <div class="agenda-mini" id="railToday"></div>
+        </section>
+        <section class="box rail-wait">
+          <div class="eyebrow">Waiting for you</div>
+          <a href="#" data-go="approvals">Approvals<span id="railApprovals" class="n">0 →</span></a>
+          <a href="#" data-go="todo">ToDo<span id="railTodo" class="n">0 →</span></a>
+        </section>
+        <section class="box rail-work" id="railWork" hidden>
+          <div class="eyebrow split"><span>Claude Code</span><span class="accent-txt" id="railWorkState">Running</span></div>
+          <b id="railWorkName"></b>
+          <div class="bar"><i></i></div>
+          <small id="railWorkInfo"></small>
+        </section>
+        <section class="box rail-avatar" id="avatarBox">
+          <div class="eyebrow split avatar-top"><span data-name>Amadeus</span><span id="avatarMood">Mood · normal</span></div>
+          <aside id="avatarPanel"><div class="stage"></div>
+            <div id="avatarSub" aria-live="polite"></div>
+            <div id="avatarName" data-name>Amadeus</div></aside>
+        </section>
+      </aside>
+    </section>
+
+    <!-- ToDo: the user's ToDo.md in Obsidian -->
+    <section id="view-todo" class="view">
+      <header class="topbar"><h2>ToDo</h2></header>
+      <p class="hint">Your ToDo list (<code>ToDo.md</code> in Obsidian). <span data-name>Amadeus</span> adds to it only with your OK; here you add and
+        tick off yourself.</p>
+      <form id="todoForm" class="todo-add"><input id="todoInput" placeholder="Add a todo…" autocomplete="off"><button class="primary">Add</button></form>
+      <div id="todoList" class="cards todo-list"></div>
+    </section>
+
+    <!-- Projects: one folder each in the vault's Projects/, worked on by Claude Code; talk to the assistant or Claude Code -->
+    <section id="view-projects" class="view">
+      <header class="topbar"><button class="back" id="projBack" hidden>← Projects</button><h2 id="projTitle">Projects</h2>
+        <span id="projStatus" class="pill" hidden></span><span style="flex:1"></span>
+        <button id="projTerm" hidden title="Open Claude Code in a terminal in this project's folder, on its last session">⌨ Open in Claude Code</button>
+        <button id="projNew" class="primary">＋ New project</button></header>
+      <div id="projList" class="cards"></div>
+      <div id="projDetail" class="proj" hidden>
+        <div class="proj-side">
+          <details open class="card"><summary><b>Overview</b></summary><div id="projOverview" class="md proj-ov"></div></details>
+          <details class="card"><summary><b>Files</b> <span id="projFileCount" class="hint" style="padding:0"></span></summary><ul id="projFiles" class="proj-files"></ul></details>
+          <div id="projFile" class="card proj-file" hidden></div>
+        </div>
+        <div class="proj-main">
+          <div id="projTimeline" class="proj-timeline"></div>
+          <form id="projComposer" class="proj-composer">
+            <div class="proj-to" role="radiogroup" aria-label="Send to">
+              <label><input type="radio" name="projTo" value="amadeus" checked> <span data-name>Amadeus</span></label>
+              <label><input type="radio" name="projTo" value="claude"> Claude Code</label>
+              <span id="projToHint" class="hint" style="padding:0">Knows the project and can hand work to Claude Code.</span>
+            </div>
+            <textarea id="projInput" rows="2" placeholder="Write to Amadeus about this project…" data-name-placeholder="Write to {name} about this project…"></textarea>
+            <div id="projPreview" class="proj-preview" hidden></div>
+            <div class="proj-actions"><span id="projInfo" class="hint" style="padding:0"></span><button id="projSend" class="primary">Send</button></div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Approvals dashboard -->
+    <section id="view-approvals" class="view">
+      <header class="topbar"><h2>Approvals</h2>
+        <div class="tabs"><button data-astatus="pending" class="active">Pending</button><button data-astatus="all">History</button></div>
+      </header>
+      <div id="approvalList" class="cards"></div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <header class="topbar"><h2>Settings</h2></header>
+      <div class="settings-grid">
+        <button class="settings-tile" data-goto="skills"><span>🧩</span><b>Skills</b><small>What it pulls in by itself, and its voice lines</small></button>
+        <button class="settings-tile" data-goto="connectors"><span>🔌</span><b>Connectors</b><small>What it may use, and what always asks first</small></button>
+        <button class="settings-tile" data-goto="playbooks"><span>📋</span><b>Playbooks</b><small>Fixed recipes like "plan my day"</small></button>
+        <button class="settings-tile" data-goto="memory"><span>🧠</span><b>Memory</b><small>Your profile, important people, how you ask</small></button>
+        <button class="settings-tile" data-goto="phone"><span>📱</span><b>Phone</b><small>Pair your phone, private or visible mode</small></button>
+      </div>
+    </section>
+
+    <section id="view-connectors" class="view">
+      <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Connectors</h2></header>
+      <p class="hint">What <span data-name>Amadeus</span> may use. Tools marked <span class="pill warn">approval</span> always ask you first.</p>
+      <div id="connectorList" class="cards"></div>
+    </section>
+
+    <section id="view-playbooks" class="view">
+      <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Playbooks</h2></header>
+      <p class="hint">Fixed recipes: <span data-name>Amadeus</span> runs the steps in order and only thinks where it's needed; anything that changes
+        something comes as one approval. Start one here, or just say it in chat (e.g. "plan my day", "new project").</p>
+      <div id="playbookList" class="cards"></div>
+    </section>
+
+    <section id="view-skills" class="view">
+      <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Skills</h2></header>
+      <p class="hint">Instructions <span data-name>Amadeus</span> pulls in by itself when your message needs them, so normal messages stay small and fast.
+        Switch one off to stop it from using it. Add your own as Markdown files in <code>~/.local/share/amadeus/core/skills/</code>
+        (title, a "&gt; description" line and a "triggers:" line).</p>
+      <div id="skillList" class="cards"></div>
+      <details class="card voice-lines"><summary><b>🔊 Voice lines</b> (the clips you added; click to play)</summary><div id="clipList"></div></details>
+    </section>
+
+    <section id="view-mail" class="view">
+      <header class="topbar">
+        <h2>Mail</h2>
+        <select id="mailAccount" aria-label="Account"><option value="">All accounts</option></select>
+        <select id="mailFolder" aria-label="Folder"><option value="">Inbox</option><option value="@unread">Unread (all folders)</option></select>
+        <input id="mailSearch" type="search" placeholder="Search mail…" aria-label="Search mail">
+        <button id="mailRefresh" title="Refresh">⟳</button>
+      </header>
+      <div id="mailOffline" class="mail-offline" hidden></div>
+      <div class="mail-wrap">
+        <ul id="mailList" class="mail-list"></ul>
+        <article id="mailReader" class="mail-reader"><p class="hint">Select an email.</p></article>
+      </div>
+    </section>
+
+    <section id="view-calendar" class="view">
+      <header class="topbar">
+        <h2 id="calTitle">Calendar</h2>
+        <div class="tabs"><button id="calPrev" aria-label="Previous month">‹</button><button id="calToday">Today</button><button id="calNext" aria-label="Next month">›</button></div>
+        <button id="calNew" class="primary">＋ New event</button>
+      </header>
+      <div class="cal-wrap">
+        <div class="cal-grid-wrap">
+          <div class="cal-head"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+          <div id="calGrid" class="cal-grid"></div>
+        </div>
+        <aside class="cal-day">
+          <h3 id="calDayTitle"></h3>
+          <div id="calDayList"></div>
+          <button id="calDayAdd">＋ Add on this day</button>
+          <p class="hint cal-legend"><span class="dot you"></span> yours <span class="dot amadeus"></span> added by <span data-name>Amadeus</span></p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- "Your day": the morning brief and the evening summary (click the clock) -->
+    <dialog id="dayDialog">
+      <div class="day-head"><h3 id="dayTitle">Your day</h3><button type="button" id="dayClose" aria-label="Close">✕</button></div>
+      <div id="dayBody" class="md day-body"></div>
+      <div class="day-acts"><span id="dayInfo" class="hint" style="padding:0"></span><button type="button" id="dayNow">Summarize so far</button></div>
+    </dialog>
+
+    <!-- event editor -->
+    <dialog id="calDialog">
+      <form id="calForm" method="dialog">
+        <h3 id="calFormTitle">New event</h3>
+        <label>Title <input name="title" required maxlength="200" autocomplete="off"></label>
+        <label class="row"><input type="checkbox" name="all_day"> All day</label>
+        <div class="two">
+          <label>Date <input type="date" name="date" required></label>
+          <label class="time">From <input type="time" name="from" value="09:00"></label>
+          <label class="time">To <input type="time" name="to" value="10:00"></label>
+        </div>
+        <label>Location <input name="location" maxlength="200" autocomplete="off"></label>
+        <label>Notes <textarea name="notes" rows="3"></textarea></label>
+        <div class="two">
+          <label>Repeats <select name="repeat"><option value="">Never</option><option value="daily">Every day</option>
+            <option value="weekdays">Weekdays</option><option value="weekly">Every week</option><option value="monthly">Every month</option>
+            <option value="yearly">Every year</option></select></label>
+          <label>Until <input type="date" name="repeat_until"></label>
+        </div>
+        <label><span data-name>Amadeus</span> calls you <select name="alert"><option value="-1">Don't call</option><option value="0">At the start</option>
+          <option value="5">5 min before</option><option value="15" selected>15 min before</option><option value="30">30 min before</option>
+          <option value="60">1 hour before</option><option value="1440">1 day before</option></select></label>
+        <p id="calFormMsg" class="hint"></p>
+        <div class="actions">
+          <button type="button" id="calDelete" class="danger">Delete</button>
+          <span></span>
+          <button type="button" id="calCancel">Cancel</button>
+          <button type="submit" class="primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <section id="view-memory" class="view">
+      <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Memory</h2>
+        <button id="profileMerge" title="Fold what was noticed recently into your profile">Update now</button>
+        <button id="profileSave" class="primary">Save</button>
+      </header>
+      <div class="cards memory">
+        <p class="hint" style="padding:0">Your profile: what <span data-name>Amadeus</span> has learned about you, including how you communicate. It keeps the
+          essence of your chats, never the chats or mail contents. Edit anything; your changes are kept.</p>
+        <textarea id="profileText" spellcheck="false"></textarea>
+        <p id="profileInfo" class="hint" style="padding:0"></p>
+        <details class="card" open><summary><b>Important people</b> (their mail calls you)</summary>
+          <p class="hint" style="padding:0">One per line: a name, an address or a domain (e.g. <code>mom@example.com</code>, <code>Anna Weber</code>,
+            <code>@university.de</code>). Their mails always call you. Verification codes and "confirm your address" mails call you anyway, even in quiet hours.</p>
+          <textarea id="mailVip" class="vip" spellcheck="false" placeholder="name, address or @domain"></textarea>
+          <div class="vip-row"><button id="vipSave">Save</button><span id="vipInfo" class="hint" style="padding:0"></span></div></details>
+        <details class="card"><summary><b>How you ask for things</b> (learned from requests it got right)</summary><div id="askList"></div></details>
+        <details class="card"><summary><b>Mail filing rules</b> (learned from moves you approved)</summary><div id="mailRules"></div></details>
+        <details class="card"><summary><b>Long-term memory</b> (facts it can search)</summary><div id="memoryList" class="md"></div></details>
+      </div>
+    </section>
+
+    <section id="view-phone" class="view">
+      <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Phone</h2></header>
+      <div class="cards">
+        <div class="card"><b>Mode:</b> <span id="phoneMode">…</span>
+          <button id="modePrivate">🔒 Private</button> <button id="modeVisible">📱 Visible</button>
+          <div id="modeInfo" class="hint md" style="padding:0"></div></div>
+        <div class="card"><b>Use <span data-name>Amadeus</span> on your phone</b>
+          <p class="hint" style="padding:0">Your phone reaches it only through your private Tailscale network, and only after pairing.
+            Nothing is opened to the internet, and your PC has to be on.</p>
+          <ol class="phone-steps">
+            <li>On the phone, with Tailscale on, install the Amadeus app from <b><span id="phoneUrl">…</span>/amadeus.apk</b>.</li>
+            <li>Tap <b>Pair a phone</b> below and scan the QR code with the app (or type the 6-digit code).</li>
+            <li>In the app, allow notifications and "Full screen notifications", so it can call you.</li>
+          </ol>
+          <div class="phone-pair"><img id="phoneQr" alt=""><div><button id="pairBtn" class="primary">Pair a phone</button>
+            <div id="pairCode" class="pair-code"></div></div></div></div>
+        <div class="card"><b>Paired phones</b><div id="deviceList"></div></div>
+      </div>
+    </section>
+
+    <section id="view-reminders" class="view">
+      <header class="topbar"><h2>Reminders</h2></header>
+      <p class="hint">Ask <span data-name>Amadeus</span> in chat to create or remove reminders (it asks for approval).</p>
+      <div id="reminderList" class="cards"></div>
+    </section>
+  </main>
+  <script src="/identity.js"></script>
+  <script src="/md.js"></script>
+  <script src="/avatar.js"></script>
+  <script src="/voice.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

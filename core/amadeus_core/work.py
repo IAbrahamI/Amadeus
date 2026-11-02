@@ -1,0 +1,231 @@
+"""Work in the cloud, the light way: one Claude Code run per task.
+
+Amadeus filters the task and you approve it (tools.send_to_work / the new-project playbook); then one `claude -p` run
+works in the project's folder in the vault (Projects/<Name>/), on your Claude subscription. No coordinator, no agents
+waking each other. When it finishes the assistant tells you (a notification, and the result in the chat it came from).
+
+Guard rails (~/.local/share/amadeus/work-guard, read-only): the run may read and write only Projects/ in the vault
+(PreToolUse hook + Claude Code's sandbox for shell commands), never your private notes, Amadeus's own data, mail,
+chats or keys. It can't ask you mid-run: missing facts come back as "## Questions"; your answers continue the same
+session (continue_project). Every run is a normal Claude Code session, so you can also resume it yourself:
+`cd "Projects/<Name>" && claude --resume <session>`."""
+import json
+import os
+import re
+import subprocess
+import threading
+import time
+
+from . import db, events
+from .config import CFG
+
+db.q("""CREATE TABLE IF NOT EXISTS work_jobs (id TEXT PRIMARY KEY, project TEXT, folder TEXT, session_id TEXT, status TEXT,
+        created REAL, finished REAL, summary TEXT, cost REAL, conversation_id TEXT)""")
+
+for _col in ("task",):  # added later: what was asked in each run (shown in the project's history)
+    try:
+        db.q(f"ALTER TABLE work_jobs ADD COLUMN {_col} TEXT")
+    except Exception:
+        pass
+# runs still marked running belonged to an earlier start of Amadeus Core: their process is gone
+db.q("UPDATE work_jobs SET status='stopped', summary=coalesce(summary, 'Stopped: Amadeus restarted while it ran.') "
+     "WHERE status='running'")
+
+GUARD = os.path.expanduser("~/.local/share/amadeus/work-guard")
+MODEL = CFG.get("work_model", "claude-sonnet-5-5")
+EFFORT = CFG.get("work_effort", "medium")
+TIMEOUT = CFG.get("work_timeout_min", 120) * 60
+TOOLS = "Read,Edit,Write,Glob,Grep,Bash,WebSearch,WebFetch,Task"
+
+RULES = """You work for the user, handed over by their private local assistant.
+- Your working folder is this project's folder. Keep every file you create here: documents, blueprints, images, code.
+  Keep an up-to-date Overview.md at the top (goal, status, what's where, open points).
+- You cannot reach the user during this run. If you need a fact, a decision or an OK, do everything that doesn't depend
+  on it, then end your final reply with a section "## Questions" listing exactly what you need. The answers come back
+  in the next run of this same session.
+- Never send, post or upload anything, never create accounts or log in anywhere, never spend money. You prepare; the
+  user acts.
+- Never invent facts about the user. Be economical: no long explorations, no busywork.
+- Your final reply is what the user reads first: say in a few lines what you did, where the files are, and what's next."""
+
+
+def _folder(project):
+    name = re.sub(r"[\\/:*?\"<>|\x00]", "-", project).strip(" .-")[:80] or "Task"
+    from .tools import VAULT
+    path = os.path.join(VAULT, "Projects", name)
+    os.makedirs(path, exist_ok=True)
+    return name, path
+
+
+def _job(jid):
+    return db.q("SELECT * FROM work_jobs WHERE id=?", (jid,), one=True)
+
+
+def last_session(project):
+    r = db.q("SELECT * FROM work_jobs WHERE lower(project)=lower(?) AND session_id IS NOT NULL ORDER BY created DESC LIMIT 1",
+             (project,), one=True)
+    return r
+
+
+def open_terminal(project):
+    """You want to see or steer the work yourself: Claude Code opens in a terminal (kitty) in the project's folder, on its last
+    run's session (all its earlier work in view), or a fresh session if it never ran. That is your own session, like
+    starting `claude` there yourself."""
+    from . import tools
+    name, path = _project_dir(project)
+    last = last_session(name)
+    cmd = ["kitty", "--directory", path, "claude"] + (["--resume", last["session_id"]] if last else [])
+    tools.launch(cmd, "claude")
+    tools._to_front(["kitty"])
+    return {"ok": True, "resumed": bool(last)}
+
+
+def running():
+    return db.q("SELECT * FROM work_jobs WHERE status='running' ORDER BY created")
+
+
+def start(project, task, cid="", resume=None):
+    """Start one run in the background. Returns at once; the result arrives as a notification and in the chat."""
+    name, folder = _folder(project)
+    if any(j["project"].lower() == name.lower() for j in running()):
+        return f"**{name}** is still working on the last step. I'll tell you when it's done."
+    jid = db.new_id()
+    db.q("INSERT INTO work_jobs(id,project,folder,session_id,status,created,conversation_id,task) VALUES(?,?,?,?,?,?,?,?)",
+         (jid, name, folder, resume, "running", time.time(), cid, task[:20000]))
+    threading.Thread(target=_run, args=(jid, task, resume), daemon=True).start()
+    return jid, name
+
+
+def _run(jid, task, resume):
+    j = _job(jid)
+    cmd = ["claude", "-p", task, "--output-format", "json", "--model", MODEL, "--effort", EFFORT,
+           "--settings", os.path.join(GUARD, "settings.json"), "--permission-mode", "acceptEdits",
+           "--allowedTools", TOOLS, "--append-system-prompt", RULES]
+    if resume:
+        cmd += ["--resume", resume]
+    env = {**os.environ, "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+    summary, sid, cost, ok = "", resume, None, False
+    try:
+        p = subprocess.run(cmd, cwd=j["folder"], capture_output=True, text=True, timeout=TIMEOUT, env=env)
+        out = json.loads(p.stdout.strip().splitlines()[-1]) if p.stdout.strip() else {}
+        sid = out.get("session_id") or sid
+        cost = out.get("total_cost_usd")
+        summary = (out.get("result") or "").strip() or (p.stderr.strip()[-1500:] or "The run ended without a reply.")
+        ok = p.returncode == 0 and not out.get("is_error")
+    except subprocess.TimeoutExpired:
+        summary = f"The run took longer than {TIMEOUT // 60} minutes and was stopped. Say \"continue project {j['project']}\" to pick it up."
+    except Exception as e:
+        summary = f"The run failed: {e}"
+    db.q("UPDATE work_jobs SET status=?, session_id=?, finished=?, summary=?, cost=? WHERE id=?",
+         ("done" if ok else "failed", sid, time.time(), summary[:20000], cost, jid))
+    head = f"{j['project']}: " + ("questions for you" if "## Questions" in summary else "done" if ok else "stopped")
+    if j["conversation_id"]:
+        db.add_message(j["conversation_id"], "assistant",
+                       f"**{j['project']}** ({'finished' if ok else 'stopped'}):\n\n{summary}", {"mood": "normal"})
+    events.add("work" if ok else "job_failed", head, summary[:600], cid=j["conversation_id"] or "")
+
+
+def status():
+    rows = db.q("SELECT * FROM work_jobs ORDER BY created DESC LIMIT 10")
+    if not rows:
+        return "No work runs yet."
+    return "\n".join(f"- **{r['project']}** · {r['status']} · {time.strftime('%a %d %b %H:%M', time.localtime(r['created']))}"
+                     + (f" · session `{r['session_id']}`" if r["session_id"] else "") for r in rows)
+
+
+# ---------- projects (the dashboard's Projects page): one folder each in the vault's Projects/ ----------
+def _projects_root():
+    from .tools import VAULT
+    root = os.path.join(VAULT, "Projects")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def _project_dir(name):
+    root = os.path.realpath(_projects_root())
+    path = os.path.realpath(os.path.join(root, name))
+    if os.path.dirname(path) != root or not os.path.isdir(path):
+        raise ValueError("Project not found")
+    return os.path.basename(path), path
+
+
+def project_chat(name, create=True):
+    """Amadeus's conversation about one project (shown on its page next to the Claude Code runs)."""
+    title = f"🗂️ {name}"
+    c = db.q("SELECT id FROM conversations WHERE title=?", (title,), one=True)
+    if c or not create:
+        return c["id"] if c else None
+    cid = db.new_id()
+    db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)",
+         (cid, title, CFG["default_model"], time.time(), time.time()))
+    return cid
+
+
+def project_of_chat(cid):
+    c = db.q("SELECT title FROM conversations WHERE id=?", (cid,), one=True)
+    return c["title"][3:] if c and c["title"].startswith("🗂️ ") else None
+
+
+def projects():
+    out = []
+    for name in sorted(os.listdir(_projects_root()), key=str.lower):
+        path = os.path.join(_projects_root(), name)
+        if not os.path.isdir(path) or name.startswith("."):
+            continue
+        last = db.q("SELECT status, created, finished FROM work_jobs WHERE lower(project)=lower(?) ORDER BY created DESC LIMIT 1",
+                    (name,), one=True)
+        files = [f for f in os.listdir(path) if not f.startswith(".") and f != "__pycache__"]
+        out.append({"name": name, "files": len(files), "status": last["status"] if last else None,
+                    "last_run": last["created"] if last else None,
+                    "updated": max([os.path.getmtime(os.path.join(path, f)) for f in files] or [os.path.getmtime(path)])})
+    return sorted(out, key=lambda p: p["updated"], reverse=True)
+
+
+def project(name):
+    name, path = _project_dir(name)
+    files = []
+    for dirpath, dirs, fnames in os.walk(path):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
+        for f in fnames:
+            if f.startswith("."):
+                continue
+            full = os.path.join(dirpath, f)
+            files.append({"path": os.path.relpath(full, path), "size": os.path.getsize(full), "modified": os.path.getmtime(full)})
+    files.sort(key=lambda f: f["path"].lower())
+    overview = ""
+    if os.path.isfile(os.path.join(path, "Overview.md")):
+        overview = open(os.path.join(path, "Overview.md"), errors="replace").read()[:20000]
+    runs = db.q("SELECT id, status, created, finished, task, summary, cost FROM work_jobs WHERE lower(project)=lower(?) "
+                "ORDER BY created", (name,))
+    cid = project_chat(name, create=False)
+    msgs = [{"role": m["role"], "content": m["content"], "created": m["created"]}
+            for m in (db.messages(cid) if cid else []) if m["role"] in ("user", "assistant") and m["content"].strip()]
+    return {"name": name, "files": files, "overview": overview, "runs": runs, "chat": cid, "messages": msgs,
+            "running": any(r["status"] == "running" for r in runs)}
+
+
+def project_file(name, rel):
+    name, path = _project_dir(name)
+    full = os.path.realpath(os.path.join(path, rel))
+    if not full.startswith(path + os.sep) or not os.path.isfile(full):
+        raise ValueError("File not found")
+    if os.path.getsize(full) > 2_000_000:
+        raise ValueError("Too large to show here; open it in Obsidian.")
+    data = open(full, "rb").read()
+    try:
+        return {"path": rel, "text": data.decode("utf-8")}
+    except UnicodeDecodeError:
+        return {"path": rel, "binary": True}
+
+
+def new_project(name, goal=""):
+    """Your own new project: its folder and Overview.md, nothing sent anywhere yet."""
+    name = re.sub(r"[\\/:*?\"<>|\x00]", "-", name).strip(" .-")[:80]
+    if not name:
+        raise ValueError("Give the project a name")
+    name, folder = _folder(name)
+    ov = os.path.join(folder, "Overview.md")
+    if not os.path.exists(ov):
+        with open(ov, "w") as f:
+            f.write(f"# {name}\n\n_Started {time.strftime('%d %b %Y')}_\n\n{goal.strip()}\n")
+    return {"name": name}

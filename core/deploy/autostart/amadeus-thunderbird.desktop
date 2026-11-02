@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Thunderbird for Amadeus (minimized)
+Comment=Keeps Thunderbird running minimized so Amadeus can reach your mail
+Exec=@BIN@/amadeus-mail-start
+Icon=org.mozilla.Thunderbird
+X-KDE-autostart-phase=2

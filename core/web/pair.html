@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amadeus · pair this phone</title>
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0b0b10">
+  <style>
+    html, body { margin: 0; min-height: 100%; background: radial-gradient(ellipse at 50% 20%, #2a1d0c, #0b0b10 70%); color: #f3efe6;
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 360px; margin: 0 auto; padding: 48px 20px; text-align: center; }
+    img { width: 96px; height: 96px; filter: drop-shadow(0 0 14px rgba(232,163,58,.5)); }
+    h1 { font-weight: 300; letter-spacing: .25em; text-transform: uppercase; font-size: 24px; margin: 12px 0 4px; }
+    p { color: #b9b2a3; font-size: 14px; }
+    input { width: 100%; box-sizing: border-box; font: 28px/1 ui-monospace, monospace; letter-spacing: .4em; text-align: center;
+      padding: 12px; border-radius: 12px; border: 1px solid rgba(232,163,58,.5); background: rgba(255,255,255,.06); color: #fff; margin: 16px 0; }
+    button { width: 100%; padding: 12px; border: 0; border-radius: 12px; background: #e8a33a; color: #1b1205; font: 600 16px system-ui; }
+    #msg { min-height: 1.5em; margin-top: 12px; color: #f0a0a0; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/logo-512.png" alt="" onerror="this.onerror=null;this.src='/icon.svg'">
+    <h1>Amadeus</h1>
+    <p>Pair this phone. On your PC, open the Amadeus dashboard → <b>📱 Phone</b> → <b>Pair a phone</b>, and enter the 6-digit code here.</p>
+    <form id="f"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" required>
+      <button>Pair</button></form>
+    <div id="msg"></div>
+  </main>
+  <script>
+    const fromQr = (location.hash.match(/code=(\d{6})/) || [])[1];  // scanned the pairing QR code: the code is already in it
+    if (fromQr) { document.getElementById("code").value = fromQr; history.replaceState(null, "", "/pair"); }
+    document.getElementById("f").onsubmit = async (e) => {
+      e.preventDefault();
+      const name = /android/i.test(navigator.userAgent) ? "Android phone" : /iphone|ipad/i.test(navigator.userAgent) ? "iPhone" : "Phone";
+      const r = await fetch("/api/pair", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: document.getElementById("code").value, name }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) location.href = "/"; else document.getElementById("msg").textContent = d.error || "That didn't work.";
+    };
+  </script>
+</body>
+</html>

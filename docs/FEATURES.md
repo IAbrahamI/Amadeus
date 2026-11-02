@@ -1,0 +1,70 @@
+# Features and settings
+
+## What it does
+
+| Area | Details |
+|---|---|
+| **Chat** | One conversation per day for the small window, the dashboard and the phone. The small window opens empty each time; the dashboard shows the whole day. When a day is over, it summarizes the day into its long-term memory. Clean Markdown, streaming answers, and `search_chats` finds what was said on earlier days. |
+| **Approvals** | Every action that changes or sends something becomes a card with the exact details. Approve or reject it in the chat, on the Approvals page, in a call on the PC or on the phone. |
+| **Calls** | When something needs you (an approval, a reminder, a calendar alert, important mail, a finished work run), it "calls": the small window rings with cards you can act on. Quiet hours (23:00–07:00 by default) hold calls until the morning. |
+| **Desktop** | Its own KDE window, in two modes: the small window in the corner (calls and quick chat with the avatar) and the dashboard (a normal window, with a light/dark switch). There's also a tray icon. |
+| **Your day** | Click the clock on the dashboard: the 07:00 morning brief (to-dos, today's calendar, work runs) and the 21:00 evening summary of your mail. "Summarize so far" makes one on the spot. |
+| **Calendar** | Month view and day agenda, repeats, alerts that call you before an event. One step to block whole days ("from the 14th to the 17th X, nothing else") that clears everything else on those days, with repeating events skipped only there. Deleting a single day of a weekly event never deletes the series. |
+| **Mail** | Through Thunderbird: overviews of everything open, a whole mail with its links, verification codes, search, mark read, flag, move and file, folders, trash and junk, forward, attachments, contacts, drafts in your style, sending. New mail is checked the moment it arrives. Only urgent mail and mail from people you marked as important call you right away. |
+| **To-dos and notes** | Your `ToDo.md` and `Notes.md` in the vault's `Amadeus/` folder. It changes them only when you ask, with your approval. |
+| **Reminders** | One-off and repeating (`daily`, `weekdays`, `weekly mon`, …). |
+| **Memory** | Long-term memory in Hindsight, a profile of you (including how you communicate), and what it learned about how you phrase requests. You can read and edit all of it under Settings → Memory. |
+| **Playbooks** | Fixed recipes run by code: *plan my day*, *week ahead* (also a Sunday-evening call), *sort my inbox*, *newsletter cleanup*, *new project* (a short interview, a spec you confirm, then a work run). |
+| **Skills** | Markdown instruction files in `core/skills/` that load only when your message matches their trigger words (calendar, replies in your style, work briefs, …). Add your own in `~/.local/share/amadeus/core/skills/`. |
+| **Projects and work runs** | One folder per project in the vault's `Projects/`. Talk about a project with Amadeus, or write to Claude Code directly from the project page. You see the filtered text first, and **Open in Claude Code** opens the session in a terminal. |
+| **Voice** | Wake word (its name: "Amadeus, …"), push-to-talk, local Whisper speech recognition (English, German, Spanish), a word list it extends when you ask, "voice off" to close the microphone, and optional voice lines you add yourself. |
+| **Phone** | An Android app over your Tailscale network: chat, approvals, calls that ring like a phone call, today, mail. "It is where you are": while you use the PC the phone stays quiet, and the other way round. |
+| **Desktop actions** | Opening apps and web pages ("open Steam", "open YouTube"). A link from a mail it just read, for a site you never named yourself, is shown to you first. |
+| **Not on purpose** | No web search, no reading of WhatsApp, Discord or other messengers (for the privacy of the people writing to you), no handling of passwords. It says so instead of guessing. |
+
+## Security and privacy
+
+- **Local only.** Every service listens on `127.0.0.1`. The dashboard is served only to its own window, which
+  logs in with a token from `~/.local/share/amadeus/core/token`; a normal browser gets nothing.
+- **Approvals.** Nothing that changes data or sends anything runs without your click.
+- **Mail is untrusted.** Mail text reaches the model fenced as data, with a rule that it can never give orders.
+  Actions proposed right after reading mail get a warning on their card, and saving to memory then needs
+  approval too.
+- **The privacy filter** for everything that leaves the PC is described in [ARCHITECTURE.md](ARCHITECTURE.md#the-privacy-filter).
+- **Work runs** can only read and write the vault's `Projects/` folder (a pre-tool hook, deny rules and Claude
+  Code's sandbox without network), and a nightly leak scan checks that no canary marker ever reached them.
+- **The phone** needs your Tailscale network and its own key from a one-time pairing code.
+
+## Settings
+
+Put any of these into `~/.config/amadeus-core/config.json`, then run `systemctl --user restart amadeus-core`.
+
+| Key | Default | What |
+|---|---|---|
+| `default_model` | `qwen3.5-9b-48k` | Any Ollama model |
+| `vault_dir` | `~/Documents/Obsidian Vault/Amadeus` | Set by `install.sh` from `OBSIDIAN_VAULT` |
+| `assistant_name` | `Amadeus` | Its name, everywhere (also the default wake word) |
+| `persona` | `default` | A persona file (see [Make it yours](INSTALL.md#make-it-yours)), or `""` for none |
+| `avatar` | empty | An animated sprite set; empty = the default chibi agent |
+| `quiet_hours` | `[23, 7]` | No calls in this window |
+| `morning_brief`, `morning_hour` | `true`, `7` | The morning brief |
+| `digest`, `digest_hour` | `true`, `21` | The evening summary |
+| `week_ahead_hour` | `19` | The Sunday week-ahead call |
+| `mail_notify` | `important` | `all`, `important` or `off` |
+| `mail_check_minutes` | `10` | Backup mail check (new mail is also checked the moment it arrives) |
+| `keep_running` | `["thunderbird"]` | Apps it restarts when they get closed |
+| `work_model`, `work_effort`, `work_timeout_min` | `claude-sonnet-5-5`, `medium`, `120` | Claude Code work runs |
+| `filter_allow` | `[]` | Words the privacy filter never replaces (it can add more when you ask) |
+| `wake_words`, `wake_confidence` | its name and `"assistant"`, `0.6` | The wake words |
+| `stt_language` | empty | For example `"en"` to lock speech recognition to one language |
+| `serve_apk` | `false` | Offer the phone app for download over Tailscale while you install it |
+
+## Useful commands
+
+```bash
+amadeus                                          # open the dashboard
+systemctl --user status amadeus-core amadeus-tray amadeus-voice
+journalctl --user -u amadeus-core -f             # the log
+tail -f ~/.local/share/amadeus/core/popup.log    # the window's log
+core/desktop/install-kwin-rule.sh                # after changing your monitor layout
+```

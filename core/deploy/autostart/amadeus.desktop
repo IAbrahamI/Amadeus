@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Amadeus
+Comment=Private local assistant
+Exec=@BIN@/amadeus
+Icon=@REPO@/core/web/logo-512.png
+Type=Application
+Categories=Utility;

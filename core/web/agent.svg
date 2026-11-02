@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220" role="img" aria-label="Assistant">
+  <!-- The default assistant: a small robot with a visor face. Replace it with your own avatar (see docs/INSTALL.md). -->
+  <defs>
+    <linearGradient id="shell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCE3EE"/></linearGradient>
+    <linearGradient id="visor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B2233"/><stop offset="1" stop-color="#0E131F"/></linearGradient>
+    <radialGradient id="glow"><stop offset="0" stop-color="#5EF2D6"/><stop offset="1" stop-color="#1FC8A9"/></radialGradient>
+  </defs>
+  <!-- body -->
+  <path d="M58 220v-30c0-17 14-30 31-30h22c17 0 31 13 31 30v30z" fill="url(#shell)" stroke="#C3CCDA" stroke-width="2"/>
+  <rect x="88" y="180" width="24" height="8" rx="4" fill="#1FC8A9"/>
+  <!-- neck -->
+  <rect x="90" y="146" width="20" height="16" rx="5" fill="#C3CCDA"/>
+  <!-- antenna -->
+  <line x1="100" y1="30" x2="100" y2="14" stroke="#C3CCDA" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="100" cy="11" r="7" fill="url(#glow)"/>
+  <!-- ears -->
+  <rect x="22" y="76" width="16" height="40" rx="8" fill="#1FC8A9"/>
+  <rect x="162" y="76" width="16" height="40" rx="8" fill="#1FC8A9"/>
+  <!-- head -->
+  <rect x="34" y="30" width="132" height="122" rx="44" fill="url(#shell)" stroke="#C3CCDA" stroke-width="2"/>
+  <!-- visor -->
+  <rect x="50" y="56" width="100" height="70" rx="30" fill="url(#visor)"/>
+  <!-- eyes -->
+  <rect x="72" y="80" width="16" height="22" rx="8" fill="url(#glow)"/>
+  <rect x="112" y="80" width="16" height="22" rx="8" fill="url(#glow)"/>
+  <!-- visor shine -->
+  <path d="M62 66q8-6 20-6" fill="none" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="4" stroke-linecap="round"/>
+</svg>

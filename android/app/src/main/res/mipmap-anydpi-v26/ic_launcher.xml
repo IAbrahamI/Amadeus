@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon: the logo on the dark background (copied in at build time, see app/build.gradle.kts) -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/bg" />
+    <foreground>
+        <inset android:drawable="@drawable/amadeus_logo" android:inset="21%" />
+    </foreground>
+    <monochrome>
+        <inset android:drawable="@drawable/amadeus_logo" android:inset="21%" />
+    </monochrome>
+</adaptive-icon>

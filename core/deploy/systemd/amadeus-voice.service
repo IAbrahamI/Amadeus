@@ -1,0 +1,13 @@
+[Unit]
+Description=Amadeus voice (speech recognition + assistant voice, CPU)
+After=network.target
+
+[Service]
+ExecStart=%h/.local/share/amadeus/voice/venv-lite/bin/python -W ignore @REPO@/core/voice/voice_server.py
+Restart=on-failure
+RestartSec=5
+Nice=5
+Environment=OMP_NUM_THREADS=6
+
+[Install]
+WantedBy=default.target
