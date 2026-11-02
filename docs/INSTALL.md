@@ -187,6 +187,16 @@ library, copy its folder into `~/.local/share/amadeus/core/skills/`. Optional ke
 `triggers` (comma-separated words that load it) and `mode` (`auto`, `manual` or `background`); without triggers, a
 skill loads when a word of its name comes up. You can switch each one off on the Skills page.
 
+The easiest way is **＋ Add your own skill** on the Skills page: write it there, or pick a `SKILL.md` file.
+Playbooks work the same way (**＋ Add your own playbook**: a title, the phrases that start it, the steps).
+
+### Your own connectors (MCP)
+
+On Settings → Connectors, **＋ Add your own connector** takes any [MCP](https://modelcontextprotocol.io) server
+that runs on this PC: a name, the command that starts it, and optional `KEY=value` settings it needs. For example
+`npx -y @modelcontextprotocol/server-filesystem ~/Documents` (needs Node.js). Amadeus starts it once to check it
+and list its tools. Each of its tools asks you before it runs.
+
 ## Running the tests
 
 ```bash

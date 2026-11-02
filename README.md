@@ -27,6 +27,8 @@ You decide who your assistant is: its name, its personality, and whether it has 
   lesson only if a test on your own past requests doesn't get worse. No retraining, nothing leaves the PC.
 - **Skills in an open format.** Skills use the [agentskills.io](https://agentskills.io) format, so skills from public
   libraries can be dropped in.
+- **Add your own.** A ＋ on the Skills, Playbooks and Connectors pages: write a skill or a recipe in your own words,
+  or plug in any [MCP](https://modelcontextprotocol.io) server as a connector (its tools always ask you first).
 
 ## Make it yours
 

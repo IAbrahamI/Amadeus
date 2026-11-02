@@ -467,3 +467,8 @@ main { gap: 24px; min-height: 0; }
 #voiceAdd .as-row input:not([type=file]) { flex: 1; min-width: 220px; }
 /* every settings page scrolls inside its box, so nothing at the bottom gets cut off */
 .view:not(#view-chat) > .cards { flex: 1 1 auto; min-height: 0; padding-bottom: 32px; }
+/* the ＋ forms for your own connectors, skills and playbooks */
+.add-own input:not([type=file]) { flex: 1; min-width: 220px; }
+.add-own textarea { width: 100%; margin-top: 8px; font: 14px/1.5 var(--font); resize: vertical; }
+.danger-link { background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; padding: 4px 6px; }
+.danger-link:hover { color: #e5484d; text-decoration: underline; }

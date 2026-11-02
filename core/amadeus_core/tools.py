@@ -1416,6 +1416,20 @@ def enabled_connectors():
     return db.get_setting("connectors", {k: True for k in CONNECTORS})
 
 
+def _mcp_tools():
+    try:
+        from . import mcp
+        return mcp.tools()
+    except Exception as e:
+        print("connectors (MCP):", e, flush=True)
+        return []
+
+
+def get_tool(name):
+    """A built-in tool, or one from a connector you added (MCP)."""
+    return BY_NAME.get(name) or next((t for t in _mcp_tools() if t["name"] == name), None)
+
+
 def schemas():
     on = enabled_connectors()
-    return [t["schema"] for t in TOOLS if on.get(t["connector"], True)]
+    return [t["schema"] for t in TOOLS if on.get(t["connector"], True)] + [t["schema"] for t in _mcp_tools()]

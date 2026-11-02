@@ -57,6 +57,7 @@ flowchart TB
 | Mail | `core/thunderbird/` | A Thunderbird add-on plus a native-messaging host; Thunderbird keeps your accounts and logins |
 | Phone | `android/` | Kotlin + Compose; pairs with a one-time code and talks to Core over Tailscale |
 | Memory extension | `core/hindsight_ext/` | Makes every Hindsight request need your local key |
+| Your own connectors | `core/amadeus_core/mcp.py` | A small MCP client (stdio): the servers you add on Settings → Connectors, their tools always need approval |
 | Work guard | `obsidian/` | Hook, deny rules and sandbox settings that keep Claude Code inside `Projects/` |
 
 ## A request, end to end
@@ -143,6 +144,7 @@ keys. If a run ends with questions, your answers continue the same session. The 
 | Keys, canary markers, deny-list | `~/.local/share/amadeus/secrets/` (mode 700) | never |
 | Your settings | `~/.config/amadeus-core/config.json` | never |
 | Notes, to-dos, work projects | your Obsidian vault, `Amadeus/` folder | never |
+| Your own skills, playbooks and connectors | `~/.local/share/amadeus/core/skills/`, the database | never |
 | Your persona, avatar sprites, voice clips | `~/.local/share/amadeus/core/personas/`, `…/core/avatar/`, `~/.local/share/amadeus/voice/clips/` | never |
 
 ## Network

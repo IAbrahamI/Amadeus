@@ -404,4 +404,38 @@ def continue_(cid, text):
 
 
 def listing():
-    return [{"name": k, "title": p["title"], "about": p["about"], "triggers": p["triggers"][:4]} for k, p in PLAYBOOKS.items()]
+    return [{"name": k, "title": p["title"], "about": p["about"], "triggers": p["triggers"][:4]} for k, p in PLAYBOOKS.items()] + \
+        [{"name": p["id"], "title": p["title"], "about": p["steps"][:160], "triggers": p["triggers"][:4], "own": True}
+         for p in db.get_setting("my_playbooks", [])]
+
+
+# ---------- your own playbooks (Settings → Playbooks → +) ----------
+# A recipe you write yourself: trigger phrases and the steps, in your words. When a trigger comes up, the steps go into
+# the instructions for that message and the assistant follows them with its normal tools (changes still need approval).
+def own():
+    return db.get_setting("my_playbooks", [])
+
+
+def own_add(title, triggers, steps):
+    title = re.sub(r"\s+", " ", str(title)).strip()[:60]
+    trig = [t.strip().lower() for t in re.split(r"[,\n]", str(triggers)) if len(t.strip()) >= 3][:12]
+    steps = str(steps).strip()[:3000]
+    if not title or not trig or not steps:
+        raise ValueError("A playbook needs a title, at least one trigger phrase and its steps.")
+    if title.lower() in {p["title"].lower() for p in PLAYBOOKS.values()} | {p["title"].lower() for p in own()}:
+        raise ValueError("There is already a playbook with that title.")
+    db.set_setting("my_playbooks", own() + [{"id": db.new_id(), "title": title, "triggers": trig, "steps": steps}])
+    return listing()
+
+
+def own_remove(pid):
+    db.set_setting("my_playbooks", [p for p in own() if p["id"] != pid])
+    return listing()
+
+
+def own_match(text):
+    t = (text or "").lower().strip()
+    if t.startswith("run playbook:"):
+        name = t.split(":", 1)[1].strip()
+        return next((p for p in own() if p["title"].lower() == name), None)
+    return next((p for p in own() if any(tr in t for tr in p["triggers"])), None)

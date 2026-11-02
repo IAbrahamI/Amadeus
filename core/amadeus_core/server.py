@@ -221,15 +221,19 @@ class Handler(BaseHTTPRequestHandler):
                         "ORDER BY a.created DESC LIMIT 200", () if status == "all" else (status,))
             return self._json(rows)
         if p == "/api/connectors":
+            from . import mcp
             on = tools.enabled_connectors()
+            own = [{"id": c["id"], "description": f"Your connector (MCP): {c['command']}", "enabled": on.get(c["id"], True),
+                    "tools": c["tools"], "approval_tools": c["tools"], "own": True, "name": c["name"]} for c in mcp.listing()]
             return self._json([{"id": k, "description": v, "enabled": on.get(k, True),
                                 "tools": [t["name"] for t in tools.TOOLS if t["connector"] == k],
                                 "approval_tools": [t["name"] for t in tools.TOOLS if t["connector"] == k and t["approval"]]}
-                               for k, v in tools.CONNECTORS.items()])
+                               for k, v in tools.CONNECTORS.items()] + own)
         if p == "/api/skills":
             off = set(db.get_setting("skills_off", []))
             return self._json([{"name": s["name"], "description": s["description"], "mode": s["mode"], "triggers": s["triggers"],
-                                "active": s["mode"] == "background" or s["name"] not in off} for s in agent.skills().values()])
+                                "active": s["mode"] == "background" or s["name"] not in off, "own": agent.own_skill(s["name"])}
+                               for s in agent.skills().values()])
         if p == "/api/reminders":
             return self._json(db.q("SELECT * FROM reminders WHERE active=1 ORDER BY next_run"))
         if p == "/api/voice/clips":  # the voice lines you added (names only), for the preview list
@@ -533,11 +537,35 @@ class Handler(BaseHTTPRequestHandler):
             db.q("UPDATE events SET seen=1 WHERE id=?" if m.group(1) != "all" else "UPDATE events SET seen=1 WHERE seen=0",
                  (m.group(1),) if m.group(1) != "all" else ())
             return self._json({"ok": True})
+        if p == "/api/connectors/add":  # your own connector: an MCP server (a local command)
+            from . import mcp
+            try:
+                return self._json(mcp.add(b.get("name", ""), b.get("command", ""), b.get("env") or {}))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if p == "/api/connectors/remove":
+            from . import mcp
+            return self._json(mcp.remove(b.get("name", "")))
         if p == "/api/connectors":
             on = tools.enabled_connectors()
             on[b["id"]] = bool(b["enabled"])
             db.set_setting("connectors", on)
             return self._json(on)
+        if p in ("/api/skills/add", "/api/skills/remove"):  # your own skills
+            try:
+                if p.endswith("add"):
+                    return self._json({"name": agent.skill_add(b.get("name", ""), b.get("description", ""), b.get("triggers", ""),
+                                                               b.get("body", ""), b.get("file", ""))})
+                return self._json({"ok": agent.skill_remove(b.get("name", ""))})
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if p in ("/api/playbooks/add", "/api/playbooks/remove"):  # your own playbooks
+            from . import playbooks
+            try:
+                return self._json(playbooks.own_add(b.get("title", ""), b.get("triggers", ""), b.get("steps", ""))
+                                  if p.endswith("add") else playbooks.own_remove(b.get("id", "")))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
         if p == "/api/skills":
             off = set(db.get_setting("skills_off", []))
             (off.discard if b["active"] else off.add)(b["name"])

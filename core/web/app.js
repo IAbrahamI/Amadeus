@@ -525,7 +525,13 @@ async function loadConnectors() {
   $("#connectorList").innerHTML = list.map((c) => `<div class="card"><div class="row">
       <div class="grow"><b>${esc(c.id)}</b><div class="hint" style="padding:0">${esc(c.description)}</div>
       <div style="margin-top:6px">${c.tools.map((t) => `<code>${t}</code>${c.approval_tools.includes(t) ? ' <span class="pill warn">approval</span>' : ""}`).join(" ")}</div></div>
-      <button class="switch ${c.enabled ? "on" : ""}" data-conn="${c.id}" aria-label="toggle"></button></div></div>`).join("");
+      ${c.own ? `<button class="danger-link" data-conn-rm="${esc(c.name)}">Remove</button>` : ""}
+      <button class="switch ${c.enabled ? "on" : ""}" data-conn="${esc(c.id)}" aria-label="toggle"></button></div>
+      ${c.own && !c.tools.length ? `<div class="hint" style="padding:6px 0 0">Its tools show here once it has been used.</div>` : ""}</div>`).join("");
+  document.querySelectorAll("[data-conn-rm]").forEach((b) => (b.onclick = async () => {
+    if (!confirm(`Remove the connector "${b.dataset.connRm}"?`)) return;
+    await api("/api/connectors/remove", { method: "POST", body: JSON.stringify({ name: b.dataset.connRm }) }); loadConnectors();
+  }));
   document.querySelectorAll("[data-conn]").forEach((b) => (b.onclick = async () => {
     await api("/api/connectors", { method: "POST", body: JSON.stringify({ id: b.dataset.conn, enabled: !b.classList.contains("on") }) });
     loadConnectors();
@@ -572,7 +578,12 @@ async function loadPlaybooks() {
   $("#playbookList").innerHTML = list.map((p) => `<div class="card"><div class="row"><div class="grow"><b>${esc(p.title)}</b>
       <div class="hint" style="padding:0">${esc(p.about)}</div>
       <div class="sk-trig">Say: ${p.triggers.map((t) => `<code>${esc(t)}</code>`).join(" ")}</div></div>
+      ${p.own ? `<button class="danger-link" data-pb-rm="${esc(p.name)}">Remove</button>` : ""}
       <button class="primary" data-run="${esc(p.title)}">▶ Run</button></div></div>`).join("");
+  document.querySelectorAll("[data-pb-rm]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Remove this playbook?")) return;
+    await api("/api/playbooks/remove", { method: "POST", body: JSON.stringify({ id: b.dataset.pbRm }) }); loadPlaybooks();
+  }));
   document.querySelectorAll("[data-run]").forEach((b) => (b.onclick = () => {
     show("chat"); $("#input").value = "Run playbook: " + b.dataset.run; $("#composer").requestSubmit();
   }));
@@ -596,12 +607,43 @@ async function loadSkills() {
   $("#skillList").innerHTML = list.length ? list.map((s) => `<div class="card"><div class="row">
       <div class="grow"><b>${esc(s.name)}</b> ${badge(s)}<div class="hint" style="padding:0">${esc(s.description)}</div>
       ${s.triggers && s.triggers.length ? `<div class="sk-trig">Loads when you say: ${s.triggers.slice(0, 6).map((t) => `<code>${esc(t)}</code>`).join(" ")}${s.triggers.length > 6 ? " …" : ""}</div>` : ""}</div>
+      ${s.own ? `<button class="danger-link" data-sk-rm="${esc(s.name)}">Remove</button>` : ""}
       ${s.mode === "background" ? "" : `<button class="switch ${s.active ? "on" : ""}" data-skill="${esc(s.name)}" aria-label="toggle"></button>`}</div></div>`).join("") : "<p class='hint'>No skills yet.</p>";
   document.querySelectorAll("[data-skill]").forEach((b) => (b.onclick = async () => {
     await api("/api/skills", { method: "POST", body: JSON.stringify({ name: b.dataset.skill, active: !b.classList.contains("on") }) });
     loadSkills();
   }));
+  document.querySelectorAll("[data-sk-rm]").forEach((b) => (b.onclick = async () => {
+    if (!confirm(`Remove your skill "${b.dataset.skRm}"?`)) return;
+    await api("/api/skills/remove", { method: "POST", body: JSON.stringify({ name: b.dataset.skRm }) }); loadSkills();
+  }));
 }
+// ---------- your own connectors, skills and playbooks (the ＋ on each page) ----------
+const addOwn = async (info, path, body, done) => {
+  $(info).textContent = "Adding…";
+  const r = await api(path, { method: "POST", body: JSON.stringify(body) });
+  if (r.error) return ($(info).textContent = "⚠️ " + r.error);
+  $(info).textContent = "✓ Added."; done();
+};
+$("#connSave").onclick = () => {
+  const env = Object.fromEntries($("#connEnv").value.split("\n").map((l) => l.trim()).filter((l) => l.includes("="))
+    .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]));
+  $("#connInfo").textContent = "Starting it to check…";
+  addOwn("#connInfo", "/api/connectors/add", { name: $("#connName").value, command: $("#connCmd").value, env }, () => {
+    ["#connName", "#connCmd", "#connEnv"].forEach((s) => ($(s).value = "")); loadConnectors();
+  });
+};
+$("#pbSave").onclick = () => addOwn("#pbInfo", "/api/playbooks/add",
+  { title: $("#pbTitle").value, triggers: $("#pbTrig").value, steps: $("#pbSteps").value },
+  () => { ["#pbTitle", "#pbTrig", "#pbSteps"].forEach((s) => ($(s).value = "")); loadPlaybooks(); });
+$("#skSave").onclick = () => addOwn("#skInfo", "/api/skills/add",
+  { name: $("#skName").value, description: $("#skDesc").value, triggers: $("#skTrig").value, body: $("#skBody").value },
+  () => { ["#skName", "#skDesc", "#skTrig", "#skBody"].forEach((s) => ($(s).value = "")); loadSkills(); });
+$("#skFile").onchange = async () => {
+  const f = $("#skFile").files[0]; if (!f) return;
+  if (f.size > 200000) return ($("#skInfo").textContent = "⚠️ That file is too large for a skill.");
+  addOwn("#skInfo", "/api/skills/add", { file: await f.text(), name: $("#skName").value }, () => { $("#skFile").value = ""; loadSkills(); });
+};
 async function loadReminders() {
   const list = await api("/api/reminders");
   $("#reminderList").innerHTML = list.length ? list.map((r) => `<div class="card" data-id="${esc(r.id)}" data-text="${esc(r.text)}"><b>${esc(r.text)}</b>

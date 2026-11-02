@@ -101,6 +101,46 @@ def skills():
     return out
 
 
+def skill_add(name="", description="", triggers="", body="", file=""):
+    """Your own skill, written on the Skills page (or a SKILL.md you add): saved in data_dir/skills/<name>/SKILL.md."""
+    if file:
+        meta, rest = _frontmatter(str(file))
+        name, description, body = name or meta.get("name", ""), description or meta.get("description", ""), rest
+        extra = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
+        triggers = triggers or extra.get("triggers", "")
+    slug = re.sub(r"[^a-z0-9-]+", "-", str(name).lower()).strip("-")[:40]
+    if not slug or not str(body).strip():
+        raise ValueError("A skill needs a name and its instructions.")
+    if slug in skills() and not os.path.isfile(os.path.join(SKILLS_DIRS[1], slug, "SKILL.md")):
+        raise ValueError("A built-in skill already has that name.")
+    trig = ", ".join(t.strip().lower() for t in re.split(r"[,\n]", str(triggers)) if t.strip())[:500]
+    desc = re.sub(r"\s+", " ", str(description)).strip()[:300].replace('"', "'")
+    fm = f'---\nname: {slug}\ndescription: "{desc}"\n' + (f'metadata:\n  triggers: "{trig}"\n' if trig else "") + "---\n"
+    d = os.path.join(SKILLS_DIRS[1], slug)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w") as f:
+        f.write(fm + str(body).strip()[:12000] + "\n")
+    return slug
+
+
+def skill_remove(name):
+    """Only your own skills (in the data folder) can be removed here; built-in ones can be switched off."""
+    import shutil
+    d = os.path.join(SKILLS_DIRS[1], os.path.basename(str(name)))
+    if os.path.isfile(os.path.join(d, "SKILL.md")):
+        shutil.rmtree(d)
+        return True
+    f = os.path.join(SKILLS_DIRS[1], os.path.basename(str(name)) + ".md")
+    if os.path.isfile(f):
+        os.remove(f)
+        return True
+    raise ValueError("Only skills you added can be removed (built-in ones can be switched off).")
+
+
+def own_skill(name):
+    return os.path.isfile(os.path.join(SKILLS_DIRS[1], name, "SKILL.md")) or os.path.isfile(os.path.join(SKILLS_DIRS[1], name + ".md"))
+
+
 def matching_skills(cid):
     """Skills whose trigger words appear in the user's last two messages: loaded only for those answers (keeps every
     other message small and fast). Background skills are used by their jobs, never in chat."""
@@ -248,6 +288,11 @@ def _system(cid, user_text):
     if rec:
         text += ("\n\n## Your last chats with the user (short recaps, so you remember what you talked about; "
                  "don't bring them up unless it helps)\n" + rec)
+    from . import playbooks
+    mine = playbooks.own_match(user_text or "")
+    if mine:  # one of your own playbooks: its steps, in your words
+        text += (f"\n\n## Playbook: {mine['title']} (the user's own recipe; follow these steps in order, with your tools; "
+                 f"anything that changes something still goes through approval)\n{mine['steps']}")
     lessons = learning.prompt_block(cid, user_text or "")
     if lessons:
         text += ("\n\n## Lessons from earlier mistakes (learned from the user's feedback; follow them)\n" + lessons)
@@ -348,7 +393,7 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice):
         waiting = False
         for c in calls:
             name, args = c.get("name"), c.get("arguments") or {}
-            t = tools.BY_NAME.get(name)
+            t = tools.get_tool(name)
             if not t:
                 db.add_message(cid, "tool", f"Unknown tool {name}", {"name": name})
                 continue
@@ -413,7 +458,7 @@ def decide(aid, approve):
     if approve:
         tools.CURRENT_CID = cid
         try:
-            result = str(tools.BY_NAME[name]["fn"](**args))
+            result = str(tools.get_tool(name)["fn"](**args))
             status = "done"
             if name in ("mail_file", "mail_move"):
                 try:

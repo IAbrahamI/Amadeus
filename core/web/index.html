@@ -151,23 +151,50 @@
     <section id="view-connectors" class="view">
       <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Connectors</h2></header>
       <p class="hint">What <span data-name>Amadeus</span> may use. Tools marked <span class="pill warn">approval</span> always ask you first.</p>
-      <div id="connectorList" class="cards"></div>
+      <div class="cards"><div id="connectorList" class="voice-list"></div>
+        <details class="card add-own" id="connAdd"><summary><b>＋ Add your own connector</b></summary>
+        <p class="hint" style="padding:0">Any <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP server</a> that runs
+          on this PC: give it a name and the command that starts it, for example
+          <code>npx -y @modelcontextprotocol/server-filesystem ~/Documents</code>. Its tools always ask you first, and what
+          they return is treated as data, never as instructions.</p>
+        <div class="as-row"><input id="connName" placeholder="Name, e.g. Files" autocomplete="off"></div>
+        <div class="as-row"><input id="connCmd" placeholder="Command that starts it" autocomplete="off"></div>
+        <textarea id="connEnv" rows="2" placeholder="Settings it needs, one per line (optional): KEY=value"></textarea>
+        <div class="as-row"><button class="primary" id="connSave">Add connector</button><span id="connInfo" class="hint" style="padding:0"></span></div>
+        </details></div>
     </section>
 
     <section id="view-playbooks" class="view">
       <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Playbooks</h2></header>
       <p class="hint">Fixed recipes: <span data-name>Amadeus</span> runs the steps in order and only thinks where it's needed; anything that changes
         something comes as one approval. Start one here, or just say it in chat (e.g. "plan my day", "new project").</p>
-      <div id="playbookList" class="cards"></div>
+      <div class="cards"><div id="playbookList" class="voice-list"></div>
+        <details class="card add-own" id="pbAdd"><summary><b>＋ Add your own playbook</b></summary>
+        <p class="hint" style="padding:0">A recipe in your own words: when you say one of its phrases (or press ▶ Run),
+          <span data-name>Amadeus</span> follows these steps in order with its normal tools. Anything that changes something still asks you.</p>
+        <div class="as-row"><input id="pbTitle" placeholder="Title, e.g. Friday wrap-up" autocomplete="off"></div>
+        <div class="as-row"><input id="pbTrig" placeholder="Phrases that start it, comma separated: wrap up the week, friday wrap-up" autocomplete="off"></div>
+        <textarea id="pbSteps" rows="5" placeholder="1. Show what's still open on my to-do list&#10;2. List next week's appointments&#10;3. Draft a short note of what I finished"></textarea>
+        <div class="as-row"><button class="primary" id="pbSave">Add playbook</button><span id="pbInfo" class="hint" style="padding:0"></span></div>
+        </details></div>
     </section>
 
     <section id="view-skills" class="view">
       <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Skills</h2></header>
       <p class="hint">Instructions <span data-name>Amadeus</span> pulls in by itself when your message needs them, so normal messages stay small and fast.
-        Switch one off to stop it from using it. Add your own as Markdown files in <code>~/.local/share/amadeus/core/skills/</code>
-        (title, a "&gt; description" line and a "triggers:" line).</p>
-      <div id="skillList" class="cards"></div>
-      <details class="card voice-lines"><summary><b>🔊 Voice lines</b> (the clips you added; click to play)</summary><div id="clipList"></div></details>
+        Switch one off to stop it from using it.</p>
+      <div class="cards"><div id="skillList" class="voice-list"></div>
+        <details class="card add-own" id="skAdd"><summary><b>＋ Add your own skill</b></summary>
+        <p class="hint" style="padding:0">Write the instructions yourself, or add a <code>SKILL.md</code> in the open
+          <a href="https://agentskills.io" target="_blank" rel="noopener">agentskills.io</a> format (for example from a public skill library).</p>
+        <div class="as-row"><input id="skName" placeholder="Name, e.g. meeting-notes" autocomplete="off"></div>
+        <div class="as-row"><input id="skDesc" placeholder="What it's for, in one line" autocomplete="off"></div>
+        <div class="as-row"><input id="skTrig" placeholder="Words that load it, comma separated: meeting, minutes, notes" autocomplete="off"></div>
+        <textarea id="skBody" rows="5" placeholder="The instructions, e.g. When I paste meeting notes, sort them into decisions, to-dos with owners and open questions."></textarea>
+        <div class="as-row"><button class="primary" id="skSave">Add skill</button>
+          <label class="hint" style="padding:0">or a file: <input type="file" id="skFile" accept=".md"></label></div>
+        <p id="skInfo" class="hint" style="padding:0"></p></details>
+        <details class="card voice-lines"><summary><b>🔊 Voice lines</b> (the clips you added; click to play)</summary><div id="clipList"></div></details></div>
     </section>
 
     <section id="view-mail" class="view">
