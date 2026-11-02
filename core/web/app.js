@@ -792,6 +792,24 @@ async function loadVoices() {
   if (d.voices.some((v) => v.downloading) && $("#view-voice").classList.contains("active")) voicePoll = setTimeout(loadVoices, 3000);
 }
 
+$("#voiceGet").onclick = async () => {
+  const id = $("#voiceName").value.trim(); if (!id) return;
+  const r = await api("/api/voice/voices/download", { method: "POST", body: JSON.stringify({ id }) });
+  $("#voiceInfo").textContent = r.error ? "⚠️ " + r.error : "Downloading… it appears in the list when it's ready.";
+  if (!r.error) { $("#voiceName").value = ""; loadVoices(); }
+};
+$("#voiceUp").onclick = async () => {
+  const files = [...$("#voiceFiles").files];
+  if (!files.some((f) => f.name.endsWith(".onnx")) || !files.some((f) => f.name.endsWith(".onnx.json")))
+    return ($("#voiceInfo").textContent = "Pick both files: <name>.onnx and <name>.onnx.json.");
+  $("#voiceInfo").textContent = "Adding…";
+  for (const f of files) {
+    const r = await fetch(`/api/voice/voices/upload?name=${encodeURIComponent(f.name)}`, { method: "POST", body: f }).then((x) => x.json());
+    if (r.error) return ($("#voiceInfo").textContent = "⚠️ " + r.error);
+  }
+  $("#voiceInfo").textContent = "Added."; $("#voiceFiles").value = ""; loadVoices();
+};
+
 async function loadLessons() {
   const d = await api("/api/learning");
   const last = (d.log || []).slice(-1)[0];

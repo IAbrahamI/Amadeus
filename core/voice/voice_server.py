@@ -50,9 +50,35 @@ def _piper(path=""):
     return _m[key]
 
 
+def _kokoro():
+    """Kokoro (optional): one model with many voices, in voice/models/kokoro/."""
+    if "kokoro" not in _m:
+        d = os.path.join(MODELS, "kokoro")
+        if not os.path.isfile(os.path.join(d, "kokoro-v1.0.onnx")):
+            raise FileNotFoundError("Kokoro isn't downloaded yet (Settings → Voice).")
+        from kokoro_onnx import Kokoro
+        _m["kokoro"] = Kokoro(os.path.join(d, "kokoro-v1.0.onnx"), os.path.join(d, "voices-v1.0.bin"))
+    return _m["kokoro"]
+
+
+def _kokoro_wav(text, name):
+    import numpy as np
+    lang = {"a": "en-us", "b": "en-gb", "e": "es", "f": "fr-fr", "i": "it", "p": "pt-br", "h": "hi", "j": "ja", "z": "cmn"}
+    samples, rate = _kokoro().create(text[:4000], voice=name, speed=1.0, lang=lang.get(name[:1], "en-us"))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes((np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes())
+    return buf.getvalue()
+
+
 def tts(text, voice_path=""):
-    """Text to a WAV file in memory."""
+    """Text to a WAV file in memory. voice_path: a Piper .onnx file, or "kokoro:<voice>"."""
     with _lock:
+        if voice_path.startswith("kokoro:"):
+            return _kokoro_wav(text, voice_path[7:])
         voice = _piper(voice_path)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:

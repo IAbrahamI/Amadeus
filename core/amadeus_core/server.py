@@ -332,6 +332,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._authed():
             return self._json({"error": "unauthorized"}, 401)
+        if p == "/api/voice/voices/upload":  # "+ Add a voice" with your own files (raw body, file name in the query)
+            from . import voices
+            n = int(self.headers.get("content-length", 0) or 0)
+            try:
+                return self._json(voices.add_file(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("name", [""])[0],
+                                                  self.rfile.read(n)))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
         if p == "/api/voice/tts":  # {"text"} -> spoken audio with the voice picked in Settings → Voice
             from . import voices
             n = int(self.headers.get("content-length", 0) or 0)

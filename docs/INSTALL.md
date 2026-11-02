@@ -98,8 +98,9 @@ for the model. Say "voice off" to close the microphone completely.
 systemctl --user restart amadeus-voice
 ```
 
-Then pick, test or download more voices under **Settings → Voice** (US and UK English, a calm "Jarvis-style" British
-voice, German, Spanish). Any other Piper voice works too: put its `.onnx` and `.onnx.json` into that folder.
+Then pick, test or download more voices under **Settings → Voice**: Piper voices (US and UK English, a calm
+"Jarvis-style" British voice, German, Spanish) and the more natural Kokoro voices (George, Lewis, Emma, …; one
+download of about 340 MB for all of them). **＋ Add a voice** takes any other Piper voice by name or your own files.
 
 ## 6. Optional: the phone app
 

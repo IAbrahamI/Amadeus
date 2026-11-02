@@ -301,6 +301,13 @@
       <p class="hint">The voice that reads the morning brief and the evening summary aloud (▶ Listen under <i>Your day</i>).
         Voices run locally with Piper; each one is downloaded once (about 60 MB) and then works offline.</p>
       <div id="voiceList" class="cards"></div>
+      <div class="cards"><details class="card" id="voiceAdd"><summary><b>＋ Add a voice</b></summary>
+        <p class="hint" style="padding:0">Any voice from the <a href="https://rhasspy.github.io/piper-samples/" target="_blank" rel="noopener">Piper
+          voice list</a> by its name (for example <code>fr_FR-siwis-medium</code>), or your own Piper voice files
+          (<code>.onnx</code> together with its <code>.onnx.json</code>).</p>
+        <div class="as-row"><input id="voiceName" placeholder="e.g. it_IT-paola-medium" autocomplete="off"><button id="voiceGet">Download</button></div>
+        <div class="as-row"><input type="file" id="voiceFiles" accept=".onnx,.json" multiple><button id="voiceUp">Add these files</button></div>
+        <p id="voiceInfo" class="hint" style="padding:0"></p></details></div>
     </section>
 
     <section id="view-phone" class="view">
