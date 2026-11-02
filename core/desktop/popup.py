@@ -9,7 +9,14 @@ import signal
 import sys
 import time
 
-os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")  # avoids blank/crashing WebKit on NVIDIA
+# The page is drawn on the GPU: smooth scrolling and typing even in a big window. Drawing without it (the slow,
+# CPU-only way) is only for graphics drivers where WebKit's GPU drawing crashes: "gpu_rendering": false in the config,
+# or automatically after the page crashed a few times in a row (the marker file below; delete it to try the GPU again).
+_cfg_file = os.path.expanduser("~/.config/amadeus-core/config.json")
+_cfg = json.load(open(_cfg_file)) if os.path.exists(_cfg_file) else {}
+SOFTWARE = os.path.join(_cfg.get("data_dir", os.path.expanduser("~/.local/share/amadeus/core")), "popup-software-rendering")
+if _cfg.get("gpu_rendering") is False or os.path.exists(SOFTWARE):
+    os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 import gi  # noqa: E402
 
 gi.require_version("Gtk", "3.0")
@@ -225,6 +232,12 @@ class Window(Gtk.Window):
     def on_crash(self, view, reason):
         """The page's process died (e.g. a missing audio plugin): reload instead of showing a blank window."""
         print("web process terminated:", reason, flush=True)
+        now = time.time()
+        self.crashes = [t for t in getattr(self, "crashes", []) if now - t < 120] + [now]
+        if len(self.crashes) >= 3 and not os.environ.get("WEBKIT_DISABLE_DMABUF_RENDERER"):
+            print("the page keeps crashing with GPU drawing: switching to software drawing", flush=True)
+            open(SOFTWARE, "w").close()
+            os.execv(sys.executable, [sys.executable] + sys.argv)
         GLib.timeout_add(500, lambda: view.reload() or False)
 
     def on_permission(self, _view, req):

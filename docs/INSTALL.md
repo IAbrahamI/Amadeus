@@ -216,7 +216,7 @@ then run `systemctl --user restart amadeus-core`. The most useful ones are liste
 | Problem | What to do |
 |---|---|
 | `amadeus` opens nothing | `journalctl --user -u amadeus-core -f` and `~/.local/share/amadeus/core/popup.log` |
-| The window opens blank on an NVIDIA GPU | Already handled (`WEBKIT_DISABLE_DMABUF_RENDERER`); update `webkit2gtk-4.1` if it persists |
+| The window opens blank or keeps crashing on an NVIDIA GPU | After three crashes in a row it switches to software drawing by itself (slower when scrolling in a big window). You can also set `"gpu_rendering": false`. To try the GPU again, delete `~/.local/share/amadeus/core/popup-software-rendering`. Updating `webkit2gtk-4.1` and the driver usually helps |
 | Hindsight doesn't answer right after installing | The first start downloads models: `docker logs -f hindsight` |
 | "Send to work" says the text was held | It contained a deny-list word or a canary, or Presidio couldn't start: `docker start presidio-analyzer presidio-anonymizer` |
 | A work run fails with a sandbox error | `bubblewrap` or `socat` is missing; the sandbox refuses to run without them |

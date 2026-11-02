@@ -61,6 +61,7 @@ Put any of these into `~/.config/amadeus-core/config.json`, then run `systemctl 
 | `stt_language` | empty | For example `"en"` to lock speech recognition to one language |
 | `learning`, `reflect_hour` | `true`, `3` | The nightly learning from your feedback |
 | `tts_voice` | empty | A Piper voice (`.onnx`) for reading the briefs aloud; empty = the first one installed |
+| `gpu_rendering` | `true` | Draw the window on the GPU (smooth). `false` only if the window stays blank or crashes with your graphics driver |
 | `serve_apk` | `false` | Offer the phone app for download over Tailscale while you install it |
 
 ## Useful commands
