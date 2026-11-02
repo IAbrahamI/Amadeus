@@ -83,8 +83,14 @@ function renderDayReports(reports) {
 }
 // Read a text aloud with the local text-to-speech voice (Piper, optional). Markdown and links are left out.
 let speaking = null;
+function stopSpeaking() {  // also when "Your day" is closed, and from the floating stop button
+  if (speaking) { speaking.pause(); speaking = null; }
+  document.querySelectorAll("[data-listen]").forEach((b) => (b.textContent = "▶ Listen"));
+  $("#speakStop").hidden = true;
+}
 async function speak(btn, text) {
-  if (speaking) { speaking.pause(); speaking = null; btn.textContent = "▶ Listen"; return; }
+  if (speaking) { stopSpeaking(); return; }
+  const label = btn.textContent.startsWith("■") ? "▶ Listen" : btn.textContent;
   const plain = stripMood(text).replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/[*_`#>|~]/g, "")
     .replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
   btn.disabled = true; btn.textContent = "…";
@@ -92,9 +98,9 @@ async function speak(btn, text) {
     const r = await fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: plain }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
     speaking = new Audio(URL.createObjectURL(await r.blob()));
-    speaking.onended = () => { speaking = null; btn.textContent = "▶ Listen"; };
-    await speaking.play(); btn.textContent = "■ Stop";
-  } catch (e) { btn.textContent = "▶ Listen"; $("#dayInfo").textContent = "Can't read it aloud: " + (e.message.includes("No text-to-speech") ? "no voice installed (see the install guide)." : e.message); }
+    speaking.onended = () => { stopSpeaking(); btn.textContent = label; };
+    await speaking.play(); btn.textContent = "■ Stop"; $("#speakStop").hidden = false;
+  } catch (e) { btn.textContent = label; $("#dayInfo").textContent = "Can't read it aloud: " + (e.message.includes("No text-to-speech") ? "no voice installed (see the install guide)." : e.message); }
   btn.disabled = false;
 }
 async function showDay() {
@@ -106,6 +112,8 @@ async function showDay() {
 $("#railClockBox").onclick = showDay;
 $("#railClockBox").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showDay(); } };
 $("#dayClose").onclick = () => $("#dayDialog").close();
+$("#dayDialog").addEventListener("close", stopSpeaking);  // leaving "Your day" (✕, Esc, clicking away) stops reading
+$("#speakStop").onclick = stopSpeaking;
 $("#dayNow").onclick = async () => {
   const b = $("#dayNow"); b.disabled = true; $("#dayInfo").textContent = `${NAME()} is writing it…`;
   try { renderDayReports((await api("/api/day/now", { method: "POST", body: "{}" })).reports); $("#dayInfo").textContent = ""; }
@@ -119,14 +127,14 @@ const stripMood = (t) => t.replace(/\s*\[mood:\s*\w*\]?\s*$/i, "").replace(/\[mo
 const state = { fb: {}, cid: null, models: [], defaultModel: "", busy: false, aStatus: "pending", poll: null };
 
 // ---------- views ----------
-const IN_SETTINGS = ["settings", "skills", "connectors", "playbooks", "memory", "phone"];
+const IN_SETTINGS = ["settings", "skills", "connectors", "playbooks", "memory", "phone", "voice"];
 function show(view) {
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
   document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   $("#settingsBtn").classList.toggle("active", IN_SETTINGS.includes(view));
   if (view === "projects") proj.name = null;
   $("#sidebar").classList.remove("open");
-  ({ todo: loadTodo, projects: loadProjects, approvals: loadApprovals, connectors: loadConnectors, skills: loadSkills, reminders: loadReminders, calendar: loadCalendar, mail: loadMail, playbooks: loadPlaybooks, phone: loadPhone, memory: loadMemory }[view] || (() => {}))();
+  ({ todo: loadTodo, projects: loadProjects, approvals: loadApprovals, connectors: loadConnectors, skills: loadSkills, reminders: loadReminders, calendar: loadCalendar, mail: loadMail, playbooks: loadPlaybooks, phone: loadPhone, memory: loadMemory, voice: loadVoices }[view] || (() => {}))();
 }
 document.querySelectorAll(".views button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
 // the Settings wheel (bottom left) and its pages: skills, connectors, playbooks, memory
@@ -716,6 +724,28 @@ async function loadMemory() {
   const m = await api("/api/memory");
   $("#memoryList").innerHTML = m.error ? `⚠️ ${esc(m.error)}` : md(m.text.split("\n\n").slice(-1)[0]);
 }
+// ---------- Settings → Voice: pick the reading-aloud voice, download more ----------
+let voicePoll = null;
+async function loadVoices() {
+  clearTimeout(voicePoll);
+  const d = await api("/api/voice/voices");
+  $("#voiceList").innerHTML = !d.piper ? `<p class="hint" style="padding:0">The voice service isn't set up yet (see the install guide, "Optional: voice").</p>` :
+    d.voices.map((v) => `<div class="card voice-row ${v.id === d.selected ? "on" : ""}">
+      <div class="grow"><b>${esc(v.name)}</b> <small>${esc(v.about)}</small></div>
+      ${v.installed ? `<button data-vtest="${esc(v.id)}">▶ Test</button>` : ""}
+      ${v.id === d.selected ? `<span class="pill ok">in use</span>` : v.installed ? `<button class="primary" data-vuse="${esc(v.id)}">Use</button>`
+        : v.downloading ? `<span class="hint" style="padding:0">Downloading…</span>` : `<button data-vget="${esc(v.id)}">Download</button>`}</div>`).join("");
+  document.querySelectorAll("[data-vuse]").forEach((b) => (b.onclick = async () => { await api("/api/voice/voices/select", { method: "POST", body: JSON.stringify({ id: b.dataset.vuse }) }); loadVoices(); }));
+  document.querySelectorAll("[data-vget]").forEach((b) => (b.onclick = async () => { await api("/api/voice/voices/download", { method: "POST", body: JSON.stringify({ id: b.dataset.vget }) }); loadVoices(); }));
+  document.querySelectorAll("[data-vtest]").forEach((b) => (b.onclick = async () => {
+    const was = (await api("/api/voice/voices")).selected;
+    if (b.dataset.vtest !== was) await api("/api/voice/voices/select", { method: "POST", body: JSON.stringify({ id: b.dataset.vtest }) });
+    await speak(b, `Hello, I'm ${NAME()}. This is how I sound when I read your morning brief.`);
+    if (b.dataset.vtest !== was) await api("/api/voice/voices/select", { method: "POST", body: JSON.stringify({ id: was }) });
+  }));
+  if (d.voices.some((v) => v.downloading) && $("#view-voice").classList.contains("active")) voicePoll = setTimeout(loadVoices, 3000);
+}
+
 async function loadLessons() {
   const d = await api("/api/learning");
   const last = (d.log || []).slice(-1)[0];

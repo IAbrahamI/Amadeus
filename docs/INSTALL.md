@@ -98,7 +98,8 @@ for the model. Say "voice off" to close the microphone completely.
 systemctl --user restart amadeus-voice
 ```
 
-Any Piper voice works (other languages too); set `"tts_voice"` to its `.onnx` file to pick one.
+Then pick, test or download more voices under **Settings → Voice** (US and UK English, a calm "Jarvis-style" British
+voice, German, Spanish). Any other Piper voice works too: put its `.onnx` and `.onnx.json` into that folder.
 
 ## 6. Optional: the phone app
 

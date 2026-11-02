@@ -37,22 +37,23 @@ def _cfg():
 
 
 
-def _piper():
-    """The Piper voice (config "tts_voice": an .onnx file; default: the first voice in voice/models/piper/)."""
-    if "tts" not in _m:
-        import glob
-        path = _cfg().get("tts_voice") or next(iter(sorted(glob.glob(os.path.join(MODELS, "piper", "*.onnx")))), "")
-        if not path or not os.path.isfile(path):
-            raise FileNotFoundError("No text-to-speech voice installed (see docs/INSTALL.md, optional: voice).")
+def _piper(path=""):
+    """A Piper voice (an .onnx file; Amadeus Core sends the one picked in Settings → Voice), kept loaded once used."""
+    import glob
+    path = path or _cfg().get("tts_voice") or next(iter(sorted(glob.glob(os.path.join(MODELS, "piper", "*.onnx")))), "")
+    if not path or not os.path.isfile(path):
+        raise FileNotFoundError("No text-to-speech voice installed (see docs/INSTALL.md, optional: voice).")
+    key = "tts:" + path
+    if key not in _m:
         from piper import PiperVoice
-        _m["tts"] = PiperVoice.load(path)
-    return _m["tts"]
+        _m[key] = PiperVoice.load(path)
+    return _m[key]
 
 
-def tts(text):
+def tts(text, voice_path=""):
     """Text to a WAV file in memory."""
     with _lock:
-        voice = _piper()
+        voice = _piper(voice_path)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
             if hasattr(voice, "synthesize_wav"):  # piper-tts 1.3+
@@ -147,7 +148,8 @@ class H(BaseHTTPRequestHandler):
             if self.path == "/stt":
                 return self._send(200, stt(body, self.headers.get("content-type", "")))
             if self.path == "/tts":
-                return self._send(200, tts(json.loads(body or b"{}").get("text", "")), "audio/wav")
+                req = json.loads(body or b"{}")
+                return self._send(200, tts(req.get("text", ""), req.get("voice", "")), "audio/wav")
             self._send(404, {"error": "not found"})
         except Exception as e:
             print("voice error:", repr(e), flush=True)

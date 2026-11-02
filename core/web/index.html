@@ -143,6 +143,7 @@
         <button class="settings-tile" data-goto="playbooks"><span>📋</span><b>Playbooks</b><small>Fixed recipes like "plan my day"</small></button>
         <button class="settings-tile" data-goto="memory"><span>🧠</span><b>Memory</b><small>Your profile, important people, how you ask</small></button>
         <button class="settings-tile" data-goto="phone"><span>📱</span><b>Phone</b><small>Pair your phone, private or visible mode</small></button>
+        <button class="settings-tile" data-goto="voice"><span>🔊</span><b>Voice</b><small>The voice that reads your briefs aloud</small></button>
       </div>
     </section>
 
@@ -203,6 +204,7 @@
       </div>
     </section>
 
+    <button id="speakStop" class="speak-stop" hidden title="Stop reading aloud">■ Stop reading</button>
     <!-- "Your day": the morning brief and the evening summary (click the clock) -->
     <dialog id="dayDialog">
       <div class="day-head"><h3 id="dayTitle">Your day</h3><button type="button" id="dayClose" aria-label="Close">✕</button></div>
@@ -264,6 +266,13 @@
         <details class="card"><summary><b>Mail filing rules</b> (learned from moves you approved)</summary><div id="mailRules"></div></details>
         <details class="card"><summary><b>Long-term memory</b> (facts it can search)</summary><div id="memoryList" class="md"></div></details>
       </div>
+    </section>
+
+    <section id="view-voice" class="view">
+      <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Voice</h2></header>
+      <p class="hint">The voice that reads the morning brief and the evening summary aloud (▶ Listen under <i>Your day</i>).
+        Voices run locally with Piper; each one is downloaded once (about 60 MB) and then works offline.</p>
+      <div id="voiceList" class="cards"></div>
     </section>
 
     <section id="view-phone" class="view">

@@ -185,6 +185,9 @@ class Handler(BaseHTTPRequestHandler):
             from . import learning
             return self._json({"lessons": learning.lessons(), "log": db.get_setting("reflect_log", [])[-10:],
                                "feedback": learning.scores()})
+        if p == "/api/voice/voices":  # reading-aloud voices (Settings → Voice)
+            from . import voices
+            return self._json(voices.listing())
         if p == "/api/identity":  # the assistant's name and look, for the window and the phone app
             return self._json({"name": CFG["assistant_name"], "avatar": os.path.basename(CFG.get("avatar") or ""),
                                "voice": voice_pack()})
@@ -323,8 +326,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._authed():
             return self._json({"error": "unauthorized"}, 401)
-        if p == "/api/voice/tts":  # {"text"} -> spoken audio (Piper, if installed), from the voice service
-            return self._voice("/tts")
+        if p == "/api/voice/tts":  # {"text"} -> spoken audio with the voice picked in Settings → Voice
+            from . import voices
+            n = int(self.headers.get("content-length", 0) or 0)
+            body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            return self._voice("/tts", json.dumps({"text": str(body.get("text", ""))[:4000], "voice": voices.path()}).encode())
         if p == "/api/voice/stt":  # raw audio, passed through to the voice service
             return self._voice(p[len("/api/voice"):])
         b = self._body()
@@ -367,6 +373,13 @@ class Handler(BaseHTTPRequestHandler):
             from . import learning
             try:
                 return self._json(learning.feedback(int(m.group(1)), b.get("score", 0), b.get("note", "")))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        m = re.fullmatch(r"/api/voice/voices/(select|download)", p)
+        if m:
+            from . import voices
+            try:
+                return self._json(getattr(voices, m.group(1))(str(b.get("id", ""))))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
         if p == "/api/learning/run":  # learn from the last day's feedback now, instead of waiting for the night
@@ -544,9 +557,10 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"ok": True})
 
     # ---------- voice (proxy to the local voice service on 127.0.0.1:8896) ----------
-    def _voice(self, path):
-        n = int(self.headers.get("content-length", 0) or 0)
-        body = self.rfile.read(n) if n else b""
+    def _voice(self, path, body=None):
+        if body is None:
+            n = int(self.headers.get("content-length", 0) or 0)
+            body = self.rfile.read(n) if n else b""
         req = urllib.request.Request(f"http://127.0.0.1:8896{path}", body, {
             "authorization": f"Bearer {CFG['token']}", "content-type": self.headers.get("content-type", "application/octet-stream")})
         try:
