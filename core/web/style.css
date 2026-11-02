@@ -461,3 +461,9 @@ main { gap: 24px; min-height: 0; }
 .as-av { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 120px; padding: 10px; border-radius: 12px; }
 .as-av img { width: 90px; height: 90px; object-fit: contain; object-position: top; }
 .as-av.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+/* Settings → Voice: one scrolling area for the list and "+ Add a voice" */
+.voice-page { flex: 1; min-height: 0; padding-bottom: 32px; }
+.voice-list { display: flex; flex-direction: column; gap: 12px; }
+#voiceAdd .as-row input:not([type=file]) { flex: 1; min-width: 220px; }
+/* every settings page scrolls inside its box, so nothing at the bottom gets cut off */
+.view:not(#view-chat) > .cards { flex: 1 1 auto; min-height: 0; padding-bottom: 32px; }
