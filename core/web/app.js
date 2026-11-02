@@ -600,7 +600,6 @@ async function loadClips() {
   }));
 }
 async function loadSkills() {
-  loadClips();
   const list = await api("/api/skills");
   const badge = (s) => s.mode === "background" ? `<span class="sk-badge bg">Always on · background</span>`
     : s.mode === "auto" ? `<span class="sk-badge ${s.active ? "auto" : ""}">${s.active ? "Auto" : "Off"}</span>` : `<span class="sk-badge">Manual</span>`;
@@ -769,6 +768,7 @@ async function loadMemory() {
 // ---------- Settings → Assistant: name, personality, look ----------
 const asState = { avatar: "" };
 async function loadAssistant() {
+  loadClips();
   const d = await api("/api/assistant");
   $("#asName").value = d.name;
   $("#asPersona").innerHTML = d.personas.filter((p) => p !== "custom").map((p) => `<option ${p === d.persona ? "selected" : ""}>${esc(p)}</option>`).join("");
