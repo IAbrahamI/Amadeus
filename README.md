@@ -37,7 +37,9 @@ You decide who your assistant is: its name, its personality, and whether it has 
 | **Face** | The default is a small chibi agent. Add your own animated sprites (moods, lip-sync, eyes that follow the mouse) and set `"avatar": "<set>"`. |
 | **Voice** | Add your own short clips (greetings, a ringtone, reactions to words) with a small `voice-pack.json`. Without them it stays silent and rings with a soft tone. |
 
-Details are in [docs/INSTALL.md](docs/INSTALL.md#make-it-yours). Everything you add stays on your PC and out of git.
+All of this can be set under **Settings → Assistant** (name, personality, your own avatar images, or "Use the
+defaults") and **Settings → Voice**; details in [docs/INSTALL.md](docs/INSTALL.md#make-it-yours). Everything you add
+stays on your PC and out of git.
 
 ## How it fits together
 

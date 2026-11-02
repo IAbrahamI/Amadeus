@@ -138,6 +138,7 @@
     <section id="view-settings" class="view">
       <header class="topbar"><h2>Settings</h2></header>
       <div class="settings-grid">
+        <button class="settings-tile" data-goto="assistant"><span>🤖</span><b>Assistant</b><small>Its name, personality and look</small></button>
         <button class="settings-tile" data-goto="skills"><span>🧩</span><b>Skills</b><small>What it pulls in by itself, and its voice lines</small></button>
         <button class="settings-tile" data-goto="connectors"><span>🔌</span><b>Connectors</b><small>What it may use, and what always asks first</small></button>
         <button class="settings-tile" data-goto="playbooks"><span>📋</span><b>Playbooks</b><small>Fixed recipes like "plan my day"</small></button>
@@ -265,6 +266,33 @@
         <details class="card"><summary><b>How you ask for things</b> (learned from requests it got right)</summary><div id="askList"></div></details>
         <details class="card"><summary><b>Mail filing rules</b> (learned from moves you approved)</summary><div id="mailRules"></div></details>
         <details class="card"><summary><b>Long-term memory</b> (facts it can search)</summary><div id="memoryList" class="md"></div></details>
+      </div>
+    </section>
+
+    <section id="view-assistant" class="view">
+      <header class="topbar"><button class="back" data-goto="settings">← Settings</button><h2>Assistant</h2>
+        <button id="asReset" title="Name Amadeus, the friendly default personality and the default agent icon">Use the defaults</button>
+        <button id="asSave" class="primary">Save</button></header>
+      <p class="hint">Who your assistant is. Saving restarts it for a few seconds so everything uses the new settings.
+        Your own files stay on this PC and are kept when you switch back to the defaults.</p>
+      <div class="cards">
+        <div class="card"><b>Name</b>
+          <p class="hint" style="padding:0">Shown everywhere and used as the wake word (next to "assistant").</p>
+          <input id="asName" maxlength="40" autocomplete="off"></div>
+        <div class="card"><b>Personality</b>
+          <p class="hint" style="padding:0">How it talks: tone, humour, quirks. The rules (approvals, facts, tools) always win.</p>
+          <div class="as-row"><label><input type="radio" name="asPersonaMode" value="pick"> Use</label>
+            <select id="asPersona"></select></div>
+          <div class="as-row"><label><input type="radio" name="asPersonaMode" value="own"> Write my own</label></div>
+          <textarea id="asPersonaText" rows="8" spellcheck="false" placeholder="e.g. You are calm, precise and a bit witty. You keep answers short…"></textarea></div>
+        <div class="card"><b>Look</b>
+          <p class="hint" style="padding:0">The default agent, or your own avatar: one PNG for a still picture, or a set named
+            like <code>normal1.png</code>, <code>happy2.png</code> (moods: normal, happy, sided_thinking, sad, annoyed, blush, …;
+            frames 1–3 move the mouth while it talks).</p>
+          <div class="as-avatars" id="asAvatars"></div>
+          <div class="as-row"><input type="file" id="asFiles" accept="image/png" multiple><button id="asUpload">Upload as my avatar</button>
+            <span id="asUpInfo" class="hint" style="padding:0"></span></div></div>
+        <p id="asInfo" class="hint" style="padding:0"></p>
       </div>
     </section>
 

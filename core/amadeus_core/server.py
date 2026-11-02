@@ -160,6 +160,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "unauthorized"}, 401)
             base = os.path.realpath(os.path.join(CFG["data_dir"], "avatar"))
             f = os.path.realpath(os.path.join(base, u.path[len("/avatar/"):]))
+            if f.startswith(base + os.sep) and not os.path.isfile(f):  # a mood or frame you didn't add: the calm one
+                calm = os.path.join(os.path.dirname(f), os.path.basename(os.path.dirname(f)) + "_normal1.png")
+                f = calm if os.path.isfile(calm) else f
             if not f.startswith(base + os.sep) or not os.path.isfile(f):
                 return self._json({"error": "not found"}, 404)
             data = open(f, "rb").read()
@@ -185,6 +188,9 @@ class Handler(BaseHTTPRequestHandler):
             from . import learning
             return self._json({"lessons": learning.lessons(), "log": db.get_setting("reflect_log", [])[-10:],
                                "feedback": learning.scores()})
+        if p == "/api/assistant":  # Settings → Assistant: name, personality, avatar
+            from . import assistant
+            return self._json(assistant.get())
         if p == "/api/voice/voices":  # reading-aloud voices (Settings → Voice)
             from . import voices
             return self._json(voices.listing())
@@ -373,6 +379,17 @@ class Handler(BaseHTTPRequestHandler):
             from . import learning
             try:
                 return self._json(learning.feedback(int(m.group(1)), b.get("score", 0), b.get("note", "")))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        m = re.fullmatch(r"/api/assistant(/reset|/upload)?", p)
+        if m:  # save who the assistant is (then Amadeus restarts itself), the defaults, or your own avatar images
+            from . import assistant
+            try:
+                if m.group(1) == "/reset":
+                    return self._json(assistant.reset())
+                if m.group(1) == "/upload":
+                    return self._json(assistant.upload(b.get("files", []), b.get("set", "custom")))
+                return self._json(assistant.save(b))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
         m = re.fullmatch(r"/api/voice/voices/(select|download)", p)

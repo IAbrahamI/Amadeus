@@ -133,6 +133,9 @@ Runs use your Claude subscription. The model and limits are in the settings (`wo
 
 ## Make it yours
 
+The easy way is **Settings → Assistant**: set the name, pick or write a personality, upload your own avatar images
+(or keep the default agent), or press "Use the defaults". The details below are what that page does.
+
 Everything here lives on your PC, outside the repository. After a change, run `systemctl --user restart amadeus-core`
 (and `amadeus-wake` for the wake words).
 

@@ -127,14 +127,14 @@ const stripMood = (t) => t.replace(/\s*\[mood:\s*\w*\]?\s*$/i, "").replace(/\[mo
 const state = { fb: {}, cid: null, models: [], defaultModel: "", busy: false, aStatus: "pending", poll: null };
 
 // ---------- views ----------
-const IN_SETTINGS = ["settings", "skills", "connectors", "playbooks", "memory", "phone", "voice"];
+const IN_SETTINGS = ["settings", "skills", "connectors", "playbooks", "memory", "phone", "voice", "assistant"];
 function show(view) {
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
   document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   $("#settingsBtn").classList.toggle("active", IN_SETTINGS.includes(view));
   if (view === "projects") proj.name = null;
   $("#sidebar").classList.remove("open");
-  ({ todo: loadTodo, projects: loadProjects, approvals: loadApprovals, connectors: loadConnectors, skills: loadSkills, reminders: loadReminders, calendar: loadCalendar, mail: loadMail, playbooks: loadPlaybooks, phone: loadPhone, memory: loadMemory, voice: loadVoices }[view] || (() => {}))();
+  ({ todo: loadTodo, projects: loadProjects, approvals: loadApprovals, connectors: loadConnectors, skills: loadSkills, reminders: loadReminders, calendar: loadCalendar, mail: loadMail, playbooks: loadPlaybooks, phone: loadPhone, memory: loadMemory, voice: loadVoices, assistant: loadAssistant }[view] || (() => {}))();
 }
 document.querySelectorAll(".views button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
 // the Settings wheel (bottom left) and its pages: skills, connectors, playbooks, memory
@@ -724,6 +724,52 @@ async function loadMemory() {
   const m = await api("/api/memory");
   $("#memoryList").innerHTML = m.error ? `⚠️ ${esc(m.error)}` : md(m.text.split("\n\n").slice(-1)[0]);
 }
+// ---------- Settings → Assistant: name, personality, look ----------
+const asState = { avatar: "" };
+async function loadAssistant() {
+  const d = await api("/api/assistant");
+  $("#asName").value = d.name;
+  $("#asPersona").innerHTML = d.personas.filter((p) => p !== "custom").map((p) => `<option ${p === d.persona ? "selected" : ""}>${esc(p)}</option>`).join("");
+  const own = d.persona === "custom";
+  document.querySelector(`[name=asPersonaMode][value=${own ? "own" : "pick"}]`).checked = true;
+  $("#asPersonaText").value = own ? d.persona_text : "";
+  asState.avatar = d.avatar;
+  const tile = (id, img, label) => `<button type="button" class="as-av ${id === asState.avatar ? "on" : ""}" data-av="${esc(id)}">
+      <img src="${img}" alt="" onerror="this.src='/agent.svg'"><span>${esc(label)}</span></button>`;
+  $("#asAvatars").innerHTML = tile("", "/agent.svg", "Default agent") +
+    d.avatars.map((a) => tile(a, `/avatar/${encodeURIComponent(a)}/${encodeURIComponent(a)}_normal1.png`, a)).join("");
+  document.querySelectorAll("[data-av]").forEach((b) => (b.onclick = () => {
+    asState.avatar = b.dataset.av; document.querySelectorAll(".as-av").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  $("#asInfo").textContent = "";
+}
+$("#asPersonaText").oninput = () => (document.querySelector("[name=asPersonaMode][value=own]").checked = true);
+$("#asPersona").onchange = () => (document.querySelector("[name=asPersonaMode][value=pick]").checked = true);
+const asRestarted = async () => {  // wait until Amadeus is back after its restart, then reload with the new settings
+  $("#asInfo").textContent = "Saved. Restarting…";
+  for (let i = 0; i < 30; i++) { await new Promise((r) => setTimeout(r, 1500)); try { await fetch("/api/identity"); return location.reload(); } catch {} }
+};
+$("#asSave").onclick = async () => {
+  const own = document.querySelector("[name=asPersonaMode]:checked").value === "own";
+  const body = { name: $("#asName").value, avatar: asState.avatar, ...(own ? { persona_text: $("#asPersonaText").value } : { persona: $("#asPersona").value }) };
+  const r = await api("/api/assistant", { method: "POST", body: JSON.stringify(body) });
+  if (r.error) { $("#asInfo").textContent = "⚠️ " + r.error; return; }
+  asRestarted();
+};
+$("#asReset").onclick = async () => {
+  if (!confirm("Use the default assistant (name Amadeus, default personality, default agent icon)? Your own files are kept.")) return;
+  await api("/api/assistant/reset", { method: "POST", body: "{}" }); asRestarted();
+};
+$("#asUpload").onclick = async () => {
+  const files = [...$("#asFiles").files]; if (!files.length) return ($("#asUpInfo").textContent = "Pick one or more PNG files first.");
+  const read = (f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok({ name: f.name, data: r.result }); r.readAsDataURL(f); });
+  $("#asUpInfo").textContent = "Uploading…";
+  const r = await api("/api/assistant/upload", { method: "POST", body: JSON.stringify({ set: "custom", files: await Promise.all(files.map(read)) }) });
+  if (r.error) { $("#asUpInfo").textContent = "⚠️ " + r.error; return; }
+  $("#asUpInfo").textContent = `Saved ${r.saved.length} image(s). Pick "custom" above and press Save.`;
+  await loadAssistant(); asState.avatar = "custom"; document.querySelectorAll(".as-av").forEach((x) => x.classList.toggle("on", x.dataset.av === "custom"));
+};
+
 // ---------- Settings → Voice: pick the reading-aloud voice, download more ----------
 let voicePoll = null;
 async function loadVoices() {
