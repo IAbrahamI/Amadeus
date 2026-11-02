@@ -1,6 +1,10 @@
+---
+name: work-brief
+description: "Turns a request for the work side (one Claude Code run) into a clear task that shares only what it needs."
+metadata:
+  triggers: "work agent, work agents, work team, claude code, send to work, continue project, delegate, hand off, let the team, arbeitsauftrag, an die agenten"
+---
 # Work brief
-> Turns a request for the work side (one Claude Code run) into a clear task that shares only what it needs.
-triggers: work agent, work agents, work team, claude code, send to work, continue project, delegate, hand off, let the team, arbeitsauftrag, an die agenten
 
 Before calling send_to_work:
 1. Write the task as a short brief:

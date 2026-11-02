@@ -72,10 +72,30 @@ async function loadRail() {
 }
 // "Your day": click the clock card for today's morning brief and evening summary
 const DAY_LABEL = { morning: "☀️ Morning brief", now: "🕑 So far today", evening: "🌙 Evening summary" };
+let dayReports = [];
 function renderDayReports(reports) {
-  $("#dayBody").innerHTML = reports.length ? reports.map((r) =>
-    `<section><h4>${DAY_LABEL[r.kind] || r.kind} <small>${new Date(r.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></h4>${md(stripMood(r.text))}</section>`).join("")
+  dayReports = reports;
+  $("#dayBody").innerHTML = reports.length ? reports.map((r, i) =>
+    `<section><h4>${DAY_LABEL[r.kind] || r.kind} <small>${new Date(r.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+      <button class="listen" data-listen="${i}" title="Read it aloud (needs a text-to-speech voice, see the install guide)">▶ Listen</button></h4>${md(stripMood(r.text))}</section>`).join("")
     : `<p class="hint" style="padding:0">Nothing yet today. The morning brief comes at 07:00 and the evening summary at 21:00; "Summarize so far" makes one now.</p>`;
+  document.querySelectorAll("[data-listen]").forEach((b) => (b.onclick = () => speak(b, dayReports[b.dataset.listen].text)));
+}
+// Read a text aloud with the local text-to-speech voice (Piper, optional). Markdown and links are left out.
+let speaking = null;
+async function speak(btn, text) {
+  if (speaking) { speaking.pause(); speaking = null; btn.textContent = "▶ Listen"; return; }
+  const plain = stripMood(text).replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/[*_`#>|~]/g, "")
+    .replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    const r = await fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: plain }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+    speaking = new Audio(URL.createObjectURL(await r.blob()));
+    speaking.onended = () => { speaking = null; btn.textContent = "▶ Listen"; };
+    await speaking.play(); btn.textContent = "■ Stop";
+  } catch (e) { btn.textContent = "▶ Listen"; $("#dayInfo").textContent = "Can't read it aloud: " + (e.message.includes("No text-to-speech") ? "no voice installed (see the install guide)." : e.message); }
+  btn.disabled = false;
 }
 async function showDay() {
   $("#dayTitle").textContent = "Your day · " + new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
@@ -96,7 +116,7 @@ $("#dayNow").onclick = async () => {
 document.querySelectorAll("[data-go]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); show(a.dataset.go); }));
 const stripMood = (t) => t.replace(/\s*\[mood:\s*\w*\]?\s*$/i, "").replace(/\[mood:\s*\w+\]/gi, "");
 
-const state = { cid: null, models: [], defaultModel: "", busy: false, aStatus: "pending", poll: null };
+const state = { fb: {}, cid: null, models: [], defaultModel: "", busy: false, aStatus: "pending", poll: null };
 
 // ---------- views ----------
 const IN_SETTINGS = ["settings", "skills", "connectors", "playbooks", "memory", "phone"];
@@ -165,6 +185,7 @@ $("#newChat").onclick = newChat;
 async function openConv(id) {
   state.cid = id;
   const d = await api(`/api/conversations/${id}`);
+  try { state.fb = (await api("/api/learning")).feedback || {}; } catch {}
   $("#convTitle").value = d.conversation.title;
   if (d.conversation.model) $("#modelSelect").value = d.conversation.model;
   renderMessages(d.messages);
@@ -228,12 +249,31 @@ function approvalCard(id, tool, summary, meta = {}) {
     ${st === "pending" ? `<div class="actions"><button class="btn-ok" data-act="approve">Approve</button><button class="btn-bad" data-act="reject">Reject</button></div>` : ""}
     ${meta.result && st !== "pending" ? `<div class="result">${esc(meta.result)}</div>` : ""}</div>`;
 }
+// 👍 / 👎 under each answer: the learning loop (core/amadeus_core/learning.py) turns them into lessons overnight
+const feedbackBar = (id) => id ? `<div class="fb" data-mid="${id}"><button class="fb-btn ${state.fb[id] === 1 ? "on" : ""}" data-fb="1" title="Good answer">👍</button>` +
+  `<button class="fb-btn ${state.fb[id] === -1 ? "on" : ""}" data-fb="-1" title="Not good: tell it what was wrong">👎</button></div>` : "";
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest(".fb-btn"); if (!b) return;
+  const bar = b.closest(".fb"), id = bar.dataset.mid, score = Number(b.dataset.fb);
+  if (score < 0 && !bar.querySelector(".fb-note")) {  // ask what was wrong (optional), then send
+    bar.insertAdjacentHTML("beforeend", `<form class="fb-note"><input placeholder="What was wrong? (optional)" aria-label="What was wrong"><button>Send</button></form>`);
+    const f = bar.querySelector(".fb-note"); f.querySelector("input").focus();
+    f.onsubmit = async (ev) => { ev.preventDefault(); await sendFeedback(bar, id, -1, f.querySelector("input").value); f.remove(); };
+    return;
+  }
+  if (score > 0) await sendFeedback(bar, id, 1, "");
+});
+async function sendFeedback(bar, id, score, note) {
+  await api(`/api/messages/${id}/feedback`, { method: "POST", body: JSON.stringify({ score, note }) });
+  state.fb[id] = score;
+  bar.querySelectorAll(".fb-btn").forEach((x) => x.classList.toggle("on", Number(x.dataset.fb) === score));
+}
 function renderMessages(msgs) {
   const box = $("#messages");
   if (!msgs.length) { box.innerHTML = `<div class="empty"><h1>Hi, I'm ${esc(NAME())}.</h1><p>Your private assistant. Everything stays on this PC. Anything that changes something waits for your approval.</p></div>`; return; }
   box.innerHTML = msgs.map((m) => {
     if (m.role === "user") return `<div class="msg user">${esc(m.content)}</div>`;
-    if (m.role === "assistant") return m.content.trim() ? `<div class="msg assistant">${md(m.content)}</div>` : "";
+    if (m.role === "assistant") return m.content.trim() ? `<div class="msg assistant">${md(m.content)}${feedbackBar(m.id)}</div>` : "";
     if (m.role === "approval") return approvalCard(m.meta.approval_id, m.meta.tool, m.content, m.meta);
     if (m.role === "tool" && !m.meta.approval_id) return `<div class="msg tool">🔧 used ${esc(m.meta.name)}</div>`;
     return "";
@@ -669,12 +709,31 @@ async function loadMemory() {
   document.querySelectorAll("[data-forget]").forEach((b) => (b.onclick = async () => {
     await api("/api/asking/remove", { method: "POST", body: JSON.stringify({ say: b.dataset.forget }) }); loadMemory();
   }));
+  loadLessons();
   const rules = Object.entries(p.rules || {});
   $("#mailRules").innerHTML = rules.length ? rules.map(([a, f]) => `<div>${esc(a)} → <b>${esc(f)}</b></div>`).join("") : `<p class="hint" style="padding:0">None yet.</p>`;
   $("#memoryList").innerHTML = `<p class="hint" style="padding:0">Loading…</p>`;
   const m = await api("/api/memory");
   $("#memoryList").innerHTML = m.error ? `⚠️ ${esc(m.error)}` : md(m.text.split("\n\n").slice(-1)[0]);
 }
+async function loadLessons() {
+  const d = await api("/api/learning");
+  const last = (d.log || []).slice(-1)[0];
+  $("#lessonList").innerHTML = (d.lessons || []).length ? d.lessons.map((l) => `<div class="ask-row"><span>${esc(l.text)}
+      <span class="hint" style="padding:0">(👍 ${l.helpful || 0} · 👎 ${l.harmful || 0})</span></span>
+      <button class="x" data-lesson="${esc(l.id)}" title="Forget this lesson">✕</button></div>`).join("")
+    : `<p class="hint" style="padding:0">No lessons yet. Rate answers with 👍 / 👎; mistakes become lessons overnight.</p>`;
+  $("#learnInfo").textContent = last ? `Last run ${last.day}: test ${Math.round(last.before * 100)}% → ${Math.round(last.after * 100)}%${last.kept ? "" : " (not kept)"}` : "";
+  document.querySelectorAll("[data-lesson]").forEach((b) => (b.onclick = async () => {
+    await api("/api/learning/forget", { method: "POST", body: JSON.stringify({ id: b.dataset.lesson }) }); loadLessons();
+  }));
+}
+$("#learnNow").onclick = async () => {
+  const b = $("#learnNow"); b.disabled = true; $("#learnInfo").textContent = "Learning (this takes a minute)…";
+  const r = await api("/api/learning/run", { method: "POST", body: "{}" });
+  $("#learnInfo").textContent = r.added ? `Learned ${r.added} new lesson(s).` : `Nothing new: ${r.reason || "no mistakes"}.`;
+  b.disabled = false; loadLessons();
+};
 $("#vipSave").onclick = async () => {
   const r = await api("/api/mail/vip", { method: "POST", body: JSON.stringify({ vip: $("#mailVip").value.split("\n") }) });
   $("#mailVip").value = r.vip.join("\n"); $("#vipInfo").textContent = "Saved.";

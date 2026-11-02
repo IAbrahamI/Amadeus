@@ -437,3 +437,13 @@ main { gap: 24px; min-height: 0; }
 
 /* the default agent icon when no avatar sprites were added */
 .avatar-default { width: 78%; max-width: 240px; height: auto; display: block; margin: 0 auto; }
+
+/* 👍 / 👎 under answers (the learning loop) */
+.msg.assistant .fb { display: flex; gap: 4px; align-items: center; margin-top: 6px; opacity: .35; transition: opacity .15s; flex-wrap: wrap; }
+.msg.assistant:hover .fb, .msg.assistant .fb:focus-within, .msg.assistant .fb:has(.on) { opacity: 1; }
+.fb-btn { border: 0; background: none; padding: 2px 6px; border-radius: 8px; font-size: 13px; filter: grayscale(1); }
+.fb-btn.on { filter: none; background: var(--soft-active); }
+.fb-note { display: flex; gap: 6px; flex: 1 1 100%; margin-top: 4px; }
+.fb-note input { flex: 1; font-size: 13px; padding: 4px 8px; }
+.fb-note button { font-size: 13px; padding: 4px 10px; }
+.day-body h4 .listen { margin-left: 8px; font-size: 12px; padding: 2px 8px; border-radius: 8px; vertical-align: 1px; }

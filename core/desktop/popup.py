@@ -29,10 +29,18 @@ ICON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 KWIN_JS = os.path.join(DATA, "place-window.js")
 
 
-def place_window(mode):
-    """Size and place the window through KWin (Wayland apps cannot move themselves):
-    small = bottom-right corner, always on top; dash = centered normal window (~72% x 82% of the screen)."""
+KDE = "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+
+
+def place_window(mode, win=None):
+    """Size and place the window: small = bottom-right corner, always on top; dash = centered normal window
+    (~72% x 82% of the screen). On KDE Plasma through a KWin script (Wayland apps cannot move themselves); on other
+    desktops GTK does what the desktop allows (size and keep-above everywhere, the position only on X11)."""
     import subprocess
+    if not KDE:
+        if win is not None:
+            _place_gtk(win, mode)
+        return
     js = """for (const w of workspace.windowList()) if (w.resourceClass == "amadeus-call" && !w.fullScreen) {
       const a = workspace.clientArea(KWin.MaximizeArea, w);
       if ("%s" == "dash") {
@@ -56,6 +64,23 @@ def place_window(mode):
         subprocess.Popen(["sh", "-c", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     except OSError:
         pass
+
+
+def _place_gtk(win, mode):
+    from gi.repository import Gdk
+    mon = Gdk.Display.get_default().get_monitor_at_window(win.get_window()) if win.get_window() else \
+        Gdk.Display.get_default().get_primary_monitor()
+    area = mon.get_workarea() if mon else None
+    win.set_keep_above(mode != "dash")
+    if mode == "dash":
+        w, h = (int(min(1500, area.width * 0.72)), int(min(950, area.height * 0.82))) if area else (1200, 800)
+        win.resize(w, h)
+        if area:
+            win.move(area.x + (area.width - w) // 2, area.y + (area.height - h) // 2)
+    else:
+        win.resize(W, H)
+        if area:
+            win.move(area.x + area.width - W - 16, area.y + area.height - H - 16)
 
 
 class Window(Gtk.Window):
@@ -175,7 +200,7 @@ class Window(Gtk.Window):
                 self.view.load_uri(BASE + "/call.html?stay=1")
             self.full = False
         self.dash.set_tooltip_text("Back to the small window" if self.full else "Open the dashboard")
-        place_window(mode)
+        place_window(mode, self)
         return False
 
     def on_load_test(self, view, ev):
@@ -241,7 +266,7 @@ class Window(Gtk.Window):
             self.full = True
             self.dash.set_tooltip_text("Back to the small window")
         elif changed and not maxed and self.full:
-            place_window("dash")
+            place_window("dash", self)
 
 def _running_window(pidfile):
     """pid of another Amadeus window that is still running, else None."""

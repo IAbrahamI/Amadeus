@@ -8,7 +8,7 @@ import re
 import time
 import urllib.request
 
-from . import agenda, db, digest, events, mailwatch, quickchat, tools
+from . import agenda, db, digest, events, learning, mailwatch, quickchat, tools
 from .config import CFG
 
 
@@ -164,7 +164,7 @@ def _week_ahead():
 def loop():
     while True:
         for job in (check_reminders, check_calendar, keep_apps, mailwatch.check, check_jobs,
-                    check_week_ahead, digest.check_morning, digest.check, quickchat.check, clean_reports, events.maybe_ring, idle_stop):
+                    check_week_ahead, digest.check_morning, digest.check, quickchat.check, learning.check, clean_reports, events.maybe_ring, idle_stop):
             try:
                 job()
             except Exception as e:

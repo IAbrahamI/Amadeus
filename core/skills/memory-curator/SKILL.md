@@ -1,6 +1,10 @@
+---
+name: memory-curator
+description: "How the assistant decides what is worth remembering about you (it keeps the essence, not the conversation)."
+metadata:
+  mode: background
+---
 # Memory curator
-> How the assistant decides what is worth remembering about you (it keeps the essence, not the conversation).
-mode: background
 
 KEEP (short, lasting statements about the user):
 - Who they are: name and what they like to be called, work, studies, projects, skills, where they live (city level).

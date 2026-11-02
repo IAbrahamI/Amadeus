@@ -49,14 +49,13 @@ LAST_USED = os.path.join(os.path.dirname(CFG["secrets_dir"]), "presidio-last-use
 def _terms():
     terms = []
     try:
-        terms += list(json.load(open(os.path.join(CFG["secrets_dir"], "canaries.json"))).values())
+        with open(os.path.join(CFG["secrets_dir"], "canaries.json")) as f:
+            terms += list(json.load(f).values())
     except Exception:
         terms.append("CANARY-")
     try:
-        for line in open(os.path.join(CFG["secrets_dir"], "denylist.txt")):
-            line = line.strip()
-            if line and not line.startswith("#"):
-                terms.append(line)
+        with open(os.path.join(CFG["secrets_dir"], "denylist.txt")) as f:
+            terms += [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     except OSError:
         pass
     return terms

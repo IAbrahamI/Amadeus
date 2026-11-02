@@ -8,7 +8,7 @@ import re
 import threading
 import time
 
-from . import db, events, llm, profile, tools
+from . import db, events, learning, llm, profile, tools
 from .config import CFG, NAME
 
 SKILLS_DIRS = [os.path.join(os.path.dirname(os.path.dirname(__file__)), "skills"),
@@ -52,9 +52,42 @@ def _read_mail_recently(cid, last=12):
     return any(m["role"] == "tool" and m["meta"].get("name") in MAIL_READ_TOOLS for m in db.messages(cid)[-last:])
 
 
+def _frontmatter(text):
+    """The YAML frontmatter of a SKILL.md (agentskills.io format): simple "key: value" lines, and one level of nesting
+    (e.g. metadata). Enough for skill files without needing a YAML library."""
+    if not text.startswith("---"):
+        return {}, text
+    head, _, body = text[3:].partition("\n---")
+    meta, parent = {}, None
+    for line in head.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        key, _, val = line.strip().partition(":")
+        val = val.strip().strip('"').strip("'")
+        if line.startswith((" ", "\t")) and parent:
+            meta.setdefault(parent, {})[key] = val
+        else:
+            parent = key if not val else None
+            if val:
+                meta[key] = val
+    return meta, body.lstrip("\n")
+
+
 def skills():
+    """Skills in two formats: the open agentskills.io format (a folder with SKILL.md: name, description, and optional
+    metadata.triggers / metadata.mode) and the older single Markdown file ("> description", "triggers:", "mode:").
+    Skills from public libraries can be copied into data_dir/skills/ as they are; without triggers they load when a
+    word of their name comes up."""
     out = {}
     for d in SKILLS_DIRS:
+        for f in sorted(glob.glob(os.path.join(d, "*", "SKILL.md"))):
+            meta, body = _frontmatter(open(f).read())
+            name = meta.get("name") or os.path.basename(os.path.dirname(f))
+            extra = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
+            triggers = [t.strip().lower() for t in extra.get("triggers", "").split(",") if t.strip()] or \
+                [w for w in re.split(r"[-_ ]", name.lower()) if len(w) >= 4]
+            out[name] = {"name": name, "description": meta.get("description", ""), "body": body, "triggers": triggers,
+                         "mode": extra.get("mode") or "auto"}
         for f in sorted(glob.glob(os.path.join(d, "*.md"))):
             text = open(f).read()
             name = os.path.basename(f)[:-3]
@@ -215,6 +248,9 @@ def _system(cid, user_text):
     if rec:
         text += ("\n\n## Your last chats with the user (short recaps, so you remember what you talked about; "
                  "don't bring them up unless it helps)\n" + rec)
+    lessons = learning.prompt_block(cid, user_text or "")
+    if lessons:
+        text += ("\n\n## Lessons from earlier mistakes (learned from the user's feedback; follow them)\n" + lessons)
     hints = profile.asking_hints(user_text or "")
     if hints:
         text += ("\n\n## How this user asks for things (learned from earlier requests; use it to understand them)\n" + hints)
@@ -234,6 +270,19 @@ def _system(cid, user_text):
                 text += "\n\nRelevant memories:\n" + mem
         except Exception:
             pass
+    return {"role": "system", "content": text}
+
+
+def eval_system(user_text, lessons):
+    """The instructions for one test request (learning.evaluate): the same rules, skills and lessons, no chat history."""
+    text = SYSTEM.format(name=NAME, today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M")) + ABOUT_ME
+    low = user_text.lower()
+    off = set(db.get_setting("skills_off", []))
+    for s in skills().values():
+        if s["mode"] == "auto" and s["name"] not in off and any(t in low for t in s["triggers"]):
+            text += f"\n\n## Skill: {s['name']} (follow it for this request)\n{s['body']}"
+    if lessons:
+        text += "\n\n## Lessons from earlier mistakes (learned from the user's feedback; follow them)\n" + lessons
     return {"role": "system", "content": text}
 
 
@@ -290,10 +339,12 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice):
                                  daemon=True).start()
             mood = MOOD_RE.search(content)
             content = MOOD_RE.sub("", content).strip()
-            db.add_message(cid, "assistant", content, {"mood": mood.group(1) if mood else "normal"})
+            db.add_message(cid, "assistant", content, {"mood": mood.group(1) if mood else "normal",
+                                                       "lessons": learning.LAST_USED.get(cid, [])})
             emit("done", {})
             return
-        db.add_message(cid, "assistant", MOOD_RE.sub("", content).strip(), {"tool_calls": calls})
+        db.add_message(cid, "assistant", MOOD_RE.sub("", content).strip(),
+                       {"tool_calls": calls, "lessons": learning.LAST_USED.get(cid, [])})
         waiting = False
         for c in calls:
             name, args = c.get("name"), c.get("arguments") or {}
@@ -358,6 +409,7 @@ def decide(aid, approve):
     if not a or a["status"] != "pending":
         return {"error": "not pending"}
     cid, name, args = a["conversation_id"], a["tool"], json.loads(a["args"])
+    learning.decided(cid, approve)  # credit (or blame) the lessons the proposal was made with
     if approve:
         tools.CURRENT_CID = cid
         try:

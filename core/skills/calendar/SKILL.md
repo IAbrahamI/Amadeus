@@ -1,6 +1,10 @@
+---
+name: calendar
+description: "How Amadeus turns what you say into calendar entries without misreading it."
+metadata:
+  triggers: "calendar, day off, days off, holiday, holidays, urlaub, frei, nothing else, clear the day, kalender, termin, appointment, meeting, event, blocker, block, schedule, recurring, every week, every monday, repeat, reschedule, move the, cancel the, verschieb, eintragen, trag, calendario, cita, reunión"
+---
 # Calendar
-> How Amadeus turns what you say into calendar entries without misreading it.
-triggers: calendar, day off, days off, holiday, holidays, urlaub, frei, nothing else, clear the day, kalender, termin, appointment, meeting, event, blocker, block, schedule, recurring, every week, every monday, repeat, reschedule, move the, cancel the, verschieb, eintragen, trag, calendario, cita, reunión
 
 Before you call a calendar tool:
 1. Work out exactly what the user wants and check it against "Dates" below. Never compute weekdays or dates in your head.

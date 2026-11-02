@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Amadeus Core for the current user on a KDE Plasma (Wayland) desktop:
+# Installs Amadeus Core for the current user (best on KDE Plasma; other Linux desktops work with small limits):
 # systemd user services (core, tray icon, voice, wake word, nightly leak scan), the `amadeus` launcher, the app-menu entry,
 # Thunderbird autostart (minimized) and the KWin rule for the small window.
 # Run it again after moving the repository. Use --dry-run to only print what would be written.
@@ -32,5 +32,9 @@ if [ -x "$HOME/.local/share/amadeus/voice/venv-lite/bin/python" ]; then
 else
   echo "voice: not set up (see docs/INSTALL.md, optional: voice); amadeus-voice not started"
 fi
-"$REPO/core/desktop/install-kwin-rule.sh" || echo "KWin rule skipped (not on KDE?)"
+if [[ "${XDG_CURRENT_DESKTOP:-}" == *KDE* ]]; then
+  "$REPO/core/desktop/install-kwin-rule.sh" || echo "KWin rule skipped"
+else
+  echo "Not KDE Plasma: the window opens as a normal window (no automatic corner placement)"
+fi
 echo "Done. Open Amadeus with: amadeus"

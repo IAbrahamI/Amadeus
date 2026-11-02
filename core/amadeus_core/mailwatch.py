@@ -87,10 +87,11 @@ def watch():
 
 
 def _rules():
-    for d in SKILL_DIRS:
-        f = os.path.join(d, "mail-watch.md")
-        if os.path.isfile(f):
-            return open(f).read()
+    for d in SKILL_DIRS:  # the skill as a folder (agentskills.io format) or as one Markdown file
+        for f in (os.path.join(d, "mail-watch", "SKILL.md"), os.path.join(d, "mail-watch.md")):
+            if os.path.isfile(f):
+                text = open(f).read()
+                return text.split("\n---", 1)[1] if text.startswith("---") else text
     return "Important: bills, deadlines, personal messages that need an answer. Not important: newsletters and ads."
 
 

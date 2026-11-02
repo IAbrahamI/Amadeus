@@ -1,0 +1,10 @@
+[
+  ["Remind me tomorrow at 9 to call the bank", "create_reminder"],
+  ["What's on my calendar tomorrow?", "calendar_list"],
+  ["Add buy milk to my todo list", "todo_add"],
+  ["Do I have any new mail?", "mail_overview"],
+  ["Put a meeting with Sam on Friday from 14 to 15 in my calendar", "calendar_add"],
+  ["I need the verification code from the email I just got", "mail_codes"],
+  ["Open Spotify", "open_app"],
+  ["What did we decide about the holiday plans last week?", "search_chats"]
+]

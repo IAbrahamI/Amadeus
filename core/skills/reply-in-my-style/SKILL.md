@@ -1,6 +1,10 @@
+---
+name: reply-in-my-style
+description: "Drafts mail replies that sound like the user wrote them."
+metadata:
+  triggers: "reply, answer this mail, answer the mail, answer him, answer her, write back, respond to, antworte, antwort, zurückschreiben, responde, contesta"
+---
 # Reply in my style
-> Drafts mail replies that sound like the user wrote them.
-triggers: reply, answer this mail, answer the mail, answer him, answer her, write back, respond to, antworte, antwort, zurückschreiben, responde, contesta
 
 When the user wants to reply to an email:
 1. Read the email first (mail_read) if you haven't yet. If it is unclear which mail, ask or use mail_search.

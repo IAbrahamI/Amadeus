@@ -181,6 +181,10 @@ class Handler(BaseHTTPRequestHandler):
             name = os.path.basename(CFG.get("avatar") or "")
             d = os.path.join(CFG["data_dir"], "avatar", name)
             return self._json({"available": bool(name) and os.path.isdir(d) and bool(os.listdir(d)), "set": name})
+        if p == "/api/learning":  # what it learned from your feedback (Settings → Memory)
+            from . import learning
+            return self._json({"lessons": learning.lessons(), "log": db.get_setting("reflect_log", [])[-10:],
+                               "feedback": learning.scores()})
         if p == "/api/identity":  # the assistant's name and look, for the window and the phone app
             return self._json({"name": CFG["assistant_name"], "avatar": os.path.basename(CFG.get("avatar") or ""),
                                "voice": voice_pack()})
@@ -319,6 +323,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._authed():
             return self._json({"error": "unauthorized"}, 401)
+        if p == "/api/voice/tts":  # {"text"} -> spoken audio (Piper, if installed), from the voice service
+            return self._voice("/tts")
         if p == "/api/voice/stt":  # raw audio, passed through to the voice service
             return self._voice(p[len("/api/voice"):])
         b = self._body()
@@ -356,6 +362,20 @@ class Handler(BaseHTTPRequestHandler):
             from . import playbooks
             text = (playbooks.voice_on if m.group(1) == "on" else playbooks.voice_off)(None)
             return self._json({"voice": playbooks.voice_status(), "text": text})
+        m = re.fullmatch(r"/api/messages/(\d+)/feedback", p)
+        if m:  # 👍 / 👎 on an answer
+            from . import learning
+            try:
+                return self._json(learning.feedback(int(m.group(1)), b.get("score", 0), b.get("note", "")))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if p == "/api/learning/run":  # learn from the last day's feedback now, instead of waiting for the night
+            from . import learning
+            return self._json(learning.reflect(force=True) or {})
+        if p == "/api/learning/forget":  # remove one lesson
+            from . import learning
+            learning._save([l for l in learning.lessons() if l["id"] != b.get("id")])
+            return self._json({"lessons": learning.lessons()})
         if p == "/api/day/now":  # "Summarize so far" in "Your day": today's mail and chats until now
             from . import digest
             return self._json({"reports": digest.now_summary()})
@@ -537,6 +557,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("content-length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        except urllib.error.HTTPError as e:  # pass the voice service's own message on (e.g. "no voice installed")
+            try:
+                msg = json.load(e).get("error", str(e))
+            except ValueError:
+                msg = str(e)
+            return self._json({"error": msg}, e.code)
         except Exception as e:
             return self._json({"error": f"voice service: {e}"}, 502)
 

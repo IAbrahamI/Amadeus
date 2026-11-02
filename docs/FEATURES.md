@@ -13,9 +13,10 @@
 | **Mail** | Through Thunderbird: overviews of everything open, a whole mail with its links, verification codes, search, mark read, flag, move and file, folders, trash and junk, forward, attachments, contacts, drafts in your style, sending. New mail is checked the moment it arrives. Only urgent mail and mail from people you marked as important call you right away. |
 | **To-dos and notes** | Your `ToDo.md` and `Notes.md` in the vault's `Amadeus/` folder. It changes them only when you ask, with your approval. |
 | **Reminders** | One-off and repeating (`daily`, `weekdays`, `weekly mon`, …). |
+| **Learning** | 👍 / 👎 under every answer (with an optional note), plus approved and rejected actions, are the signal. Every night (03:00) the local model turns the day's mistakes into at most a few short lessons; each lesson counts how often it helped or hurt, and lessons that hurt more than they help are dropped. New lessons are kept only if a test on your own past requests (and a few basics) doesn't get worse. See and remove them under Settings → Memory, or "Learn from today now". |
 | **Memory** | Long-term memory in Hindsight, a profile of you (including how you communicate), and what it learned about how you phrase requests. You can read and edit all of it under Settings → Memory. |
 | **Playbooks** | Fixed recipes run by code: *plan my day*, *week ahead* (also a Sunday-evening call), *sort my inbox*, *newsletter cleanup*, *new project* (a short interview, a spec you confirm, then a work run). |
-| **Skills** | Markdown instruction files in `core/skills/` that load only when your message matches their trigger words (calendar, replies in your style, work briefs, …). Add your own in `~/.local/share/amadeus/core/skills/`. |
+| **Skills** | Instructions in the open [agentskills.io](https://agentskills.io) format (a folder with `SKILL.md`) that load only when your message matches their trigger words (calendar, replies in your style, work briefs, …). Add your own or public ones in `~/.local/share/amadeus/core/skills/`. |
 | **Projects and work runs** | One folder per project in the vault's `Projects/`. Talk about a project with Amadeus, or write to Claude Code directly from the project page. You see the filtered text first, and **Open in Claude Code** opens the session in a terminal. |
 | **Voice** | Wake word (its name: "Amadeus, …"), push-to-talk, local Whisper speech recognition (English, German, Spanish), a word list it extends when you ask, "voice off" to close the microphone, and optional voice lines you add yourself. |
 | **Phone** | An Android app over your Tailscale network: chat, approvals, calls that ring like a phone call, today, mail. "It is where you are": while you use the PC the phone stays quiet, and the other way round. |
@@ -57,6 +58,8 @@ Put any of these into `~/.config/amadeus-core/config.json`, then run `systemctl 
 | `filter_allow` | `[]` | Words the privacy filter never replaces (it can add more when you ask) |
 | `wake_words`, `wake_confidence` | its name and `"assistant"`, `0.6` | The wake words |
 | `stt_language` | empty | For example `"en"` to lock speech recognition to one language |
+| `learning`, `reflect_hour` | `true`, `3` | The nightly learning from your feedback |
+| `tts_voice` | empty | A Piper voice (`.onnx`) for reading the briefs aloud; empty = the first one installed |
 | `serve_apk` | `false` | Offer the phone app for download over Tailscale while you install it |
 
 ## Useful commands

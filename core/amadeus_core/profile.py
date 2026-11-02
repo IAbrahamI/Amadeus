@@ -29,10 +29,11 @@ def put(text):
 
 
 def _rules():
-    for d in SKILL_DIRS:
-        f = os.path.join(d, "memory-curator.md")
-        if os.path.isfile(f):
-            return open(f).read()
+    for d in SKILL_DIRS:  # the skill as a folder (agentskills.io format) or as one Markdown file
+        for f in (os.path.join(d, "memory-curator", "SKILL.md"), os.path.join(d, "memory-curator.md")):
+            if os.path.isfile(f):
+                text = open(f).read()
+                return text.split("\n---", 1)[1] if text.startswith("---") else text
     return "Keep only lasting facts about the user and how they communicate. Never keep email contents."
 
 

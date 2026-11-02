@@ -108,6 +108,24 @@ flowchart LR
   ever shows up in a work run's conversation or in the `Projects/` folder.
 - If Presidio isn't reachable, the text is held, never sent unchecked.
 
+## How it learns
+
+The local model isn't retrained. It gets better through what it is told, from your own feedback
+(`core/amadeus_core/learning.py`, inspired by the playbook approach in [OpenJarvis](https://github.com/open-jarvis/OpenJarvis)):
+
+```mermaid
+flowchart LR
+    fb["👍 / 👎 on answers<br/>approved / rejected actions<br/>failed tools"] --> night["every night:<br/>local model writes<br/>short lessons"]
+    night --> test{"test on your past<br/>requests + basics:<br/>no worse?"}
+    test -- yes --> book["playbook of lessons"]
+    test -- no --> drop["dropped"]
+    book --> prompt["the relevant lessons go<br/>into each new request"]
+    prompt --> fb
+```
+
+Each lesson counts how often the answers it was used in were rated good or bad, so a lesson that does more harm
+than good disappears by itself. The lessons are listed under Settings → Memory, where you can remove any of them.
+
 ## The work side
 
 A work run is one `claude -p` call in the vault's `Amadeus/Projects/<Name>/` folder, on your own Claude

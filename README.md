@@ -23,6 +23,10 @@ You decide who your assistant is: its name, its personality, and whether it has 
   Claude Code run works on it in a project folder of your Obsidian vault. The result comes back into the chat.
 - **Phone.** An Android app reaches it over your private Tailscale network, rings for its calls and syncs with the PC.
 - **Approvals for everything.** Every action that changes something becomes a card you approve or reject.
+- **Learns from you.** Rate answers with 👍 / 👎. Every night it turns its mistakes into short lessons, and keeps a
+  lesson only if a test on your own past requests doesn't get worse. No retraining, nothing leaves the PC.
+- **Skills in an open format.** Skills use the [agentskills.io](https://agentskills.io) format, so skills from public
+  libraries can be dropped in.
 
 ## Make it yours
 
@@ -69,7 +73,8 @@ you approved. More detail, including the privacy filter step by step: [docs/ARCH
 
 ## Getting started
 
-You need Linux with KDE Plasma (Wayland), Docker, Ollama and ideally an NVIDIA GPU with about 12 GB of memory.
+You need Linux with systemd (KDE Plasma gives the best experience, other desktops work too), Docker, Ollama and
+ideally an NVIDIA GPU with about 12 GB of memory.
 
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus

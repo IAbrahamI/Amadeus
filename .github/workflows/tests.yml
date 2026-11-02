@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unit tests (no network, no Ollama, no Docker needed)
+        working-directory: core
+        run: python -m unittest -v
+      - name: Python compiles
+        run: python -m py_compile core/amadeus_core/*.py core/desktop/*.py core/voice/*.py obsidian/vault-guard.py
+      - name: JavaScript parses
+        run: for f in core/web/*.js core/thunderbird/addon/*.js; do node --check "$f"; done
+      - name: Shell scripts parse
+        run: for f in install.sh core/deploy/install.sh core/deploy/bin/* core/thunderbird/install.sh obsidian/amadeus-vault-snapshot; do bash -n "$f"; done
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build the phone app
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease

@@ -68,7 +68,7 @@ def add_message(cid, role, content, meta=None):
 
 
 def messages(cid):
-    rows = q("SELECT role,content,meta,created FROM messages WHERE conversation_id=? ORDER BY id", (cid,))
+    rows = q("SELECT id,role,content,meta,created FROM messages WHERE conversation_id=? ORDER BY id", (cid,))
     for r in rows:
         r["meta"] = json.loads(r["meta"] or "{}")
     return rows

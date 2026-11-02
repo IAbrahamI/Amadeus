@@ -2,8 +2,9 @@
 """Amadeus voice service: everything on the CPU, so the GPU stays free for the language model.
 Runs in its own small venv: ~/.local/share/amadeus/voice/venv-lite (no PyTorch).
   POST /stt   body: recorded audio (webm/ogg/wav)   -> {"text", "language"}    Whisper small (faster-whisper, int8)
-Local only (127.0.0.1); bearer token = Amadeus Core's token. Replies are text; the only sounds are the voice
-clips (served by Amadeus Core), so there is no text-to-speech here anymore."""
+  POST /tts   body: {"text": "..."}                -> audio/wav                  Piper (optional, see docs/INSTALL.md)
+Local only (127.0.0.1); bearer token = Amadeus Core's token. Chat replies are text; text-to-speech is only used
+where you ask for it (e.g. "Listen" on the morning brief), and only if a Piper voice is installed."""
 import io
 import json
 import os
@@ -34,6 +35,31 @@ def _cfg():
         return {}
 
 
+
+
+def _piper():
+    """The Piper voice (config "tts_voice": an .onnx file; default: the first voice in voice/models/piper/)."""
+    if "tts" not in _m:
+        import glob
+        path = _cfg().get("tts_voice") or next(iter(sorted(glob.glob(os.path.join(MODELS, "piper", "*.onnx")))), "")
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError("No text-to-speech voice installed (see docs/INSTALL.md, optional: voice).")
+        from piper import PiperVoice
+        _m["tts"] = PiperVoice.load(path)
+    return _m["tts"]
+
+
+def tts(text):
+    """Text to a WAV file in memory."""
+    with _lock:
+        voice = _piper()
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            if hasattr(voice, "synthesize_wav"):  # piper-tts 1.3+
+                voice.synthesize_wav(text[:4000], w)
+            else:
+                voice.synthesize(text[:4000], w)
+        return buf.getvalue()
 
 
 def _whisper():
@@ -120,10 +146,12 @@ class H(BaseHTTPRequestHandler):
         try:
             if self.path == "/stt":
                 return self._send(200, stt(body, self.headers.get("content-type", "")))
+            if self.path == "/tts":
+                return self._send(200, tts(json.loads(body or b"{}").get("text", "")), "audio/wav")
             self._send(404, {"error": "not found"})
         except Exception as e:
             print("voice error:", repr(e), flush=True)
-            self._send(500, {"error": str(e)})
+            self._send(404 if isinstance(e, FileNotFoundError) else 500, {"error": str(e)})
 
 
 if __name__ == "__main__":

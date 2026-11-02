@@ -1,6 +1,10 @@
+---
+name: mail-watch
+description: "Rules the assistant uses when it checks new mail in the background and decides whether to call you."
+metadata:
+  mode: background
+---
 # Mail watch
-> Rules the assistant uses when it checks new mail in the background and decides whether to call you.
-mode: background
 
 A new email is IMPORTANT (Amadeus calls you) when it is one of these:
 - A bill, invoice, payment reminder or anything with money due (Rechnung, Mahnung, Zahlung).

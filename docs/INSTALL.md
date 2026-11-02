@@ -7,17 +7,21 @@ The basics take two scripts. Mail, voice, the phone app and work runs are option
 
 ## 1. What you need
 
-Tested on CachyOS (Arch) with KDE Plasma 6 on Wayland and an RTX 3080 Ti (12 GB). Other systemd distros with
-KDE should work; the window and tray need KDE.
+Tested on CachyOS (Arch) with KDE Plasma 6 on Wayland and an RTX 3080 Ti (12 GB). Any systemd Linux works.
+**KDE Plasma** gives the best experience. On other desktops (GNOME, Xfce, …) everything works, but the small window
+opens as a normal window instead of sitting in the corner (on X11 it is still placed there), and GNOME needs the
+*AppIndicator* extension to show the tray icon.
 
-| Package (Arch names) | For |
-|---|---|
-| `ollama` (or `ollama-cuda`), enabled: `sudo systemctl enable --now ollama` | the local model |
-| `docker`, enabled, and your user in the `docker` group | memory and the privacy filter |
-| `python`, `python-gobject`, `gtk3`, `webkit2gtk-4.1`, `python-pyqt6` | the assistant, its window and tray |
-| `gst-plugins-good`, `ffmpeg` | sound in the window, voice |
-| `curl`, `zstd` | the installer, vault snapshots |
-| an NVIDIA GPU with ~12 GB and working `nvidia-smi` | recommended (without it the model runs slowly on the CPU) |
+| For | Arch | Debian / Ubuntu | Fedora |
+|---|---|---|---|
+| the local model | `ollama` or `ollama-cuda` | [ollama.com/download](https://ollama.com/download) | [ollama.com/download](https://ollama.com/download) |
+| memory and the privacy filter | `docker` | `docker.io` | `moby-engine` |
+| the assistant, its window and tray | `python-gobject gtk3 webkit2gtk-4.1 python-pyqt6` | `python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 python3-pyqt6` | `python3-gobject gtk3 webkit2gtk4.1 python3-pyqt6` |
+| sound and voice | `gst-plugins-good ffmpeg` | `gstreamer1.0-plugins-good ffmpeg` | `gstreamer1-plugins-good ffmpeg-free` |
+| the installer, vault snapshots | `curl zstd` | `curl zstd` | `curl zstd` |
+
+Enable Ollama and Docker (`sudo systemctl enable --now ollama docker`) and add yourself to the `docker` group.
+An NVIDIA GPU with ~12 GB is recommended; without one the model runs slowly on the CPU.
 
 Optional: `obsidian` (notes and work projects), `thunderbird` from your distribution, not Flatpak (mail),
 `tailscale` (phone), `claude` with `bubblewrap` and `socat` (work runs).
@@ -83,6 +87,18 @@ cd - && core/deploy/install.sh          # now also starts the voice and wake-wor
 
 Whisper (speech recognition) downloads itself on first use. Everything runs on the CPU, so the GPU stays free
 for the model. Say "voice off" to close the microphone completely.
+
+**Reading aloud (optional).** To have the morning brief and the evening summary read to you (▶ Listen under
+*Your day*), add a local [Piper](https://github.com/OHF-Voice/piper1-gpl) voice:
+
+```bash
+~/.local/share/amadeus/voice/venv-lite/bin/pip install piper-tts
+~/.local/share/amadeus/voice/venv-lite/bin/python -m piper.download_voices en_US-lessac-medium \
+  --data-dir ~/.local/share/amadeus/voice/models/piper
+systemctl --user restart amadeus-voice
+```
+
+Any Piper voice works (other languages too); set `"tts_voice"` to its `.onnx` file to pick one.
 
 ## 6. Optional: the phone app
 
@@ -156,6 +172,24 @@ says which clip plays when (all keys are optional; a random clip from a list is 
 (`hello`), after the wake word (`heard`), and on approvals and errors,
 `hear` when what *you* say matches a pattern, `reply` when its answer does. Without a pack it stays silent, and calls
 ring with a soft built-in tone (the phone uses its own ringtone).
+
+## Skills
+
+Skills are short instructions that load only when your message needs them (calendar, replies in your style, …).
+They use the open [agentskills.io](https://agentskills.io) format: a folder with a `SKILL.md` that starts with a
+`name` and a `description`. The built-in ones are in `core/skills/`. To add your own, or one from a public skill
+library, copy its folder into `~/.local/share/amadeus/core/skills/`. Optional keys under `metadata:` are
+`triggers` (comma-separated words that load it) and `mode` (`auto`, `manual` or `background`); without triggers, a
+skill loads when a word of its name comes up. You can switch each one off on the Skills page.
+
+## Running the tests
+
+```bash
+cd core && python -m unittest -v
+```
+
+They use a throw-away home folder and need no network, Ollama or Docker. GitHub runs them (and builds the phone
+app) on every push.
 
 ## Settings
 
