@@ -243,7 +243,9 @@ phase_hindsight() {
       mkdir -p "$ext"; cp -r "$SCRIPT_DIR/core/hindsight_ext/amadeus_ext" "$ext/"
       [[ -f "$SECRETS/hindsight-keys.json" ]] || die "The memory key is missing: run ./install.sh --only secrets first."
       keys="$(python3 -c 'import json,sys;k=json.load(open(sys.argv[1]));print(json.dumps({v:n for n,v in k.items()}))' "$SECRETS/hindsight-keys.json")"
-    else keys='{"<key>":"amadeus"}'; fi
+      # the web page (port 9999) uses Amadeus' own key, so it shows the banks Amadeus remembers into
+      uikey="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["amadeus"])' "$SECRETS/hindsight-keys.json")"
+    else keys='{"<key>":"amadeus"}'; uikey='<key>'; fi
     run docker run -d \
       --name "$HINDSIGHT_CONTAINER" \
       --restart unless-stopped \
@@ -255,6 +257,7 @@ phase_hindsight() {
       -e HINDSIGHT_API_TENANT_KEYS="$keys" \
       -e HINDSIGHT_API_HOST=127.0.0.1 \
       -e HINDSIGHT_CP_HOSTNAME=127.0.0.1 \
+      -e HINDSIGHT_CP_DATAPLANE_API_KEY="$uikey" \
       -e HINDSIGHT_API_WORKER_ID="$HINDSIGHT_WORKER_ID" \
       -e HINDSIGHT_API_LLM_PROVIDER=ollama \
       -e HINDSIGHT_API_LLM_BASE_URL="$OLLAMA_URL" \
