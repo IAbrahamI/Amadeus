@@ -2,7 +2,7 @@
 const $ = (s) => document.querySelector(s);
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
-  if (r.status === 401) { document.body.innerHTML = "<p style='padding:30px;color:#D4E6F2'>Please open it with the <code>amadeus</code> command.</p>"; throw new Error("unauthorized"); }
+  if (r.status === 401) { document.body.innerHTML = "<p style='padding:30px;color:var(--text)'>Please open it with the <code>amadeus</code> command.</p>"; throw new Error("unauthorized"); }
   return r.json();
 };
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
@@ -269,10 +269,10 @@ const TOOL_KIND = (t) => (t.startsWith("mail") ? "Mail" : t.startsWith("calendar
 // ---------- Memory ----------
 async function loadMemory() {
   body().innerHTML = `<h3>What the core shows</h3>${note("Every point stands for memories on this PC. Bright clusters are topics, and lines join memories that belong together. While it recalls something, the points it uses light up amber, so you can watch it think.")}
-    <div class="legend"><div><i style="background:rgb(95,216,255)"></i><p><b>Facts</b> · what is true about you and the world</p></div>
-    <div><i style="background:rgb(140,170,255)"></i><p><b>Experiences</b> · things you did and talked about</p></div>
-    <div><i style="background:rgb(79,224,166)"></i><p><b>Observations</b> · patterns it noticed, like how you ask for things</p></div>
-    <div><i style="background:#FFD696"></i><p><b>Recalling</b> · points lit while it answers</p></div></div>
+    <div class="legend"><div><i style="background:var(--k0)"></i><p><b>Facts</b> · what is true about you and the world</p></div>
+    <div><i style="background:var(--k1)"></i><p><b>Experiences</b> · things you did and talked about</p></div>
+    <div><i style="background:var(--k2)"></i><p><b>Observations</b> · patterns it noticed, like how you ask for things</p></div>
+    <div><i style="background:var(--rc)"></i><p><b>Recalling</b> · points lit while it answers</p></div></div>
     <h3 style="margin-top:22px">Stored</h3><div class="md" id="memText">Loading…</div>`;
   const m = await api("/api/memory");
   const el = $("#memText"); if (el) el.innerHTML = m.error ? esc(m.error) : md(m.text);
@@ -288,7 +288,9 @@ const TILES = [["assistant", "Assistant", "Name, personality and look", '<circle
   ["phone", "Phone", "Pair a phone, private or visible", '<rect x="7" y="3" width="10" height="18"/><path d="M11 18h2"/>'],
   ["reminders", "Reminders", "What it will remind you of", '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/>']];
 function loadSettings() {
-  body().innerHTML = `<div class="tiles">${TILES.map(([id, t, s, ic]) => `<button class="tile" data-act="setpage" data-page="${id}"><svg viewBox="0 0 24 24">${ic}</svg><b>${t}</b><span>${s}</span></button>`).join("")}</div>`;
+  body().innerHTML = `<div class="themes"><div class="thl">Main colour</div><div class="sw">${Object.entries(THEMES).map(([id, t]) =>
+    `<button data-th="${id}" class="${id === window.THEME ? "on" : ""}" style="--s:rgb(${t.a})"><i></i><span>${t.name}</span></button>`).join("")}</div>
+    <p class="thn">Changes the whole look, including the core. Amber always means "needs you".</p></div><div class="tiles">${TILES.map(([id, t, s, ic]) => `<button class="tile" data-act="setpage" data-page="${id}"><svg viewBox="0 0 24 24">${ic}</svg><b>${t}</b><span>${s}</span></button>`).join("")}</div>`;
 }
 
 // ---------- clicks and forms inside the box ----------
@@ -314,6 +316,10 @@ body().addEventListener("submit", async (e) => {
     loadApprovals(); counts();
   }
 });
+body().addEventListener("click", (e) => {  // the main colour (Settings): saved in Core, so it stays everywhere
+  const th = e.target.closest("button[data-th]");
+  if (th) { applyTheme(th.dataset.th); post("/api/theme", { theme: th.dataset.th }); }
+});
 body().addEventListener("click", async (e) => {
   const a = e.target.closest("[data-act]"); if (!a) return;
   const row = a.closest(".row"), act = a.dataset.act;
@@ -336,6 +342,7 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "ctab" || act === "past") { state.chatTab = act === "past" ? Number(a.dataset.i) : a.dataset.tab; if (act === "ctab" && a.dataset.tab === "history") state.past = null; renderChat(); }
   if (act === "toappr") open("approvals");
+
 });
 
 // ---------- start ----------

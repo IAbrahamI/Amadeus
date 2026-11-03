@@ -198,9 +198,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(voices.listing())
         if p == "/api/identity":  # the assistant's name and look, for the window and the phone app
             return self._json({"name": CFG["assistant_name"], "avatar": os.path.basename(CFG.get("avatar") or ""),
-                               "voice": voice_pack()})
+                               "voice": voice_pack(), "theme": db.get_setting("theme", "blue")})
         if p == "/api/voice/pack":
             return self._json(voice_pack())
+        if p == "/api/theme":  # the dashboard's main colour (Settings): blue (default), purple or red
+            return self._json({"theme": db.get_setting("theme", "blue")})
         if p == "/api/models":
             return self._json({"models": llm.list_models(), "default": CFG["default_model"]})
         if p == "/api/conversations":
@@ -501,6 +503,10 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/conversations/(\w+)/messages", p)
         if m:
             return self._chat(m.group(1), b)
+        if p == "/api/theme":
+            t = str(b.get("theme", ""))
+            db.set_setting("theme", t if t in ("blue", "purple", "red") else "blue")
+            return self._json({"theme": db.get_setting("theme")})
         m = re.fullmatch(r"/api/approvals/(\w+)/revise", p)
         if m:  # Adjust: what should be different; the redraft waits for your approval again
             return self._json(agent.revise(m.group(1), b.get("note", "")))

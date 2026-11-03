@@ -5,8 +5,18 @@
 // The number of points is fixed, however big the memory gets: growth shows as brighter topics, not more points.
 (() => {
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  // the three memory kinds Hindsight keeps: facts, experiences, observations
-  const KINDS = [[95, 216, 255], [140, 170, 255], [79, 224, 166]];
+  // colours from the theme (themes.js): the accent, the three memory kinds Hindsight keeps (facts, experiences,
+  // observations), the recall highlight and the white-ish node cores. "rgb" strings for 2D, 0..1 triplets for WebGL.
+  const C = {};
+  const recolor = () => {
+    const T = window.TH || { a: "95,216,255", a2: "140,215,255", a3: "30,88,120", k: ["95,216,255", "140,170,255", "79,224,166"], rc: "225,248,255", rc2: "255,255,255", hi: "235,250,255" };
+    for (const k of ["a", "a2", "a3", "rc", "rc2", "hi"]) C[k] = T[k];
+    C.k = T.k;
+    const f = (t) => t.split(",").map((x) => Number(x) / 255);
+    C.gl = { uA: f(T.a), uA2: f(T.a2), uK0: f(T.k[0]), uK1: f(T.k[1]), uK2: f(T.k[2]), uRc: f(T.rc), uRc2: f(T.rc2), uHi: f(T.hi) };
+  };
+  recolor();
+  const COLS = "uniform vec3 uA, uA2, uK0, uK1, uK2, uRc, uRc2, uHi;";
 
   // ---------- the network (model space: the outer shell has radius 1) ----------
   function build(big) {
@@ -65,6 +75,7 @@
 
   // ---------- WebGL ----------
   const PROJ = `
+    ${COLS}
     uniform vec2 uC, uRes; uniform float uR, uT, uAmp, uIdle, uBreathe, uRot, uDpr;
     vec3 turn(vec3 p) {
       float c = cos(uRot), s = sin(uRot), cx = cos(.38), sx = sin(.38);
@@ -88,12 +99,12 @@
         gl_Position = place(q, uR * uBreathe * (1. + w));
         vA = q.z >= 0. ? .05 + d * .32 + uAmp * .15 * d : .05 + d * .22;
         gl_PointSize = (mix(1., .7, small) + d * mix(.9, .5, small)) * uDpr;
-      }`, `precision mediump float; varying float vA; void main() { gl_FragColor = vec4(.37, .85, 1., 1.) * vA; }`],
+      }`, `precision mediump float; ${COLS} varying float vA; void main() { gl_FragColor = vec4(uA, 1.) * vA; }`],
     link: [`attribute vec3 aP; attribute float aPh, aLit; varying vec4 vC;${PROJ}
       void main() {
         vec3 q = turn(drift(aP, aPh)); float d = (q.z + 1.) / 2.;
         gl_Position = place(q, uR * uBreathe);
-        vC = aLit > .05 ? vec4(1., .78, .51, 1.) * (.12 + aLit * .5) : vec4(.47, .78, .94, 1.) * (.03 + d * .11 + uAmp * .06);
+        vC = aLit > .05 ? vec4(uRc, 1.) * (.12 + aLit * .5) : vec4(uA2 * .86, 1.) * (.03 + d * .11 + uAmp * .06);
       }`, `precision mediump float; varying vec4 vC; void main() { gl_FragColor = vC; }`],
     node: [`attribute vec3 aP; attribute float aPh, aSize, aKind, aLit; varying vec3 vCol; varying float vA, vDot, vDA, vLit;${PROJ}
       void main() {
@@ -101,25 +112,25 @@
         gl_Position = place(q, uR * uBreathe);
         float base = mix(2.1, 1., small) * aSize * (.6 + d * .7), gs = base * (9. + aLit * 7. + uAmp * 3.);
         gl_PointSize = gs * uDpr;
-        vCol = aKind < -.5 ? vec3(.86, .96, 1.) : aKind < .5 ? vec3(.37, .85, 1.) : aKind < 1.5 ? vec3(.55, .67, 1.) : vec3(.31, .88, .65);
+        vCol = aKind < -.5 ? uHi : aKind < .5 ? uK0 : aKind < 1.5 ? uK1 : uK2;
         vLit = aLit; vA = min(1., .25 + d * .55 + aLit * .4);
         vDot = base * (.55 + aLit * .3) / (gs / 2.); vDA = .35 + d * .6;
-      }`, `precision mediump float; varying vec3 vCol; varying float vA, vDot, vDA, vLit;
+      }`, `precision mediump float; ${COLS} varying vec3 vCol; varying float vA, vDot, vDA, vLit;
       void main() {
         float r = length(gl_PointCoord - .5) * 2.; if (r > 1.) discard;
-        vec3 col = vLit > .15 ? vec3(1., .77, .43) : vCol;
+        vec3 col = vLit > .15 ? uRc : vCol;
         float g = r < .18 ? mix(1., .55, r / .18) : r < .5 ? mix(.55, .12, (r - .18) / .32) : mix(.12, 0., (r - .5) / .5);
         vec3 c = col * g * vA;
-        if (r < vDot) c += (vLit > .15 ? vec3(1., .93, .78) * (.7 + vLit * .3) : vec3(.92, .98, 1.) * vDA) * smoothstep(vDot, vDot * .7, r);
+        if (r < vDot) c += (vLit > .15 ? uRc2 * (.7 + vLit * .3) : uHi * vDA) * smoothstep(vDot, vDot * .7, r);
         gl_FragColor = vec4(c, max(c.r, max(c.g, c.b)));
       }`],
     pulse: [`attribute vec3 aP; attribute float aAmber; varying float vAmber;${PROJ}
       void main() { gl_Position = place(turn(aP), uR * uBreathe); gl_PointSize = (uR / uDpr < 110. ? 8. : 16.) * uDpr; vAmber = aAmber; }`,
-      `precision mediump float; varying float vAmber;
+      `precision mediump float; ${COLS} varying float vAmber;
       void main() {
         float r = length(gl_PointCoord - .5) * 2.; if (r > 1.) discard;
         float g = r < .18 ? mix(1., .55, r / .18) : r < .5 ? mix(.55, .12, (r - .18) / .32) : mix(.12, 0., (r - .5) / .5);
-        vec3 c = (vAmber > .5 ? vec3(1., .77, .43) : vec3(.86, .96, 1.)) * g;
+        vec3 c = (vAmber > .5 ? uRc : uHi) * g;
         gl_FragColor = vec4(c, max(c.r, max(c.g, c.b)));
       }`],
   };
@@ -133,7 +144,7 @@
         gl.attachShader(p, s);
       }
       gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-      const u = {}; for (const n of ["uC", "uRes", "uR", "uT", "uAmp", "uIdle", "uBreathe", "uRot", "uDpr"]) u[n] = gl.getUniformLocation(p, n);
+      const u = {}; for (const n of ["uC", "uRes", "uR", "uT", "uAmp", "uIdle", "uBreathe", "uRot", "uDpr", ...Object.keys(C.gl)]) u[n] = gl.getUniformLocation(p, n);
       return { p, u, a: (n) => gl.getAttribLocation(p, n) };
     };
     const P = Object.fromEntries(Object.entries(SH).map(([k, [v, f]]) => [k, prog(v, f)]));
@@ -155,6 +166,7 @@
       gl.uniform2f(pr.u.uC, s.cx * s.dpr, s.cy * s.dpr); gl.uniform2f(pr.u.uRes, s.W * s.dpr, s.H * s.dpr);
       gl.uniform1f(pr.u.uR, s.R * s.dpr); gl.uniform1f(pr.u.uT, s.t); gl.uniform1f(pr.u.uAmp, s.amp); gl.uniform1f(pr.u.uIdle, s.idle);
       gl.uniform1f(pr.u.uBreathe, s.breathe); gl.uniform1f(pr.u.uRot, s.rot); gl.uniform1f(pr.u.uDpr, s.dpr);
+      for (const k in C.gl) gl.uniform3fv(pr.u[k], C.gl[k]);
     };
     return {
       lit() { litDirty = true; },
@@ -200,10 +212,13 @@
       gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(.18, `rgba(${rgb},.55)`); gr.addColorStop(.5, `rgba(${rgb},.12)`); gr.addColorStop(1, `rgba(${rgb},0)`);
       g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return c;
     };
-    const GLOW = KINDS.map((k) => sprite(k.join(","))), AMBER = sprite("255,196,110"), WHITE = sprite("220,245,255");
+    let GLOW, AMBER, WHITE;
+    const paint = () => { GLOW = C.k.map(sprite); AMBER = sprite(C.rc); WHITE = sprite(C.hi); };
+    paint();
     const { nodes, edges, dust } = net;
     return {
       lit() {},
+      recolor: paint,
       draw(s, pulses) {
         const { cx, cy, R, t, amp, idle, breathe } = s, small = R < 110;
         const cosY = Math.cos(s.rot), sinY = Math.sin(s.rot), cosX = Math.cos(.38), sinX = Math.sin(.38);
@@ -221,16 +236,16 @@
           proj((n.x + Math.sin(t * .5 + n.ph) * .025) * sw, (n.y + Math.cos(t * .6 + n.ph) * .025) * sw, (n.z + Math.sin(t * .4 + n.ph * 2) * .025) * sw, R * breathe, n);
         }
         const dots = (front) => { for (const p of dust) { if ((p.sz >= 0) !== front) continue; const d = (p.sz + 1) / 2;
-          ctx.fillStyle = `rgba(95,216,255,${front ? .05 + d * .32 + amp * .15 * d : .05 + d * .22})`; const z = (small ? .7 : 1) + d * (small ? .5 : .9); ctx.fillRect(p.sx - z / 2, p.sy - z / 2, z, z); } };
+          ctx.fillStyle = `rgba(${C.a},${front ? .05 + d * .32 + amp * .15 * d : .05 + d * .22})`; const z = (small ? .7 : 1) + d * (small ? .5 : .9); ctx.fillRect(p.sx - z / 2, p.sy - z / 2, z, z); } };
         dots(false);
         ctx.lineWidth = small ? .5 : 1;
         const bk = [[], [], [], []];
         for (let k = 0; k < edges.length; k += 2) {
           const a = nodes[edges[k]], b = nodes[edges[k + 1]], lit = Math.max(a.lit, b.lit);
-          if (lit > .05) { ctx.strokeStyle = `rgba(255,200,130,${.12 + lit * .5})`; ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke(); continue; }
+          if (lit > .05) { ctx.strokeStyle = `rgba(${C.rc},${.12 + lit * .5})`; ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke(); continue; }
           bk[Math.min(3, ((a.sz + b.sz) / 2 + 1) * 2 | 0)].push(a, b);
         }
-        bk.forEach((l, i) => { ctx.strokeStyle = `rgba(120,200,240,${.03 + (i + .5) / 4 * .11 + amp * .06})`; ctx.beginPath();
+        bk.forEach((l, i) => { ctx.strokeStyle = `rgba(${C.a2},${.03 + (i + .5) / 4 * .11 + amp * .06})`; ctx.beginPath();
           for (let k = 0; k < l.length; k += 2) { ctx.moveTo(l[k].sx, l[k].sy); ctx.lineTo(l[k + 1].sx, l[k + 1].sy); } ctx.stroke(); });
         ctx.globalCompositeOperation = "lighter";
         for (const q of pulses) {
@@ -242,7 +257,7 @@
           ctx.globalAlpha = Math.min(1, .25 + d * .55 + n.lit * .4);
           ctx.drawImage(n.lit > .15 ? AMBER : n === nodes[net.core] ? WHITE : GLOW[n.kind], n.sx - gs / 2, n.sy - gs / 2, gs, gs);
           ctx.globalAlpha = 1;
-          ctx.fillStyle = n.lit > .15 ? `rgba(255,236,200,${.7 + n.lit * .3})` : `rgba(235,250,255,${.35 + d * .6})`;
+          ctx.fillStyle = n.lit > .15 ? `rgba(${C.rc2},${.7 + n.lit * .3})` : `rgba(${C.hi},${.35 + d * .6})`;
           ctx.beginPath(); ctx.arc(n.sx, n.sy, base * (.55 + n.lit * .3), 0, 6.283); ctx.fill();
         }
         ctx.globalCompositeOperation = "source-over";
@@ -255,18 +270,18 @@
   function halo(ctx, s, thinkGlow) {
     const { cx, cy, R, amp, idle, rot, t } = s, small = R < 110;
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.25);
-    g.addColorStop(0, `rgba(95,216,255,${.10 + amp * .22 + thinkGlow * .08})`); g.addColorStop(.5, `rgba(30,88,120,${.08 + amp * .08})`); g.addColorStop(1, "rgba(4,7,12,0)");
+    g.addColorStop(0, `rgba(${C.a},${.10 + amp * .22 + thinkGlow * .08})`); g.addColorStop(.5, `rgba(${C.a3},${.08 + amp * .08})`); g.addColorStop(1, `rgba(${C.a3},0)`);
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R * 1.25, 0, 6.283); ctx.fill();
     ctx.save(); ctx.translate(cx, cy);
     const ringA = .35 + amp * .4;
     ctx.rotate(-rot * .4);  // fine tick ring
     const r1 = R * 1.2, ticks = small ? 48 : 120;
-    ctx.strokeStyle = `rgba(95,216,255,${ringA * .7})`; ctx.lineWidth = 1; ctx.beginPath();
+    ctx.strokeStyle = `rgba(${C.a},${ringA * .7})`; ctx.lineWidth = 1; ctx.beginPath();
     for (let i = 0; i < ticks; i++) { const a = i / ticks * 6.283, l = i % 10 === 0 ? 7 : 3; ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1); ctx.lineTo(Math.cos(a) * (r1 + l), Math.sin(a) * (r1 + l)); }
     ctx.stroke();
     ctx.rotate(rot * .4);  // the voice ring: bars that move with the voice (slowly when idle)
     const r2 = R * 1.1, bars = small ? 48 : 96;
-    ctx.strokeStyle = `rgba(95,216,255,${.25 + idle * .35 + amp * .6})`; ctx.lineWidth = small ? 1.4 : 2; ctx.beginPath();
+    ctx.strokeStyle = `rgba(${C.a},${.25 + idle * .35 + amp * .6})`; ctx.lineWidth = small ? 1.4 : 2; ctx.beginPath();
     for (let i = 0; i < bars; i++) {
       const a = i / bars * 6.283;
       const v = amp * (.5 + .5 * Math.sin(i * .9 + t * 13)) * (.6 + .4 * Math.sin(i * .23 - t * 4)) + idle * (.5 + .5 * Math.sin(i * .37 + t * 2.8)) * (.6 + .4 * Math.sin(i * .13 - t * 1.4)) + .02;
@@ -276,16 +291,17 @@
     ctx.lineWidth = small ? 1.5 : 2.5; ctx.lineCap = "butt";  // two arc pairs turning opposite ways (amber while recalling)
     const r3 = R * 1.34;
     ctx.rotate(rot * .9);
-    ctx.strokeStyle = thinkGlow > .1 ? `rgba(255,181,71,${.4 + thinkGlow * .5})` : `rgba(95,216,255,${ringA})`;
+    ctx.strokeStyle = thinkGlow > .1 ? `rgba(${C.rc},${.4 + thinkGlow * .5})` : `rgba(${C.a},${ringA})`;
     ctx.beginPath(); ctx.arc(0, 0, r3, 0, 1.1); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, r3, 3.4, 4.1); ctx.stroke();
     ctx.rotate(-rot * 1.6);
-    ctx.lineWidth = 1; ctx.strokeStyle = `rgba(95,216,255,${ringA * .6})`;
+    ctx.lineWidth = 1; ctx.strokeStyle = `rgba(${C.a},${ringA * .6})`;
     ctx.beginPath(); ctx.arc(0, 0, R * 1.42, 1.6, 2.9); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, R * 1.42, 4.6, 5.4); ctx.stroke();
     ctx.restore();
   }
 
   // ---------- public: Core.start(stage), then mode / target / talk ----------
   window.Core = {
+    recolor() { recolor(); if (window.Core._r && window.Core._r.recolor) window.Core._r.recolor(); },  // a new theme
     start(stage) {
       const back = document.createElement("canvas"), front = document.createElement("canvas");
       back.className = front.className = "core-layer"; stage.prepend(back, front);
@@ -301,6 +317,7 @@
       let net = build(!!gl), r = null;
       if (gl) try { r = glRenderer(gl, net); } catch (e) { console.warn("core: WebGL failed, drawing in 2D:", e.message); gl = null; front.remove(); net = build(false); }
       if (!r) { if (!gl && front.isConnected) front.remove(); r = flatRenderer(bctx, net); }
+      window.Core._r = r;
       const state = { mode: "idle", amp: 0, ampT: 0, thinkGlow: 0, lit: -1, rot: 0, bg: false };
       const orb = { x: 0, y: 0, r: 0, tx: 0, ty: 0, tr: 0, slow: false };
       let W = 0, H = 0, DPR = 1, raf = 0, t0 = performance.now(), last = 0;
