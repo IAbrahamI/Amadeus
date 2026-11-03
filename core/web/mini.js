@@ -22,15 +22,17 @@ const placeCore = () => { const r = $("#corewrap").getBoundingClientRect(); core
 new ResizeObserver(placeCore).observe($("#corewrap")); placeCore();
 let mode = "idle";
 const setMode = (m) => { mode = m; core.mode(m); };
-// click the core: the dashboard; drag it: put the window wherever you like (it opens there again)
-let down = null;
-$("#corewrap").addEventListener("mousedown", (e) => { if (e.button === 0) down = { x: e.screenX, y: e.screenY, moved: false }; });
-addEventListener("mousemove", (e) => {
-  if (!down || down.moved || Math.hypot(e.screenX - down.x, e.screenY - down.y) < 6) return;
-  down.moved = true; native("drag");
+// the core itself (the sphere) opens the dashboard; the dark screen around it is where you grab it to move it
+const onCore = (e) => {
+  const r = $("#corewrap").getBoundingClientRect(), R = Math.min(r.width, r.height) / 2 / 1.5 * 1.15;
+  return Math.hypot(e.clientX - (r.x + r.width / 2), e.clientY - (r.y + r.height / 2)) <= R;
+};
+$("#glass").addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || e.target.closest(".ctl, .type, .bubble")) return;
+  if (!onCore(e)) { e.preventDefault(); native("drag"); }  // the desktop moves the window; KWin remembers where
 });
-addEventListener("mouseup", () => setTimeout(() => (down = null), 0));
-$("#corewrap").addEventListener("click", () => { if (!down || !down.moved) native("dash:/#home"); });
+$("#glass").addEventListener("mousemove", (e) => { if (!e.target.closest(".ctl, .type, .bubble")) $("#glass").style.cursor = onCore(e) ? "pointer" : "move"; });
+$("#corewrap").addEventListener("click", (e) => { if (onCore(e)) native("dash:/#home"); });
 $("#dash").onclick = () => native("dash:/#home");
 $("#cls").onclick = () => { stopAll(); native("close"); };
 

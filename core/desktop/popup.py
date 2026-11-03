@@ -206,7 +206,7 @@ class Mini(Gtk.Window):
         self.get_style_context().add_class("amadeus-mini")
         Gtk.StyleContext.add_provider_for_screen(self.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.view = make_view(self.on_msg, transparent=True)
-        self.press = None  # the last mouse press: dragging the core moves the window from there
+        self.press = None  # the last mouse press: grabbing the screen around the core moves the window from there
         self.view.connect("button-press-event", lambda _v, ev: (setattr(self, "press", ev.copy()), False)[1])
         self.add(self.view)
         self.connect("delete-event", lambda *_: (self.app.hide_mini(user=True), True)[1])
@@ -225,7 +225,7 @@ class Mini(Gtk.Window):
             self.app.hide_mini(user=False)
         elif msg.startswith("shape:"):
             self.set_shape(json.loads(msg[6:]))
-        elif msg == "drag" and self.press:  # you drag the core: the desktop moves the window (KWin remembers where)
+        elif msg == "drag" and self.press:  # you grab the edge: the desktop moves the window (KWin remembers where)
             ev = self.press
             self.begin_move_drag(ev.button, int(ev.x_root), int(ev.y_root), ev.time)
 
