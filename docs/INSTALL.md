@@ -3,7 +3,33 @@
 Amadeus runs as a few user services on your own Linux PC. Everything it knows is stored on that PC
 (`~/.local/share/amadeus/`, `~/.config/amadeus-core/` and your Obsidian vault) and never in this repository.
 
-The basics take two scripts. Mail, voice, the phone app and work runs are optional and can be added later.
+## Quick install
+
+Install the packages from [What you need](#1-what-you-need) first. Then:
+
+```bash
+git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
+./install.sh --check     # what's there and what's missing (changes nothing)
+./install.sh             # asks three questions, then sets everything up
+amadeus                  # opens it
+```
+
+The first run asks:
+
+1. **Your Obsidian vault folder.** It suggests the one Obsidian knows about. Amadeus works in its own `Amadeus/`
+   folder there: your to-dos, notes and work projects. Say `none` to skip it for now.
+2. **Mail through Thunderbird?** Yes if you use Thunderbird; your logins stay there.
+3. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
+
+The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
+downloading the local model (about 6.6 GB). Afterwards it lists what's left to do by hand: installing the
+Thunderbird add-on (one click in Thunderbird), logging in to Claude Code for work runs, and the phone app. All three
+are optional.
+
+**Updating:** `amadeus update` gets the newest version, installs it and restarts Amadeus. Your data stays. It does
+nothing when you changed files in the repository yourself, and it only runs when you start it.
+
+The sections below explain each step in detail, and how to do one on its own.
 
 ## 1. What you need
 
@@ -26,14 +52,7 @@ An NVIDIA GPU with ~12 GB is recommended; without one the model runs slowly on t
 Optional: `obsidian` (notes and work projects), `thunderbird` from your distribution, not Flatpak (mail),
 `tailscale` (phone), `claude` with `bubblewrap` and `socat` (work runs).
 
-## 2. The local services
-
-```bash
-git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
-cp amadeus.env.example amadeus.env      # optional: set OBSIDIAN_VAULT to your vault's absolute path
-./install.sh --check                    # shows what's there and what's missing, changes nothing
-./install.sh
-```
+## 2. What install.sh does
 
 `install.sh` can run as often as you like. It skips what's already in place and never deletes data.
 It sets up, in this order:
@@ -49,18 +68,15 @@ It sets up, in this order:
 5. **The Obsidian folder** (only with `OBSIDIAN_VAULT` set). Creates `Amadeus/` in your vault (`ToDo.md` and
    `Notes.md` are yours, `Projects/` is for work runs), installs the guard for work runs and an hourly
    snapshot of the vault.
+6. **Voice** (if you said yes): speech recognition and the wake word, see [Optional: voice](#5-optional-voice).
+7. **The assistant itself** (`core/deploy/install.sh`), see below.
+8. **The mail bridge** (if you said yes), see [Optional: mail](#4-optional-mail).
 
-Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|obsidian`.
+Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|obsidian|voice|app|mail`.
 
 ## 3. The assistant itself
 
-```bash
-core/deploy/install.sh --dry-run        # shows what it would write
-core/deploy/install.sh
-amadeus                                 # opens its window
-```
-
-This installs the user services (`amadeus-core`, `amadeus-tray`, voice and the nightly leak scan), the
+`install.sh` runs `core/deploy/install.sh` for you (`--dry-run` shows what it would write). It installs the user services (`amadeus-core`, `amadeus-tray`, voice and the nightly leak scan), the
 `amadeus` command, the app-menu entry and a KWin rule for the small window. Run it again after moving the
 repository folder.
 
@@ -70,20 +86,19 @@ your chats over time. To give it your own name, personality, face or voice, see 
 ## 4. Optional: mail
 
 1. Install Thunderbird from your distribution and add your accounts there (Amadeus never sees your passwords).
-2. Run `core/thunderbird/install.sh`. It registers the bridge and prints the add-on file.
+2. Say yes to mail in `./install.sh` (or run `core/thunderbird/install.sh`). It registers the bridge and builds
+   the add-on, `~/.local/share/amadeus/amadeus-bridge.xpi`.
 3. In Thunderbird: *Add-ons and Themes → gear icon → Install Add-on From File…* and pick that file.
+
+In the dashboard's Mail view you choose which accounts Amadeus may read at all (**+ Add account**).
 
 Thunderbird starts minimised at login. If you close it, Amadeus starts it again after a minute.
 
 ## 5. Optional: voice
 
-```bash
-python -m venv ~/.local/share/amadeus/voice/venv-lite
-~/.local/share/amadeus/voice/venv-lite/bin/pip install faster-whisper soundfile vosk
-mkdir -p ~/.local/share/amadeus/voice/models && cd ~/.local/share/amadeus/voice/models
-curl -LO https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip && unzip vosk-model-small-en-us-0.15.zip
-cd - && core/deploy/install.sh          # now also starts the voice and wake-word services
-```
+Say yes to voice in `./install.sh` (or set `AMADEUS_VOICE=1` in `amadeus.env` and run `./install.sh --only voice`,
+then `./install.sh --only app`). It creates a Python environment in `~/.local/share/amadeus/voice/venv-lite` with
+faster-whisper and Vosk, downloads the small English wake-word model and starts the voice and wake-word services.
 
 Whisper (speech recognition) downloads itself on first use. Everything runs on the CPU, so the GPU stays free
 for the model. Say "voice off" to close the microphone completely.

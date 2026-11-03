@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Amadeus installer, part 1 (the services): Ollama (local LLM), private keys, Presidio (privacy filter),
-# Hindsight (memory) and the Obsidian vault with the guard for work runs.
-# Part 2 is core/deploy/install.sh (the assistant itself, its window and voice).
+# Amadeus installer: everything in one go. The first run asks a few questions (your vault, mail, voice) and keeps the
+# answers in ./amadeus.env. Then it sets up Ollama (local LLM), private keys, Presidio (privacy filter), Hindsight
+# (memory), the Obsidian vault with the guard for work runs, voice, the assistant itself (core/deploy/install.sh:
+# services, window, tray) and the Thunderbird bridge.
 #
 # Idempotent: every step checks the current state first and skips what is already done.
 # It never deletes data. Anything it cannot fix safely is reported with the manual fix.
 #
 # Usage:
-#   ./install.sh              install / repair everything
+#   ./install.sh              install / repair everything (asks the setup questions the first time)
+#   ./install.sh --setup      ask the setup questions again
+#   ./install.sh --update     get the latest version (git pull), then install / repair and restart (= amadeus update)
 #   ./install.sh --check      read-only: prerequisites and status, changes nothing
 #   ./install.sh --dry-run    print what would be done, changes nothing
-#   ./install.sh --only ollama|secrets|presidio|hindsight|obsidian
+#   ./install.sh --only ollama|secrets|presidio|hindsight|obsidian|voice|app|mail
 #   ./install.sh --help
 #
 # Settings (override with environment variables, or put them in ./amadeus.env):
@@ -24,6 +27,8 @@
 #   HINDSIGHT_LLM_MODEL    Ollama model Hindsight uses         (default: $OLLAMA_CTX_VARIANT)
 #   HINDSIGHT_WORKER_ID    stable worker id                    (default: amadeus-hindsight)
 #   OBSIDIAN_VAULT         absolute path of your Obsidian vault (unset: Obsidian step is skipped)
+#   AMADEUS_MAIL=1         set up the Thunderbird bridge (mail)
+#   AMADEUS_VOICE=1        set up voice: speech recognition and the wake word (about 1 GB, runs on the CPU)
 #   ASSUME_YES=1           do not prompt; non-interactive onboarding
 
 set -euo pipefail
@@ -44,13 +49,23 @@ HINDSIGHT_WORKER_ID="${HINDSIGHT_WORKER_ID:-amadeus-hindsight}"
 HINDSIGHT_API_PORT=8888
 HINDSIGHT_UI_PORT=9999
 OBSIDIAN_VAULT="${OBSIDIAN_VAULT:-}"
+AMADEUS_MAIL="${AMADEUS_MAIL:-}"
+AMADEUS_VOICE="${AMADEUS_VOICE:-}"
+VOICE="$HOME/.local/share/amadeus/voice"
+VOSK_MODEL=vosk-model-small-en-us-0.15
+# not set: keep what an earlier install already set up (the vault in Amadeus' config, voice, the mail bridge)
+if [[ -z "$OBSIDIAN_VAULT" ]]; then  # (Amadeus' own default is ~/Documents/Obsidian Vault/Amadeus)
+  OBSIDIAN_VAULT="$(python3 -c 'import json,os,sys; v=json.load(open(sys.argv[1])).get("vault_dir","") if os.path.exists(sys.argv[1]) else ""; v=v or os.path.expanduser("~/Documents/Obsidian Vault/Amadeus"); print(os.path.dirname(v.rstrip("/")) if os.path.isdir(v) else "")' "$HOME/.config/amadeus-core/config.json" 2>/dev/null || true)"
+fi
+[[ -z "$AMADEUS_VOICE" && -x "$VOICE/venv-lite/bin/python" ]] && AMADEUS_VOICE=1
+[[ -z "$AMADEUS_MAIL" && -f "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" ]] && AMADEUS_MAIL=1
 DATA="$HOME/.local/share/amadeus"          # everything private lives here, never in the repository
 SECRETS="$DATA/secrets"
 OBSIDIAN_PLUGIN_VERSION="${OBSIDIAN_PLUGIN_VERSION:-0.5.0}"
 ASSUME_YES="${ASSUME_YES:-0}"
 
 MODE=install   # install | check | dry-run
-ONLY=""
+ONLY=""; SETUP=0; UPDATE=0
 
 # ---------------------------------------------------------------- output helpers
 if [[ -t 1 ]]; then
@@ -100,6 +115,9 @@ while [[ $# -gt 0 ]]; do
     --check)   MODE=check ;;
     --dry-run) MODE=dry-run ;;
     --only)    ONLY="${2:-}"; shift ;;
+    --setup)   SETUP=1 ;;
+    --update)  UPDATE=1 ;;
+    --updated) UPDATE=2 ;;  # internal: the new installer after an update (pull already done)
     -y|--yes)  ASSUME_YES=1 ;;
     -h|--help) usage ;;
     *) die "Unknown option: $1 (see --help)" ;;
@@ -370,14 +388,124 @@ PYS
   else run systemctl --user enable --now amadeus-vault-snapshot.timer; fi
 }
 
+# ---------------------------------------------------------------- setup questions (first run, or --setup)
+env_set() {  # env_set KEY VALUE: write KEY="VALUE" into amadeus.env, keeping everything else in it
+  local f="$SCRIPT_DIR/amadeus.env"
+  [[ -f "$f" ]] || cp "$SCRIPT_DIR/amadeus.env.example" "$f"
+  python3 - "$f" "$1" "$2" <<'PYS'
+import re, shlex, sys
+f, k, v = sys.argv[1:]
+lines = open(f).read().splitlines()
+new = f"{k}={shlex.quote(v)}"
+for i, l in enumerate(lines):
+    if re.match(rf"\s*#?\s*{k}=", l):
+        lines[i] = new
+        break
+else:
+    lines.append(new)
+open(f, "w").write("\n".join(lines) + "\n")
+PYS
+}
+ask() {  # ask "question" default -> the answer (Enter = default)
+  local reply; read -r -p "  ? $1 [${2}] " reply; printf '%s' "${reply:-$2}"
+}
+phase_setup() {
+  [[ "$MODE" == install && -t 0 && "$ASSUME_YES" != 1 ]] || return 0
+  [[ "$SETUP" == 1 || ! -f "$SCRIPT_DIR/amadeus.env" ]] || return 0
+  head_ "Setup (Enter keeps the suggestion; the answers go into amadeus.env)"
+  # 1. the vault: Obsidian's own list of vaults gives a good suggestion
+  local guess="$OBSIDIAN_VAULT"
+  [[ -z "$guess" && -f "$HOME/.config/obsidian/obsidian.json" ]] && guess="$(python3 -c 'import json,os,sys; v=json.load(open(sys.argv[1])).get("vaults",{}); print(next((x["path"] for x in v.values() if os.path.isdir(x.get("path",""))),""))' "$HOME/.config/obsidian/obsidian.json" 2>/dev/null || true)"
+  info "Your Obsidian vault holds your to-dos, notes and work projects (Amadeus uses its own Amadeus/ folder in it)."
+  local v; v="$(ask "Vault folder (or 'none')" "${guess:-none}")"
+  if [[ "$v" != none && -n "$v" ]]; then v="${v/#\~/$HOME}"; OBSIDIAN_VAULT="$v"; env_set OBSIDIAN_VAULT "$v"; ok "vault: $v"
+  else info "no vault for now: to-dos, notes and work runs stay off until you set one (./install.sh --setup)"; fi
+  # 2. mail through Thunderbird
+  local m="n"; have thunderbird && m="y"
+  m="$(ask "Read mail through Thunderbird? (y/n)" "$m")"
+  [[ "$m" =~ ^[Yy] ]] && AMADEUS_MAIL=1 || AMADEUS_MAIL=0; env_set AMADEUS_MAIL "$AMADEUS_MAIL"
+  # 3. voice
+  local s; s="$(ask "Talk to it: speech recognition and wake word, about 1 GB? (y/n)" "y")"
+  [[ "$s" =~ ^[Yy] ]] && AMADEUS_VOICE=1 || AMADEUS_VOICE=0; env_set AMADEUS_VOICE "$AMADEUS_VOICE"
+}
+
+# ---------------------------------------------------------------- update (amadeus update)
+phase_update() {
+  head_ "Update"
+  if [[ ! -d "$SCRIPT_DIR/.git" ]]; then warn "not a git checkout: download the new version yourself, then run ./install.sh"; return; fi
+  if [[ -n "$(git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no)" ]]; then
+    warn "you changed files in the repository, so nothing is pulled (git status shows them); installing the version you have"
+    return
+  fi
+  local before; before="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)"
+  run git -C "$SCRIPT_DIR" pull --ff-only --quiet || { warn "git pull failed; installing the version you have"; return; }
+  local after; after="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)"
+  if [[ "$before" == "$after" ]]; then ok "already the latest version ($after)"
+  else ok "updated $before → $after"; git -C "$SCRIPT_DIR" log --oneline "$before..$after" | sed 's/^/    /' | head -20
+    [[ "$MODE" == install ]] && exec "$SCRIPT_DIR/install.sh" --updated -y "${PASSTHRU[@]}"  # the new installer does the rest
+  fi
+}
+
+# ---------------------------------------------------------------- voice (optional)
+phase_voice() {
+  head_ "Voice: speech recognition and the wake word"
+  if [[ "$AMADEUS_VOICE" != 1 ]]; then info "off (AMADEUS_VOICE=1 in amadeus.env, or ./install.sh --setup)"; return; fi
+  have python3 || { err "python3 is missing"; return; }
+  if [[ -x "$VOICE/venv-lite/bin/python" ]] && "$VOICE/venv-lite/bin/python" -c "import faster_whisper, vosk, soundfile" 2>/dev/null; then
+    ok "speech recognition installed"
+  else
+    run python3 -m venv "$VOICE/venv-lite"
+    run "$VOICE/venv-lite/bin/pip" install --quiet faster-whisper soundfile vosk
+  fi
+  if [[ -d "$VOICE/models/$VOSK_MODEL" ]]; then ok "wake-word model installed"
+  else
+    run mkdir -p "$VOICE/models"
+    run curl -fsSL -o "$VOICE/models/$VOSK_MODEL.zip" "https://alphacephei.com/vosk/models/$VOSK_MODEL.zip"
+    run python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$VOICE/models/$VOSK_MODEL.zip" "$VOICE/models"
+    run rm -f "$VOICE/models/$VOSK_MODEL.zip"
+  fi
+  info "Whisper downloads its model on first use. Voices for reading aloud: Settings → Voice."
+}
+
+# ---------------------------------------------------------------- the assistant itself
+phase_app() {
+  head_ "The assistant: services, window, tray"
+  if ! python3 -c 'import gi; gi.require_version("Gtk", "3.0"); gi.require_version("WebKit2", "4.1")' 2>/dev/null; then
+    err "GTK 3 with WebKit2GTK 4.1 for Python is missing (see docs/INSTALL.md, What you need)"; return
+  fi
+  python3 -c 'import PyQt6' 2>/dev/null && ok "PyQt6 (tray icon)" || warn "PyQt6 is missing: no tray icon (see docs/INSTALL.md)"
+  if [[ "$MODE" != install ]]; then "$SCRIPT_DIR/core/deploy/install.sh" --dry-run | sed 's/^/  /'; return; fi
+  "$SCRIPT_DIR/core/deploy/install.sh" | sed 's/^/  /'
+  if [[ "$UPDATE" != 0 ]]; then
+    run systemctl --user restart amadeus-core amadeus-tray
+    systemctl --user is-enabled --quiet amadeus-voice 2>/dev/null && run systemctl --user restart amadeus-voice
+    systemctl --user is-enabled --quiet amadeus-wake 2>/dev/null && run systemctl --user restart amadeus-wake
+  fi
+}
+
+# ---------------------------------------------------------------- mail (optional)
+phase_mail() {
+  head_ "Mail: the Thunderbird bridge"
+  if [[ "$AMADEUS_MAIL" != 1 ]]; then info "off (AMADEUS_MAIL=1 in amadeus.env, or ./install.sh --setup)"; return; fi
+  have thunderbird || warn "Thunderbird isn't installed: install it from your distribution (not Flatpak) and add your accounts there"
+  if [[ "$MODE" != install ]]; then info "would register the bridge and build the add-on"; return; fi
+  "$SCRIPT_DIR/core/thunderbird/install.sh" | sed 's/^/  /'
+}
+
 # ---------------------------------------------------------------- main
 printf '%sAmadeus installer%s  (mode: %s%s)\n' "$C_HEAD" "$C_OFF" "$MODE" "${ONLY:+, only: $ONLY}"
+PASSTHRU=(); [[ -n "$ONLY" ]] && PASSTHRU=(--only "$ONLY")
+[[ "$UPDATE" == 1 ]] && phase_update
+phase_setup
 phase_prereqs
 want ollama    && phase_ollama
 want secrets   && phase_secrets
 want presidio  && phase_presidio
 want hindsight && phase_hindsight
 want obsidian  && phase_obsidian
+want voice     && phase_voice
+want app       && phase_app
+want mail      && phase_mail
 
 head_ "Summary"
 if (( ERRORS > 0 )); then
@@ -385,10 +513,10 @@ if (( ERRORS > 0 )); then
   exit 1
 fi
 ok "Done with $WARNINGS warning(s)."
-cat <<EOF
-
-Next (see docs/INSTALL.md):
-  Amadeus        core/deploy/install.sh   (the assistant itself, its window, voice; then run: amadeus)
-  Mail           core/thunderbird/install.sh, then add the add-on in Thunderbird (optional)
-  Work runs      log in once with \`claude\` (Claude Code); Amadeus starts one run per approved task (optional)
-EOF
+[[ "$MODE" == install ]] || exit 0
+printf '\nOpen it with: %samadeus%s   ·   update later with: %samadeus update%s\n' "$C_HEAD" "$C_OFF" "$C_HEAD" "$C_OFF"
+left=()
+[[ "$AMADEUS_MAIL" == 1 ]] && left+=("Mail: in Thunderbird, Add-ons and Themes → gear icon → Install Add-on From File… → ~/.local/share/amadeus/amadeus-bridge.xpi")
+[[ -n "$OBSIDIAN_VAULT" ]] && ! have claude && left+=("Work runs (optional): install Claude Code and log in once by running: claude")
+left+=("Phone (optional): see docs/INSTALL.md, The phone app")
+printf '\nStill to do by hand:\n'; printf '  · %s\n' "${left[@]}"

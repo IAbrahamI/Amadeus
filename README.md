@@ -95,14 +95,12 @@ The exact packages for Arch, Debian/Ubuntu and Fedora are in [docs/INSTALL.md](d
 
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
-cp amadeus.env.example amadeus.env   # set OBSIDIAN_VAULT: the folder for notes, to-dos and work projects
 ./install.sh --check        # what's there and what's missing (changes nothing)
-./install.sh                # local model, keys, privacy filter, memory, Obsidian folder
-core/deploy/install.sh      # the assistant itself: services, window, tray
-amadeus                     # open it
+./install.sh                # asks for your vault, mail and voice, then sets everything up
+amadeus                     # open it; later, amadeus update gets the newest version
 ```
 
-The full guide, including mail, voice, the phone app and work runs, is in [docs/INSTALL.md](docs/INSTALL.md).
+The full guide, including the phone app and work runs, is in [docs/INSTALL.md](docs/INSTALL.md).
 Everything your assistant knows is stored in `~/.local/share/amadeus/` on your PC and never in this repository.
 
 ## Built with
