@@ -22,7 +22,15 @@ const placeCore = () => core.target(140, 140, 92);
 new ResizeObserver(placeCore).observe($("#corewrap")); placeCore();
 let mode = "idle";
 const setMode = (m) => { mode = m; core.mode(m); };
-$("#corewrap").onclick = () => native("dash:/#home");
+// click the core: the dashboard; drag it: put the window wherever you like (it opens there again)
+let down = null;
+$("#corewrap").addEventListener("mousedown", (e) => { if (e.button === 0) down = { x: e.screenX, y: e.screenY, moved: false }; });
+addEventListener("mousemove", (e) => {
+  if (!down || down.moved || Math.hypot(e.screenX - down.x, e.screenY - down.y) < 6) return;
+  down.moved = true; native("drag");
+});
+addEventListener("mouseup", () => setTimeout(() => (down = null), 0));
+$("#corewrap").addEventListener("click", () => { if (!down || !down.moved) native("dash:/#home"); });
 $("#dash").onclick = () => native("dash:/#home");
 $("#cls").onclick = () => { stopAll(); native("close"); };
 

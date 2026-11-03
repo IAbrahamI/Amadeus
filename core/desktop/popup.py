@@ -76,6 +76,10 @@ def kwin(js):
 
 
 def place_mini(win):
+    """On KDE the KWin rule (desktop/install-kwin-rule.sh) keeps it on top and remembers where you dragged it; the
+    first time it puts it bottom-right on the second monitor. Without the rule (it isn't installed yet) a script does."""
+    if KDE and _has_rule():
+        return
     if not KDE:  # other desktops: keep above everywhere, the corner only on X11
         win.set_keep_above(True)
         mon = Gdk.Display.get_default().get_primary_monitor()
@@ -90,6 +94,15 @@ def place_mini(win):
       w.keepAbove = true; w.skipTaskbar = true; w.skipSwitcher = true; w.skipPager = true;
       w.frameGeometry = { x: Math.floor(a.x + a.width - %d - 16), y: Math.floor(a.y + a.height - %d - 8), width: %d, height: %d };
     }""" % (json.dumps(second_screen()), MINI_TITLE, MW, MH, MW, MH))
+
+
+def _has_rule():
+    try:
+        out = subprocess.run(["kreadconfig6", "--file", "kwinrulesrc", "--group", "amadeus-call", "--key", "title"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        return out == MINI_TITLE
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def place_dash(win):
@@ -193,6 +206,8 @@ class Mini(Gtk.Window):
         self.get_style_context().add_class("amadeus-mini")
         Gtk.StyleContext.add_provider_for_screen(self.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.view = make_view(self.on_msg, transparent=True)
+        self.press = None  # the last mouse press: dragging the core moves the window from there
+        self.view.connect("button-press-event", lambda _v, ev: (setattr(self, "press", ev.copy()), False)[1])
         self.add(self.view)
         self.connect("delete-event", lambda *_: (self.app.hide_mini(user=True), True)[1])
         self.call = False
@@ -210,6 +225,9 @@ class Mini(Gtk.Window):
             self.app.hide_mini(user=False)
         elif msg.startswith("shape:"):
             self.set_shape(json.loads(msg[6:]))
+        elif msg == "drag" and self.press:  # you drag the core: the desktop moves the window (KWin remembers where)
+            ev = self.press
+            self.begin_move_drag(ev.button, int(ev.x_root), int(ev.y_root), ev.time)
 
     def set_shape(self, rects):
         """Clicks only where something is drawn (the core, the bubbles); everywhere else they reach the desktop."""
