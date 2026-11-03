@@ -595,3 +595,7 @@ button.ev:hover { background: rgba(var(--a),.2); }
 .row.ahist { grid-template-columns: auto 1fr; } .row.ahist .acts { grid-column: 1 / -1; justify-content: flex-end; align-items: center; }
 .app .row.ahist { box-shadow: inset 3px 0 0 var(--st); }
 .row .t small.when { display: block; font: 400 10.5px var(--mono); color: var(--dim); margin-top: 4px; }
+/* a state chip next to buttons (Settings → Voice "In use", approval history) has the buttons' height, text centred */
+.acts { align-items: center; }
+.acts .chip { display: inline-flex; align-items: center; justify-content: center; height: 31px; padding: 0 12px; line-height: 1; font-size: 10.5px; letter-spacing: .14em; }
+.acts .chip.st-done::before { content: "✓"; margin-right: 6px; }
