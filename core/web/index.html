@@ -26,10 +26,7 @@
 
   <header class="top">
     <span class="name" data-name>AMADEUS</span>
-    <span class="tag" id="tag"><b></b>Core online</span>
-    <div class="modelpick"><button type="button" id="modelBtn" aria-haspopup="listbox" title="The model that answers"><span id="modelName">…</span><i>▾</i></button>
-      <div class="modelmenu" id="modelMenu" role="listbox" hidden></div></div>
-    <span class="tag">Local only</span>
+    <span class="tag" id="tag"><b></b>Core online · local only</span>
     <span class="grow"></span>
     <span class="state" id="state">Idle</span>
     <span class="clock" id="clock">--:--:--</span>
@@ -52,8 +49,9 @@
   </main>
 
   <footer class="cmd">
-    <form id="ask"><input id="q" data-name-placeholder="Ask {name}…" placeholder="Ask…" autocomplete="off" aria-label="Ask">
-      <span class="kbd">Ctrl + Space to talk</span><button type="button" class="spk" id="spk" title="Spoken answers"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="w1" d="M16 9a4 4 0 0 1 0 6"/><path class="w2" d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/><path class="x" d="m16 9 5 6m0-6-5 6"/></svg><span id="spkL">When I talk</span></button><button type="button" class="mic" id="mic" title="Talk"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></button></form>
+    <form id="ask"><button type="button" class="vtag half" id="vTag" title="Spoken answers"><span class="eq2" aria-hidden="true"><i></i><i></i><i></i><i></i></span><b>VOICE</b><em id="vTagT">SPOKEN</em></button><input id="q" placeholder="Ask…" autocomplete="off" aria-label="Ask">
+      <button type="button" class="chip2" id="cModel" aria-haspopup="listbox" aria-expanded="false" title="The model that answers"><span id="cModelT">…</span><small id="cModelC"></small><i>▾</i></button><button type="button" class="mic" id="mic" title="Talk (Ctrl + Space)"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></button></form>
+    <div class="pop" id="pop" role="listbox" hidden></div>
   </footer>
 </div>
 <script src="/identity.js"></script>

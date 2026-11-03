@@ -253,15 +253,21 @@ $("#ask").onsubmit = (e) => {
   send(q);
 };
 
-// ---------- spoken answers: when you talked (default), always, or off. The chat always keeps the full text. ----------
-const SPK = { voice: ["When I talk", "Answers are spoken when you talked to it (click: always)"], always: ["Always", "Every answer is spoken (click: off)"],
-  off: ["Off", "Answers are never spoken (click: when I talk)"] };
-let spkMode = "voice";
-const paintSpk = () => { const b = $("#spk"); b.dataset.mode = spkMode; $("#spkL").textContent = SPK[spkMode][0]; b.title = SPK[spkMode][1]; };
-api("/api/voice/replies").then((d) => { spkMode = SPK[d.mode] ? d.mode : "voice"; paintSpk(); if (!d.voice) $("#spk").classList.add("novoice"); }).catch(paintSpk);
-$("#spk").onclick = () => {
-  if (Aloud.active) return stopAloud();  // while it speaks, the button stops it
-  spkMode = { voice: "always", always: "off", off: "voice" }[spkMode]; paintSpk();
+// ---------- the VOICE tag (spoken answers): SPOKEN = when you talked to it (default), ON = every answer, OFF ----------
+// The chat always keeps the full text. Stored in Core as voice / always / off.
+const VMODES = { voice: ["SPOKEN", "Speaks only when you asked by voice"], always: ["ON", "Reads every answer aloud"], off: ["OFF", "Answers stay text only"] };
+let spkMode = "voice", hasVoice = true;
+function setVoiceTag() {
+  const t = $("#vTag");
+  t.classList.toggle("on", hasVoice && spkMode === "always"); t.classList.toggle("half", hasVoice && spkMode === "voice"); t.classList.toggle("warn", !hasVoice);
+  $("#vTagT").textContent = hasVoice ? VMODES[spkMode][0] : "NONE";
+  t.title = hasVoice ? `Spoken answers: ${VMODES[spkMode][1]} (click to change)` : "No voice installed: pick or download one under Settings → Voice";
+}
+api("/api/voice/replies").then((d) => { spkMode = VMODES[d.mode] ? d.mode : "voice"; hasVoice = !!d.voice; setVoiceTag(); }).catch(setVoiceTag);
+$("#vTag").onclick = () => {
+  if (Aloud.active) return stopAloud();  // while it speaks the tag says STOP: it stops her, the mode stays
+  if (!hasVoice) return;
+  spkMode = { voice: "always", always: "off", off: "voice" }[spkMode]; setVoiceTag();
   post("/api/voice/replies", { mode: spkMode });
 };
 // Read an answer aloud while it is still being written: every finished sentence goes to the voice right away, the next
@@ -330,7 +336,7 @@ const Aloud = {
       const end = Math.min(it.upto, 1e9), f = Math.min(1, a.currentTime / a.duration);
       this.show(isFinite(it.upto) ? from + Math.round((end - from) * f) : from);
     }, 50);
-    $("#spk").classList.add("speaking"); setMode("speak"); $("#state").textContent = "Speaking";
+    $("#vTag").classList.add("speaking"); setMode("speak"); $("#state").textContent = "Speaking";
     a.onended = a.onerror = () => {
       clearInterval(this.talk); clearInterval(this.type); URL.revokeObjectURL(url);
       this.show(it.upto);
@@ -342,13 +348,13 @@ const Aloud = {
   end() {
     clearInterval(this.talk); clearInterval(this.type);
     const was = this.active; this.active = false; this.playing = null; this.queue = [];
-    $("#spk").classList.remove("speaking");
+    $("#vTag").classList.remove("speaking");
     if (this.reveal) this.reveal(Infinity);
     if (!state.busy) setMode("idle");
     const d = this.done; this.done = null; if (was && d) d();
   },
   fail(e) {
-    this.end(); $("#spk").classList.add("novoice");
+    this.end(); if (/text-to-speech|voice/i.test(e.message)) { hasVoice = false; setVoiceTag(); }
     subtitle(/text-to-speech|voice/i.test(e.message) ? "I can't speak yet: pick or download a voice under Settings → Voice." : "I couldn't speak that: " + e.message);
   },
 };
@@ -488,24 +494,45 @@ body().addEventListener("click", async (e) => {
 
 });
 
-// ---------- the model picker (top bar): which local model answers today's chat and the next ones ----------
+// ---------- the model chip (ask bar): which local model answers today's chat and the next ones ----------
+const MODEL = { info: [], chat: "", def: "" };
+const short = (n) => n.replace(/-(\d+)k$/i, "");  // "qwen3.5-9b-48k" shows as "qwen3.5-9b" + "48k"
+const kctx = (c) => (c ? `${Math.round(c / 1024)}k` : "");
 async function loadModels() {
   try {
     const m = await api("/api/models");
-    $("#modelName").textContent = m.chat;
-    $("#modelMenu").innerHTML = `<div class="mh">Model</div>` + m.models.map((x) => `<button type="button" role="option" aria-selected="${x === m.chat}" data-model="${esc(x)}"><span>${esc(x)}</span>${x === m.default ? "<small>default</small>" : ""}${x === m.chat ? "<b>✓</b>" : ""}</button>`).join("") +
-      `<p>Installed in Ollama on this PC. Memory jobs keep their own.</p>`;
-  } catch { $("#modelName").textContent = "offline"; }
+    Object.assign(MODEL, { info: m.info || m.models.map((name) => ({ name })), chat: m.chat, def: m.default });
+    const cur = MODEL.info.find((x) => x.name === m.chat) || { name: m.chat };
+    $("#cModelT").textContent = short(m.chat); $("#cModelC").textContent = kctx(cur.ctx);
+  } catch { $("#cModelT").textContent = "offline"; $("#cModelC").textContent = ""; }
 }
-$("#modelBtn").onclick = (e) => { e.stopPropagation(); $("#modelMenu").hidden = !$("#modelMenu").hidden; };
-$("#modelMenu").onclick = async (e) => {
+function modelPop() {
+  const pop = $("#pop");
+  if (!pop.hidden) return closePop();
+  pop.innerHTML = '<div class="ph"><b>MODEL_</b><small>local · installed</small></div>' + MODEL.info.map((x) =>
+    `<button type="button" role="option" class="pi${x.name === MODEL.chat ? " on" : ""}" data-model="${esc(x.name)}" aria-selected="${x.name === MODEL.chat}"><span class="ck">${x.name === MODEL.chat ? "●" : ""}</span>` +
+    `<span class="pt"><b>${esc(x.name)}</b><small>${esc([x.name === MODEL.def ? "Default" : "", x.params, x.quant].filter(Boolean).join(" · "))}</small></span>` +
+    `<span class="pm">${[kctx(x.ctx), x.size ? x.size + " GB" : ""].filter(Boolean).join(" · ")}</span></button>`).join("") +
+    '<p class="pf">Switching reloads the model, about 10 s. Memory jobs keep their own.</p>';
+  pop.hidden = false; $("#cModel").setAttribute("aria-expanded", "true");
+  const f = $(".cmd").getBoundingClientRect(), a = $("#cModel").getBoundingClientRect();
+  pop.style.right = Math.max(8, f.right - a.right) + "px";
+}
+function closePop() { $("#pop").hidden = true; $("#cModel").setAttribute("aria-expanded", "false"); }
+$("#cModel").onclick = (e) => { e.stopPropagation(); modelPop(); };
+$("#pop").onclick = async (e) => {
   const b = e.target.closest("[data-model]"); if (!b) return;
-  $("#modelMenu").hidden = true;
+  closePop();
+  if (b.dataset.model === MODEL.chat) return;
   const r = await post("/api/models", { model: b.dataset.model });
   if (r.error) return subtitle("That didn't work: " + r.error);
-  subtitle(`Switched to ${r.chat}.`); loadModels();
+  await loadModels();
+  const say = `Switched to ${r.chat}. Give me a few seconds to load it.`;  // she confirms it in the chat
+  subtitle(say); liveLine(lineHtml({ role: "assistant", content: say, created: Date.now() / 1000 }));
+  state.msgs.push({ role: "assistant", content: say, created: Date.now() / 1000 }); renderGhost();
 };
-addEventListener("click", (e) => { if (!e.target.closest(".modelpick")) $("#modelMenu").hidden = true; });
+addEventListener("click", (e) => { if (!e.target.closest("#pop, #cModel")) closePop(); });
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#pop").hidden) closePop(); });
 
 // ---------- start ----------
 (async () => {

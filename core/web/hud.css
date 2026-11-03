@@ -550,25 +550,45 @@ button.ev:hover { background: rgba(var(--a),.2); }
 .ln .rate button.on[data-s="1"] { color: var(--ok); border-color: var(--ok); } .ln .rate button.on[data-s="-1"] { color: var(--amber); border-color: var(--amber); }
 .ratenote { display: flex; gap: 6px; flex: 1; min-width: 200px; } .ratenote input { flex: 1; background: rgba(var(--vd),.8); border: 1px solid rgba(var(--w),.35); color: var(--text); font: 400 12px var(--mono); padding: 4px 8px; outline: none; }
 .ghost .rate { display: none; }
-/* spoken answers: the speaker next to the mic says when answers are read aloud */
-.spk { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; color: var(--dim); border-left: 1px solid rgba(var(--a),.2); font: 500 10px var(--display); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
-.spk svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.spk .x { display: none; } .spk[data-mode=off] .w1, .spk[data-mode=off] .w2 { display: none; } .spk[data-mode=off] .x { display: inline; }
-.spk[data-mode=voice] .w2 { opacity: .35; }
-.spk[data-mode=voice], .spk[data-mode=always] { color: var(--cyan); }
-.spk:hover { color: var(--text); }
-.spk.novoice { color: var(--amber); }
-.spk.speaking svg { animation: blink .9s steps(1) infinite; }
-@media (max-width: 760px) { .spk span { display: none; } }
-.ghost:not(:hover):not(:focus-within) .ln .m *::after { content: none; }
-/* the model picker in the top bar */
-.modelpick { position: relative; }
-#modelBtn { display: flex; align-items: center; gap: 6px; font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text); padding: 4px 8px; border: 1px solid rgba(var(--a),.22); }
-#modelBtn i { font-style: normal; color: var(--dim); } #modelBtn:hover { border-color: var(--cyan); color: var(--cyan); }
-.modelmenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 260px; padding: 8px; background: rgba(var(--vd),.97);
-  border: 1px solid rgba(var(--a2),.25); box-shadow: 0 12px 30px rgba(0,0,0,.5), 0 0 20px rgba(var(--a),.1); }
-.modelmenu .mh { font: 600 10px var(--display); letter-spacing: .22em; text-transform: uppercase; color: var(--dim); padding: 4px 8px 8px; }
-.modelmenu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px; font: 400 12.5px var(--mono); color: var(--text); text-align: left; }
-.modelmenu button span { flex: 1; } .modelmenu button small { font: 400 10px var(--mono); color: var(--dim); } .modelmenu button b { color: var(--cyan); font-weight: 500; }
-.modelmenu button:hover { background: rgba(var(--a),.1); }
-.modelmenu p { margin: 6px 8px 2px; font: 400 11px var(--body); color: var(--dim); }
+
+/* the ask bar: the VOICE tag (spoken answers) where the ASK label was, the model chip before the mic */
+.cmd { position: relative; }
+.cmd form::before { display: none; }
+.vtag { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px 0 10px; font: 600 11px var(--display); letter-spacing: .22em; white-space: nowrap;
+  color: var(--ink); background: var(--cyan); box-shadow: 0 0 12px rgba(var(--a),.4); border: 1px solid var(--cyan); transition: all .2s; }
+.vtag em { font-style: normal; font-weight: 500; letter-spacing: .14em; opacity: .75; }
+.vtag.half { color: var(--cyan); background: rgba(var(--a),.12); box-shadow: inset 0 0 10px rgba(var(--a),.15); border-color: var(--cyan); }
+.vtag:not(.on):not(.half):not(.warn) { color: var(--dim); background: transparent; box-shadow: none; border-color: rgba(var(--a),.35); }
+.vtag:not(.on):not(.half):not(.warn):hover { color: var(--text); border-color: var(--cyan); }
+.vtag.on:hover { box-shadow: 0 0 18px rgba(var(--a),.6); }
+.vtag .eq2 { display: none; gap: 2px; align-items: center; height: 12px; }
+.vtag .eq2 i { width: 2px; height: 4px; background: currentColor; animation: eq .7s ease-in-out infinite; }
+.vtag .eq2 i:nth-child(2) { animation-delay: -.2s; } .vtag .eq2 i:nth-child(3) { animation-delay: -.45s; } .vtag .eq2 i:nth-child(4) { animation-delay: -.1s; }
+.vtag.speaking .eq2 { display: flex; } .vtag.speaking em { font-size: 0; } .vtag.speaking em::after { content: "STOP"; font-size: 11px; }
+.vtag.warn { color: var(--amber); background: transparent; border-color: var(--amber); box-shadow: none; cursor: default; }
+.chip2 { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font: 400 11.5px var(--mono); color: var(--dim); white-space: nowrap;
+  border-left: 1px solid rgba(var(--a),.18); transition: color .2s, text-shadow .2s; }
+.chip2 small { font: 400 10px var(--mono); color: rgba(var(--a),.55); }
+.chip2 > i { font-style: normal; font-size: 9px; opacity: .7; }
+.chip2:hover, .chip2[aria-expanded="true"] { color: var(--text); text-shadow: 0 0 8px rgba(var(--a),.4); }
+.pop { position: absolute; bottom: 60px; z-index: 6; width: 300px; padding: 12px 14px 10px; background: rgba(var(--vd),.96);
+  box-shadow: 0 0 28px rgba(var(--a),.12), inset 0 0 50px rgba(var(--a),.07); animation: popIn .18s ease-out; }
+.pop::before { content: ""; position: absolute; inset: 0; pointer-events: none; --c: rgba(var(--a2),.9); --l: 14px; --w: 2px;
+  background:
+    linear-gradient(var(--c), var(--c)) top left / var(--l) var(--w) no-repeat, linear-gradient(var(--c), var(--c)) top left / var(--w) var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / var(--l) var(--w) no-repeat, linear-gradient(var(--c), var(--c)) top right / var(--w) var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / var(--l) var(--w) no-repeat, linear-gradient(var(--c), var(--c)) bottom left / var(--w) var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / var(--l) var(--w) no-repeat, linear-gradient(var(--c), var(--c)) bottom right / var(--w) var(--l) no-repeat;
+  filter: drop-shadow(0 0 4px rgba(var(--a),.6)); }
+@keyframes popIn { from { opacity: 0; transform: translateY(6px); } }
+.pop .ph { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px dashed rgba(var(--a),.22); }
+.pop .ph b { white-space: nowrap; font: 600 10.5px var(--display); letter-spacing: .22em; color: var(--ink); background: var(--cyan); padding: 2px 8px; }
+.pop .ph small { font: 400 10.5px var(--mono); color: var(--dim); }
+.pop .pi { width: 100%; display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; text-align: left; padding: 8px 6px; border-bottom: 1px dashed rgba(var(--a),.14); }
+.pop .pi:hover { background: rgba(var(--a),.08); box-shadow: inset 2px 0 0 var(--cyan); }
+.pop .ck { color: var(--cyan); font-size: 10px; text-shadow: 0 0 6px var(--cyan); }
+.pop .pt b { display: block; font: 500 12.5px var(--mono); color: var(--text); } .pop .pi.on .pt b { color: var(--cyan); }
+.pop .pt small { display: block; font-size: 11.5px; color: var(--dim); margin-top: 1px; }
+.pop .pm { font: 400 10.5px var(--mono); color: var(--dim); }
+.pop .pf { margin: 8px 0 0; font-size: 11px; color: var(--dim); }
+@media (max-width: 760px) { .chip2 small { display: none; } .pop { width: calc(100% - 32px); } }

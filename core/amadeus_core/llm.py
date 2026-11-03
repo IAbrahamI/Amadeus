@@ -17,6 +17,24 @@ def list_models():
     return sorted(m["name"].removesuffix(":latest") for m in data.get("models", []))
 
 
+def model_info():
+    """For the model picker: each installed model with its size, parameters and context length."""
+    data = json.load(urllib.request.urlopen(CFG["ollama_url"] + "/api/tags", timeout=10))
+    out = []
+    for m in data.get("models", []):
+        name, d, ctx = m["name"].removesuffix(":latest"), m.get("details") or {}, 0
+        try:
+            req = urllib.request.Request(CFG["ollama_url"] + "/api/show", json.dumps({"model": m["name"]}).encode(), {"content-type": "application/json"})
+            show = json.load(urllib.request.urlopen(req, timeout=10))
+            ctx = int(next((l.split()[-1] for l in (show.get("parameters") or "").splitlines() if l.startswith("num_ctx")), 0)) or \
+                next((v for k, v in (show.get("model_info") or {}).items() if k.endswith(".context_length")), 0)
+        except Exception:
+            pass
+        out.append({"name": name, "size": round(m.get("size", 0) / 2 ** 30, 1), "params": d.get("parameter_size", ""),
+                    "quant": d.get("quantization_level", ""), "ctx": ctx})
+    return sorted(out, key=lambda x: x["name"])
+
+
 def chat_stream(model, messages, tools=None):
     """Yields ("token", text) and finally ("done", {"content": str, "tool_calls": [...]})."""
     body = {"model": model, "messages": messages, "stream": True, "think": False, "keep_alive": KEEP,

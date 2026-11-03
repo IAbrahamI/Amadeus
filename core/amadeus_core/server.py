@@ -207,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/theme":  # the dashboard's main colour (Settings): blue (default), purple or red
             return self._json({"theme": db.get_setting("theme", "blue")})
         if p == "/api/models":
-            return self._json({"models": llm.list_models(), "default": CFG["default_model"],
+            return self._json({"models": llm.list_models(), "info": llm.model_info(), "default": CFG["default_model"],
                                "chat": db.get_setting("chat_model", "") or CFG["default_model"]})
         if p == "/api/conversations":
             return self._json(db.q("SELECT * FROM conversations ORDER BY updated DESC"))
