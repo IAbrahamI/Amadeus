@@ -488,14 +488,50 @@ body().addEventListener("click", async (e) => {
 
 });
 
+// ---------- the model picker (top bar): which local model answers today's chat and the next ones ----------
+async function loadModels() {
+  try {
+    const m = await api("/api/models");
+    $("#modelName").textContent = m.chat;
+    $("#modelMenu").innerHTML = `<div class="mh">Model</div>` + m.models.map((x) => `<button type="button" role="option" aria-selected="${x === m.chat}" data-model="${esc(x)}"><span>${esc(x)}</span>${x === m.default ? "<small>default</small>" : ""}${x === m.chat ? "<b>✓</b>" : ""}</button>`).join("") +
+      `<p>Installed in Ollama on this PC. Memory jobs keep their own.</p>`;
+  } catch { $("#modelName").textContent = "offline"; }
+}
+$("#modelBtn").onclick = (e) => { e.stopPropagation(); $("#modelMenu").hidden = !$("#modelMenu").hidden; };
+$("#modelMenu").onclick = async (e) => {
+  const b = e.target.closest("[data-model]"); if (!b) return;
+  $("#modelMenu").hidden = true;
+  const r = await post("/api/models", { model: b.dataset.model });
+  if (r.error) return subtitle("That didn't work: " + r.error);
+  subtitle(`Switched to ${r.chat}.`); loadModels();
+};
+addEventListener("click", (e) => { if (!e.target.closest(".modelpick")) $("#modelMenu").hidden = true; });
+
 // ---------- start ----------
 (async () => {
   await window.IDENTITY;
   $("#q").placeholder = `Ask ${NAME()}… try “show my calendar”`;
   await today(); counts(); nextUp(); memStats(); mailCount();
   setInterval(counts, 8000); setInterval(nextUp, 60000); setInterval(mailCount, 60000); setInterval(memStats, 300000);
-  try { const m = await api("/api/models"); $("#tag").innerHTML = `<b></b>Core online · ${esc(m.default)} · local only`; } catch {}
-  const h = location.hash.slice(1);  // deep links from the desktop call: #approvals, #chat
+  loadModels();
+  // deep links from the call window, the tray and notifications: #approvals, #day, #chat=<id>, #mail=<id>, #reminders, …
+  const h = location.hash.slice(1);
   if (VIEWS[h]) open(h);
+  else if (h === "messages") open("chat");
+  else if (h === "reminders") { open("settings"); settingsPage("reminders"); }
+  else if (h === "mail=unread") open("mail");
+  else if (/^mail=\d+$/.test(h)) {
+    open("mail");
+    const m = await (await fetch(`/api/mail/message/${h.slice(5)}`)).json().catch(() => ({ error: "not found" }));
+    if (!m.error) { mail.open = m; mail.acc = m.accountId || mail.acc; renderMail(); }
+  } else if (h.startsWith("chat=")) {
+    const id = h.slice(5);
+    open("chat");
+    if (id !== state.cid) {  // an earlier chat: open it read-only in History
+      state.past = (await api("/api/conversations")).filter((c) => !SYSTEM_CHATS.has(c.id) || c.id === id);
+      const i = state.past.findIndex((c) => c.id === id);
+      if (i >= 0) { state.chatTab = i; renderChat(); }
+    }
+  }
   if (h) history.replaceState(null, "", "/");
 })();

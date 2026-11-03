@@ -207,7 +207,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/theme":  # the dashboard's main colour (Settings): blue (default), purple or red
             return self._json({"theme": db.get_setting("theme", "blue")})
         if p == "/api/models":
-            return self._json({"models": llm.list_models(), "default": CFG["default_model"]})
+            return self._json({"models": llm.list_models(), "default": CFG["default_model"],
+                               "chat": db.get_setting("chat_model", "") or CFG["default_model"]})
         if p == "/api/conversations":
             return self._json(db.q("SELECT * FROM conversations ORDER BY updated DESC"))
         m = re.fullmatch(r"/api/conversations/(\w+)", p)
@@ -520,6 +521,14 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/conversations/(\w+)/messages", p)
         if m:
             return self._chat(m.group(1), b)
+        if p == "/api/models":  # the model picker: the model for today's chat and the next ones (memory jobs keep theirs)
+            from . import quickchat
+            m = str(b.get("model", ""))
+            if m not in llm.list_models():
+                return self._json({"error": "That model isn't installed in Ollama."}, 400)
+            db.set_setting("chat_model", m)
+            db.q("UPDATE conversations SET model=? WHERE id=?", (m, quickchat.current()))
+            return self._json({"chat": m})
         if p == "/api/voice/replies":
             m = str(b.get("mode", ""))
             db.set_setting("speak_replies", m if m in ("voice", "always", "off") else "voice")

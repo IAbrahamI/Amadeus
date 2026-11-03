@@ -28,7 +28,7 @@ def current(fresh_after=None):
             return cid
         cid = db.new_id()
         db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)",
-             (cid, today.strftime("%a %d %b %Y"), CFG["default_model"], db.now(), db.now()))
+             (cid, today.strftime("%a %d %b %Y"), db.get_setting("chat_model", "") or CFG["default_model"], db.now(), db.now()))
         db.set_setting(_key(today), cid)
     threading.Thread(target=check, daemon=True).start()  # a new day: put the earlier days away
     return cid

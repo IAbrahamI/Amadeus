@@ -561,3 +561,14 @@ button.ev:hover { background: rgba(var(--a),.2); }
 .spk.speaking svg { animation: blink .9s steps(1) infinite; }
 @media (max-width: 760px) { .spk span { display: none; } }
 .ghost:not(:hover):not(:focus-within) .ln .m *::after { content: none; }
+/* the model picker in the top bar */
+.modelpick { position: relative; }
+#modelBtn { display: flex; align-items: center; gap: 6px; font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text); padding: 4px 8px; border: 1px solid rgba(var(--a),.22); }
+#modelBtn i { font-style: normal; color: var(--dim); } #modelBtn:hover { border-color: var(--cyan); color: var(--cyan); }
+.modelmenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 260px; padding: 8px; background: rgba(var(--vd),.97);
+  border: 1px solid rgba(var(--a2),.25); box-shadow: 0 12px 30px rgba(0,0,0,.5), 0 0 20px rgba(var(--a),.1); }
+.modelmenu .mh { font: 600 10px var(--display); letter-spacing: .22em; text-transform: uppercase; color: var(--dim); padding: 4px 8px 8px; }
+.modelmenu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px; font: 400 12.5px var(--mono); color: var(--text); text-align: left; }
+.modelmenu button span { flex: 1; } .modelmenu button small { font: 400 10px var(--mono); color: var(--dim); } .modelmenu button b { color: var(--cyan); font-weight: 500; }
+.modelmenu button:hover { background: rgba(var(--a),.1); }
+.modelmenu p { margin: 6px 8px 2px; font: 400 11px var(--body); color: var(--dim); }
