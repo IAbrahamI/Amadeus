@@ -448,6 +448,51 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice):
     emit("done", {})
 
 
+def revise(aid, note):
+    """Adjust on a pending approval: you say what should be different, the model redrafts the same action with that
+    change. It stays an approval: nothing runs until you approve the new version."""
+    a = db.q("SELECT * FROM approvals WHERE id=?", (aid,), one=True)
+    note = re.sub(r"\s+", " ", str(note or "")).strip()[:1000]
+    if not a or a["status"] != "pending":
+        return {"error": "This isn't waiting for you any more."}
+    if not note:
+        return {"error": "Say what should be different."}
+    t = tools.get_tool(a["tool"])
+    if not t:
+        return {"error": "This action isn't available any more."}
+    params = t["schema"]["function"].get("parameters") or {}
+    conv = db.q("SELECT model FROM conversations WHERE id=?", (a["conversation_id"],), one=True) or {}
+    ask = [{"role": "system", "content": "You adjust an action that is waiting for the user's approval. Return only a JSON "
+            "object: the complete new arguments for the same action, following the schema. Change what the user's note "
+            "asks for and keep everything else as it is. The note is the user's own words."},
+           {"role": "user", "content": json.dumps({"action": a["tool"], "schema": params, "current_arguments": json.loads(a["args"]),
+                                                   "what_should_be_different": note}, ensure_ascii=False)}]
+    try:
+        new = json.loads(llm.complete(conv.get("model") or CFG["default_model"], ask, as_json=True))
+    except Exception as e:
+        return {"error": f"The redraft didn't work: {e}"}
+    known = set((params.get("properties") or {}).keys())
+    if not isinstance(new, dict) or not new or (known and not set(new) & known):
+        return {"error": "The redraft didn't work, try saying it differently."}
+    if known:
+        new = {k: v for k, v in new.items() if k in known}
+    for k in params.get("required") or []:
+        if k not in new:
+            return {"error": f"The redraft left out {k}, try again."}
+    try:
+        summary = t["summary"](new) if t["summary"] else f"{a['tool']} {json.dumps(new)}"
+    except Exception as e:
+        return {"error": f"The redraft isn't valid: {e}"}
+    if a["summary"].startswith("⚠️ **Suggested right after reading emails.**"):
+        summary = a["summary"].split("\n\n", 1)[0] + "\n\n" + summary
+    db.q("UPDATE approvals SET args=?, summary=?, feedback=?, revised=COALESCE(revised,0)+1 WHERE id=?",
+         (json.dumps(new), summary, note, aid))
+    db.q("UPDATE messages SET content=? WHERE role='approval' AND json_extract(meta,'$.approval_id')=?", (summary, aid))
+    # your note lands in the conversation as its own line (the model sees it once the action is decided)
+    db.add_message(a["conversation_id"], "adjust", note, {"approval_id": aid})
+    return {"id": aid, "summary": summary, "revised": True}
+
+
 def decide(aid, approve):
     """Approve -> execute the action, then let the model continue in the background. Reject -> tell the model."""
     a = db.q("SELECT * FROM approvals WHERE id=?", (aid,), one=True)
@@ -469,6 +514,8 @@ def decide(aid, approve):
             result, status = f"Error: {e}", "failed"
     else:
         result, status = "The user rejected this action. Do not retry it unless asked.", "rejected"
+    if a.get("feedback"):  # it was adjusted: tell the model what ran (its first proposal had other arguments)
+        result = f"The user adjusted it first ({a['feedback']}), so it ran with: {a['args']}\n{result}"
     db.q("UPDATE approvals SET status=?, result=?, decided=? WHERE id=?", (status, result, db.now(), aid))
     db.add_message(cid, "tool", result, {"name": name, "approval_id": aid})
     if not db.q("SELECT id FROM approvals WHERE conversation_id=? AND status='pending'", (cid,)):

@@ -785,6 +785,7 @@ async function loadAssistant() {
   }));
   $("#asInfo").textContent = "";
 }
+$("#uiHud").onclick = async () => { await api("/api/ui", { method: "POST", body: JSON.stringify({ ui: "hud" }) }); location.href = "/"; };
 $("#asPersonaText").oninput = () => (document.querySelector("[name=asPersonaMode][value=own]").checked = true);
 $("#asPersona").onchange = () => (document.querySelector("[name=asPersonaMode][value=pick]").checked = true);
 const asRestarted = async () => {  // wait until Amadeus is back after its restart, then reload with the new settings
@@ -1023,11 +1024,11 @@ initTheme(); tickClock(); setInterval(tickClock, 15000);
   loadRail(); setInterval(loadRail, 30000);
   // deep links from the desktop call: #approvals, #chat=<id>
   const h = location.hash.slice(1);
-  if (["approvals", "reminders", "calendar", "mail", "memory", "todo", "projects"].includes(h)) show(h);
+  if (["approvals", "reminders", "calendar", "mail", "memory", "todo", "projects", ...IN_SETTINGS].includes(h)) show(h);
   else if (h === "mail=unread") { mail.wantFolder = "@unread"; show("mail"); }
   else if (/^mail=\d+$/.test(h)) { show("mail"); openMail(Number(h.slice(5))); }  // e.g. a reminder about one mail
   else if (h.startsWith("chat=")) openConv(h.slice(5));
   else if (h === "day") { openConv(await todayChat()); showDay(); }
   if (!h.startsWith("chat=") && h !== "day") openConv(await todayChat());  // the chat page always shows today's chat
-  if (h) history.replaceState(null, "", "/");
+  if (h) history.replaceState(null, "", location.pathname);
 })();

@@ -64,6 +64,24 @@ def memory_overview(limit=100):
         (f"{len(out)} things stored in long-term memory:\n" + "\n".join(out) if out else "Nothing stored in long-term memory yet.")
 
 
+_CORE = {"at": 0, "data": None}
+
+
+def core_stats():
+    """Counts for the HUD core: memories per kind and the biggest topics (sizes only, cached for a few minutes)."""
+    import time
+    if _CORE["data"] and time.time() - _CORE["at"] < 180:
+        return _CORE["data"]
+    st = _hs_get("/stats")
+    kinds = st.get("nodes_by_fact_type") or {}
+    ents = _hs_get("/entities?limit=40").get("items", [])
+    data = {"facts": kinds.get("world", 0), "experiences": kinds.get("experience", 0), "observations": kinds.get("observation", 0),
+            "links": st.get("total_links", 0), "last_learned": st.get("last_memory_write_at") or "",
+            "topics": sorted((int(e.get("mention_count") or 0) for e in ents), reverse=True)}
+    _CORE.update(at=time.time(), data=data)
+    return data
+
+
 def _hs_get(path):
     key = json.load(open(CFG["hindsight_key_file"]))[CFG["hindsight_key_name"]]
     bank = urllib.parse.quote(CFG["hindsight_bank"], safe="")

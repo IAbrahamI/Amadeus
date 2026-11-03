@@ -32,6 +32,12 @@ def conn():
 _C = conn()
 with _LOCK:
     _C.executescript(SCHEMA)
+    for col in ("feedback TEXT", "revised INTEGER"):  # Adjust on an approval (added later; older databases get the columns here)
+        try:
+            _C.execute("ALTER TABLE approvals ADD COLUMN " + col)
+        except sqlite3.OperationalError:
+            pass
+    _C.commit()
 os.chmod(_PATH, 0o600)
 
 

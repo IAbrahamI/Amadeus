@@ -123,7 +123,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if u.path in ("/", "/m"):
                 return self._static("/call.html")
-        elif not self._desktop() and (u.path in ("/", "/index.html", "/call.html") or "token" in qs):
+        elif not self._desktop() and (u.path in ("/", "/index.html", "/call.html", "/hud.html", "/classic") or "token" in qs):
             return self._json({"error": "Amadeus only opens in its desktop window: use the tray icon or the Amadeus app."}, 403)
         if qs.get("token", [""])[0] == CFG["token"]:
             self.send_response(302)
@@ -174,8 +174,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
         if not u.path.startswith("/api/"):
-            if not self._authed() and u.path in ("/", "/index.html"):
+            if not self._authed() and u.path in ("/", "/index.html", "/hud.html", "/classic"):
                 return self._json({"error": "Open Amadeus with the 'amadeus' command (it signs you in)."}, 401)
+            if u.path in ("/", "/index.html"):  # the dashboard in the look you picked (Settings → Assistant): HUD or classic
+                return self._static("/hud.html" if db.get_setting("ui", "classic") == "hud" else "/index.html")
+            if u.path == "/classic":
+                return self._static("/index.html")
             return self._static(u.path)
         if not self._authed():
             return self._json({"error": "unauthorized"}, 401)
@@ -199,6 +203,8 @@ class Handler(BaseHTTPRequestHandler):
                                "voice": voice_pack()})
         if p == "/api/voice/pack":
             return self._json(voice_pack())
+        if p == "/api/ui":  # which dashboard look: "hud" (the core) or "classic"
+            return self._json({"ui": db.get_setting("ui", "classic")})
         if p == "/api/models":
             return self._json({"models": llm.list_models(), "default": CFG["default_model"]})
         if p == "/api/conversations":
@@ -303,6 +309,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"profile": profile.get(), "pending": len(db.get_setting("profile_pending", [])),
                                "updated": db.get_setting("profile_updated", ""), "rules": db.get_setting("mail_rules", {}),
                                "vip": db.get_setting("mail_vip", []), "asking": db.get_setting("ask_patterns", [])})
+        if p == "/api/core":  # the HUD core: memory counts per kind and topic sizes (no memory text)
+            try:
+                return self._json(tools.core_stats())
+            except Exception as e:
+                return self._json({"error": str(e)}, 502)
         if p == "/api/memory":
             try:
                 return self._json({"text": tools.memory_overview(300)})
@@ -476,6 +487,14 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/conversations/(\w+)/messages", p)
         if m:
             return self._chat(m.group(1), b)
+        if p == "/api/ui":
+            if b.get("ui") not in ("hud", "classic"):
+                return self._json({"error": "ui is hud or classic"}, 400)
+            db.set_setting("ui", b["ui"])
+            return self._json({"ui": b["ui"]})
+        m = re.fullmatch(r"/api/approvals/(\w+)/revise", p)
+        if m:  # Adjust: what should be different; the redraft waits for your approval again
+            return self._json(agent.revise(m.group(1), b.get("note", "")))
         m = re.fullmatch(r"/api/approvals/(\w+)/(approve|reject)", p)
         if m:
             if self._tailnet():  # decided on the phone: the PC window stops ringing for it
