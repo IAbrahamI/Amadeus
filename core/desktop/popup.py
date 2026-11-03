@@ -30,7 +30,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 cfg = _cfg
 DATA = cfg.get("data_dir", os.path.expanduser("~/.local/share/amadeus/core"))
 BASE = f"http://127.0.0.1:{cfg.get('port', 8095)}"
-MW, MH = 300, 300  # the mini core window: just the core on its dark screen (bubbles and controls inside)
+MW, MH = 300, 330  # the mini core window: the round disc with the core (280) and the small pill of buttons below
 CMD = os.path.join(DATA, "popup.cmd")    # target for SIGUSR2 (dashboard), written by the tray icon
 MINICMD = os.path.join(DATA, "popup.mini")  # "toggle" for SIGUSR1 from the tray; otherwise SIGUSR1 = a call
 HIDDEN = os.path.join(DATA, "mini-hidden")  # you closed the mini core: it only comes back for a call or the tray
@@ -206,8 +206,8 @@ class Mini(Gtk.Window):
         self.get_style_context().add_class("amadeus-mini")
         Gtk.StyleContext.add_provider_for_screen(self.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.view = make_view(self.on_msg, transparent=True)
-        # grabbing the dark screen around the core moves the window (KWin remembers where); the sphere, the control
-        # strip and the bubbles stay clickable (the page sends where they are)
+        # grabbing the outer edge of the disc moves the window (KWin remembers where); the sphere, the buttons and the
+        # bubbles stay clickable (the page sends where they are)
         self.zones = []
         self.view.connect("button-press-event", self.on_press)
         self.add(self.view)
@@ -233,7 +233,7 @@ class Mini(Gtk.Window):
     def on_press(self, _view, ev):
         if ev.button != 1 or ev.type != Gdk.EventType.BUTTON_PRESS:
             return False
-        cx, cy, r = MW / 2, MH / 2, (MW - 20) / 2 / 1.5 * 1.15  # the sphere (as the page draws it)
+        cx, cy, r = MW / 2, 140, 280 / 2 / 1.5 * 1.15  # the sphere (as mini.css / mini.js draw it): click and hold
         if (ev.x - cx) ** 2 + (ev.y - cy) ** 2 <= r * r:
             return False
         if any(x <= ev.x <= x + w and y <= ev.y <= y + h for x, y, w, h in self.zones):

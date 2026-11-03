@@ -22,23 +22,39 @@ const placeCore = () => { const r = $("#corewrap").getBoundingClientRect(); core
 new ResizeObserver(placeCore).observe($("#corewrap")); placeCore();
 let mode = "idle";
 const setMode = (m) => { mode = m; core.mode(m); };
-// the core itself (the sphere) opens the dashboard; the dark screen around it is where you grab it to move it
+// the sphere: a click opens the dashboard, holding it talks to her (she listens while you hold, it sends when you let
+// go). The outer edge of the disc moves the window (popup.py starts that before the page sees the press).
+const HOLD = 350;
+let hold = null;
 const onCore = (e) => {
   const r = $("#corewrap").getBoundingClientRect(), R = Math.min(r.width, r.height) / 2 / 1.5 * 1.15;
   return Math.hypot(e.clientX - (r.x + r.width / 2), e.clientY - (r.y + r.height / 2)) <= R;
 };
-// the window moves itself when you grab the screen outside these (popup.py); tell it where the buttons are
+$("#corewrap").addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || !onCore(e)) return;
+  const h = hold = { talking: false };
+  h.t = setTimeout(() => {
+    if (!window.Voice || hold !== h) return;
+    h.talking = true; $("#mini").classList.add("holding"); Voice.listen(); listening(true);
+  }, HOLD);
+});
+addEventListener("mouseup", () => {
+  const h = hold; hold = null;
+  if (!h) return;
+  clearTimeout(h.t);
+  if (h.talking) { $("#mini").classList.remove("holding"); Voice.release(); }
+  else native("dash:/#home");  // a click
+});
+$("#corewrap").addEventListener("mousemove", (e) => { $("#corewrap").style.cursor = onCore(e) ? "pointer" : ""; });
+// tell the window where the buttons are, so a press there isn't taken as moving the window
 function zones() {
-  const z = [...document.querySelectorAll(".bubble.show, .mini:hover .ctl, .mini.typing .ctl, .mini.typing .type")].map((e) => {
+  const z = [...document.querySelectorAll(".bubble.show, .mini:hover .ctl")].map((e) => {
     const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); });
   native("zones:" + JSON.stringify(z));
 }
 $("#mini").addEventListener("mouseenter", () => setTimeout(zones, 30));
 $("#mini").addEventListener("mouseleave", () => setTimeout(zones, 30));
 new MutationObserver(() => setTimeout(zones, 400)).observe($("#bubbles"), { childList: true, subtree: true, attributes: true });
-$("#glass").addEventListener("mousemove", (e) => { if (!e.target.closest(".ctl, .type, .bubble")) $("#glass").style.cursor = onCore(e) ? "pointer" : "move"; });
-$("#corewrap").addEventListener("click", (e) => { if (onCore(e)) native("dash:/#home"); });
-$("#dash").onclick = () => native("dash:/#home");
 $("#cls").onclick = () => { stopAll(); native("close"); };
 
 // ---------- bubbles: only what is being said right now ----------
@@ -46,7 +62,7 @@ let shapeT = 0;
 function shape() {  // tell the window where something is drawn, so clicks elsewhere go to the desktop below
   clearTimeout(shapeT);
   shapeT = setTimeout(() => {
-    const rects = [$("#glass"), ...document.querySelectorAll(".bubble.show")].map((e) => { const r = e.getBoundingClientRect(); return [r.x - 4, r.y - 14, r.width + 8, r.height + 28].map(Math.round); });
+    const rects = [$("#disc"), $("#ctl"), ...document.querySelectorAll(".bubble.show")].map((e) => { const r = e.getBoundingClientRect(); return [r.x - 4, r.y - 14, r.width + 8, r.height + 28].map(Math.round); });
     native("shape:" + JSON.stringify(rects));
   }, 60);
 }
@@ -127,19 +143,14 @@ function say(text) {
     Aloud.start(); Aloud.reveal = null; Aloud.done = () => fadeLater(b, 4000); Aloud.feed(text, true);
   } else fadeLater(b, 4000);
 }
-$("#kb").onclick = () => { $("#mini").classList.toggle("typing"); if ($("#mini").classList.contains("typing")) $("#tin").focus(); };
-$("#tform").onsubmit = (e) => { e.preventDefault(); const t = $("#tin").value.trim(); if (!t) return; $("#tin").value = ""; $("#mini").classList.remove("typing"); ask(t, false); };
-$("#tin").onkeydown = (e) => { if (e.key === "Escape") $("#mini").classList.remove("typing"); };
 
 // ---------- voice: the mic, Ctrl + Space, the wake word ----------
 let listenB = null;
 function listening(on) {
-  $("#mic").classList.toggle("on", on);
   if (on) { Aloud.stop(); stopRing(); setMode("listen"); if (!listenB || !listenB.isConnected) listenB = bubble("listen", "", "LISTENING", true); }
   else { drop(listenB); listenB = null; if (!busy && !ringing) setMode("idle"); }
 }
 if (window.Voice) {
-  $("#mic").onclick = () => { if (Voice.recording) { Voice.release(); listening(false); } else { Voice.listen(); listening(true); } };
   Voice.onBusy = (b) => { if (b && listenB) listenB.querySelector(".tx").textContent = "…"; };
   Voice.onHint = (msg) => { listening(false); bubble("amadeus", NAME_UP(), esc(msg)); };
   Voice.onText = (text) => { listening(false); if (adjusting) return adjustWith(text); ask(text, true); };
@@ -266,7 +277,6 @@ window.amadeusShown = (reason) => { if (reason === "call") refresh(); };  // pop
 
 (async () => {
   await window.IDENTITY;
-  $("#tin").placeholder = `Type to ${NAME()}…`;
   try { const c = await api("/api/core"); if (c.topics) core.topics(c.topics); } catch {}
   await refresh();
   setInterval(refresh, 4000);
