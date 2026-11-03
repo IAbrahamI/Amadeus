@@ -1,5 +1,5 @@
 // The HUD's Settings pages (Assistant, Voice, Skills, Connectors, Playbooks, Memory, Phone, Reminders) and "Your day".
-// Same API as the classic page; helpers come from hud.js.
+// Helpers come from hud.js.
 const set = { page: null, avatar: "", pair: null };
 const field = (label, html) => `<label>${label}${html}</label>`;
 const back = '<button class="btn" data-act="setpage" data-page="">‹ Settings</button>';
@@ -26,10 +26,9 @@ const PAGES = {
           <select id="asPersona">${d.personas.filter((p) => p !== "custom").map((p) => `<option ${p === d.persona ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></span>
           <span class="radio"><label class="chk"><input type="radio" name="pm" value="own" ${own ? "checked" : ""}> My own</label></span>
           <textarea id="asPersonaText" rows="4" placeholder="A few lines about how it should be: tone, what it cares about…">${own ? esc(d.persona_text) : ""}</textarea></label>
-        <label>Face (for the classic look and the phone)<div class="avts">${tile("", "/agent.svg", "Default agent")}${d.avatars.map((a) => tile(a, `/avatar/${encodeURIComponent(a)}/${encodeURIComponent(a)}_normal1.png`, a)).join("")}</div></label>
+        <label>Face (for calls and the phone app)<div class="avts">${tile("", "/agent.svg", "Default agent")}${d.avatars.map((a) => tile(a, `/avatar/${encodeURIComponent(a)}/${encodeURIComponent(a)}_normal1.png`, a)).join("")}</div></label>
         <div class="acts"><input type="file" id="asFiles" accept="image/png" multiple><button type="button" class="btn" data-act="avup">Upload as my avatar</button></div>
         <div class="acts"><button type="button" class="btn" data-act="asreset">Use the defaults</button><span class="grow"></span><button class="btn go">Save</button></div>${info("asInfo")}</form>
-      <h3 style="margin-top:22px">Dashboard</h3>${note("This HUD look, or the classic one.")}<div class="acts"><button class="btn" data-act="classic">Use the classic look</button></div>
       <h3 style="margin-top:22px">Voice lines</h3>${note(`${clips.lines.length} voice lines and ${clips.ringtones.length} ringtones from your voice-pack.json. Click to play.`)}
       <div class="clips">${clips.lines.concat(clips.ringtones).map((n) => `<button class="btn" data-act="clip" data-clip="${esc(n)}">▶ ${esc(n.replace(/^ringtone_/, "").replace(/_/g, " "))}</button>`).join("")}</div>`;
   },

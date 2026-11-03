@@ -1,4 +1,4 @@
-/* The HUD dashboard (hud.html): one dark screen. A thin icon rail on the left, the core owns the stage; opening a view
+/* The dashboard (index.html): one dark screen. A thin icon rail on the left, the core owns the stage; opening a view
    moves the core aside and a CRT box takes the room. Colours: amber = needs you, cyan = the assistant / active,
    grey = idle, green = done, violet = Claude Code. The fonts are bundled in fonts/ (SIL Open Font License, see fonts/LICENSE.txt). */
 @font-face { font-family: "Chakra Petch"; font-weight: 400; src: url(fonts/ChakraPetch-Regular.woff2) format("woff2"); font-display: swap; }

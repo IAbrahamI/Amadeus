@@ -1,4 +1,4 @@
-The fonts in this folder are used by the HUD look (hud.css). Each is licensed under the SIL Open Font License 1.1,
+The fonts in this folder are used by the dashboard (hud.css). Each is licensed under the SIL Open Font License 1.1,
 subset to Latin characters and converted to WOFF2 from the files in https://github.com/google/fonts.
 
 

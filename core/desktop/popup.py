@@ -159,7 +159,7 @@ class Window(Gtk.Window):
 
     def show_mini(self):
         """Tray click while open: back to the small window and to the front. The wake word while the dashboard
-        is open keeps the dashboard: it listens and answers right there (window.amadeusWake in app.js)."""
+        is open keeps the dashboard: it listens and answers right there (window.amadeusWake in hud.js)."""
         if self.full and not self.wake_pending():
             self.set_mode("small")
         self.present()

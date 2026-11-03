@@ -1,4 +1,4 @@
-// The HUD dashboard (hud.html): the core in the middle, views as CRT boxes. Same server API as the classic page (app.js).
+// The dashboard (index.html): the core in the middle, the views as CRT boxes around it.
 const $ = (s) => document.querySelector(s);
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
@@ -288,9 +288,7 @@ const TILES = [["assistant", "Assistant", "Name, personality and look", '<circle
   ["phone", "Phone", "Pair a phone, private or visible", '<rect x="7" y="3" width="10" height="18"/><path d="M11 18h2"/>'],
   ["reminders", "Reminders", "What it will remind you of", '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/>']];
 function loadSettings() {
-  body().innerHTML = `<div class="tiles">${TILES.map(([id, t, s, ic]) => `<button class="tile" data-act="setpage" data-page="${id}"><svg viewBox="0 0 24 24">${ic}</svg><b>${t}</b><span>${s}</span></button>`).join("")}</div>` +
-    `<h3 style="margin-top:24px">Look</h3>${note("The HUD look, or the classic one (it stays at /classic either way).")}` +
-    `<div class="acts"><button class="btn" data-act="classic">Use the classic look</button></div>`;
+  body().innerHTML = `<div class="tiles">${TILES.map(([id, t, s, ic]) => `<button class="tile" data-act="setpage" data-page="${id}"><svg viewBox="0 0 24 24">${ic}</svg><b>${t}</b><span>${s}</span></button>`).join("")}</div>`;
 }
 
 // ---------- clicks and forms inside the box ----------
@@ -338,7 +336,6 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "ctab" || act === "past") { state.chatTab = act === "past" ? Number(a.dataset.i) : a.dataset.tab; if (act === "ctab" && a.dataset.tab === "history") state.past = null; renderChat(); }
   if (act === "toappr") open("approvals");
-  if (act === "classic") { await post("/api/ui", { ui: "classic" }); location.href = "/"; }
 });
 
 // ---------- start ----------

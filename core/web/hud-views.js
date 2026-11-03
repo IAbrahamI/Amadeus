@@ -5,7 +5,7 @@ const hm = (iso) => (iso && iso.length > 10 ? iso.slice(11, 16) : "");
 const ago = (t) => { const d = new Date(t * 1000), tm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return d.toDateString() === new Date().toDateString() ? tm : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${tm}`; };
 
-// ---------- Calendar: one week, your own changes need no approval (the same as the classic page) ----------
+// ---------- Calendar: one week, your own changes need no approval ----------
 const cal = { week: null, occ: [], edit: null };
 const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return addDays(x, -((x.getDay() + 6) % 7)); };
 async function loadCalendar() {

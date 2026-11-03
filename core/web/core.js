@@ -1,4 +1,4 @@
-// The core: the assistant drawn as a living sphere of its memories (the HUD dashboard, hud.html).
+// The core: the assistant drawn as a living sphere of its memories (the dashboard, index.html).
 // An outer shell of fine dust, and inside it a neural network of memories joined by links. Light signals run along the
 // links only while it really works (listening, recalling, speaking, a background job); idle, the network rests.
 // Drawn on the graphics card (WebGL). Without it, or on a software renderer, a lighter 2D version is drawn instead.

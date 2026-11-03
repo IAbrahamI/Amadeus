@@ -51,7 +51,7 @@ flowchart TB
 | Part | Where | Notes |
 |---|---|---|
 | Amadeus Core | `core/amadeus_core/` | `server` (API + static files), `agent` (model loop, approvals), `tools` (everything it can do), `privacy` (the filter), `work` (Claude Code runs), `background` (timed jobs), `quickchat` (one chat per day), `digest` (morning brief, evening summary) |
-| Web UI | `core/web/` | Plain HTML/CSS/JS, no build step: dashboard (`index.html`), the small call window (`call.html`), the default avatar (`agent.svg`) |
+| Web UI | `core/web/` | Plain HTML/CSS/JS, no build step: dashboard (`index.html` with `hud.js`, `hud-views.js`, `hud-settings.js`, and `core.js` drawing the core on the GPU), the small call window (`call.html`), the default avatar (`agent.svg`) |
 | Desktop | `core/desktop/` | `popup.py` (the window), `tray.py` (tray icon) |
 | Voice | `core/voice/` | `voice_server.py` (Whisper speech recognition), `wake.py` (wake word) |
 | Mail | `core/thunderbird/` | A Thunderbird add-on plus a native-messaging host; Thunderbird keeps your accounts and logins |
