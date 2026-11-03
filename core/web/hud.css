@@ -1,12 +1,11 @@
 /* The HUD dashboard (hud.html): one dark screen. A thin icon rail on the left, the core owns the stage; opening a view
    moves the core aside and a CRT box takes the room. Colours: amber = needs you, cyan = the assistant / active,
-   grey = idle, green = done, violet = Claude Code. The fonts are used when installed; otherwise the system fonts stand in. */
-@font-face { font-family: "Chakra Petch"; font-weight: 400; src: local("Chakra Petch"); font-display: swap; }
-@font-face { font-family: "Chakra Petch"; font-weight: 500; src: local("Chakra Petch Medium"); font-display: swap; }
-@font-face { font-family: "Chakra Petch"; font-weight: 600; src: local("Chakra Petch SemiBold"); font-display: swap; }
-@font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: local("IBM Plex Sans"); font-display: swap; }
-@font-face { font-family: "IBM Plex Sans"; font-weight: 500; src: local("IBM Plex Sans Medium"); font-display: swap; }
-@font-face { font-family: "JetBrains Mono"; font-weight: 400 500; src: local("JetBrains Mono"); font-display: swap; }
+   grey = idle, green = done, violet = Claude Code. The fonts are bundled in fonts/ (SIL Open Font License, see fonts/LICENSE.txt). */
+@font-face { font-family: "Chakra Petch"; font-weight: 400; src: url(fonts/ChakraPetch-Regular.woff2) format("woff2"); font-display: swap; }
+@font-face { font-family: "Chakra Petch"; font-weight: 500; src: url(fonts/ChakraPetch-Medium.woff2) format("woff2"); font-display: swap; }
+@font-face { font-family: "Chakra Petch"; font-weight: 600; src: url(fonts/ChakraPetch-SemiBold.woff2) format("woff2"); font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 100 700; font-stretch: 85% 100%; src: url(fonts/IBMPlexSans.woff2) format("woff2"); font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; src: url(fonts/JetBrainsMono.woff2) format("woff2"); font-display: swap; }
 :root {
   color-scheme: dark;
   --void: #04070C;        /* page */
@@ -472,3 +471,4 @@ button.ev:hover { background: rgba(95,216,255,.2); }
 .dayrep { margin-bottom: 16px; } .dayrep h3 { display: flex; align-items: center; gap: 10px; } .dayrep .btn { padding: 3px 8px; }
 .dayrep .md { font-size: 13.5px; }
 .hud.tl:hover .bigtime { color: var(--cyan); text-shadow: 0 0 14px rgba(95,216,255,.4); }
+.name, .sub .who, .ln .who { text-transform: uppercase; }
