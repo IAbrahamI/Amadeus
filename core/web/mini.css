@@ -6,13 +6,13 @@ html, body.minibody { background: transparent !important; overflow: hidden; heig
 body.minibody::before, body.minibody::after { display: none; }
 .mini { position: fixed; inset: 0; transition: transform .45s cubic-bezier(.2,1.3,.4,1), opacity .3s; transform-origin: 50% 50%; }
 .mini.closed { transform: scale(.2); opacity: 0; pointer-events: none; }
-/* the core's background: 90% solid across the whole core (the sphere and its rings), then fading evenly to 50%
+/* the core's background: 98% solid across the whole core (the sphere and its rings), then fading evenly to 75%
    in the corners of the box */
 .disc { position: absolute; left: 10px; top: 150px; width: 280px; height: 280px; cursor: move; }
 .disc::before { content: ""; position: absolute; left: -10px; right: -10px; top: -10px; bottom: -40px; pointer-events: none;
-  background: radial-gradient(circle farthest-corner at 50% 150px, rgba(var(--vd),.9) 0 136px, rgba(var(--vd),.5) 100%); }
-.mini.ringing .disc::before { background: radial-gradient(circle farthest-corner at 50% 150px, rgba(var(--vd),.9) 0 136px, rgba(var(--w),.22) 100%); }
-.mini.holding .disc::before { background: radial-gradient(circle farthest-corner at 50% 150px, rgba(var(--vd),.9) 0 136px, rgba(var(--a),.25) 100%); }
+  background: radial-gradient(circle farthest-corner at 50% 150px, rgba(var(--vd),.98) 0 136px, rgba(var(--vd),.75) 100%); }
+.mini.ringing .disc::before { background: radial-gradient(circle farthest-corner at 50% 150px, rgba(var(--vd),.98) 0 136px, rgba(var(--w),.3) 100%); }
+.mini.holding .disc::before { background: radial-gradient(circle farthest-corner at 50% 150px, rgba(var(--vd),.98) 0 136px, rgba(var(--a),.32) 100%); }
 .corewrap { position: absolute; inset: 0; }
 .corewrap .core-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* the two buttons, only on hover, below the disc (never over the core) */
