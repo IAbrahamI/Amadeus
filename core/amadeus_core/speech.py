@@ -39,6 +39,19 @@ def _date(y, mo, d, lang):
     return f"{x.day}. {name}{year}" if lang == "de" else f"{x.day} de {name}{year}" if lang == "es" else f"{name} {x.day}{year}"
 
 
+def _ord(n, lang):
+    n = int(n)
+    if lang == "de":
+        return f"{n}."
+    if lang == "es":
+        return str(n)
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def _months(lang):
+    return "|".join(MONTHS[lang] + [m[:3] for m in MONTHS[lang]])
+
+
 def speech_text(text, lang="en", limit=600):
     lang = lang if lang in SAY else "en"
     s = SAY[lang]
@@ -75,6 +88,12 @@ def speech_text(text, lang="en", limit=600):
     t = re.sub(r"\b([01]?\d|2[0-3]):([0-5]\d)(?::\d\d)?(?:\s*[–-]\s*([01]?\d|2[0-3]):([0-5]\d))?\b",  # one pass, so "2 PM" isn't read again
                lambda m: _time(m[1], m[2], lang) + (f" {s['to']} {_time(m[3], m[4], lang)}" if m[3] else ""), t)
     t = re.sub(r"\b(20\d\d)-(\d\d)-(\d\d)\b", lambda m: _date(m[1], m[2], m[3], lang), t)
+    t = re.sub(r"\b(\d{1,2})\.(\d{1,2})\.(20\d\d)\b", lambda m: _date(m[3], m[2], m[1], lang), t)  # 03.11.2026
+    # "03 November", "November 03", "the 03rd": a day said as a day ("the 3rd" / "3."), never "zero three"
+    mo = _months(lang)
+    t = re.sub(rf"\b0?(\d{{1,2}})(?:st|nd|rd|th)?\.?\s+({mo})\b", lambda m: (f"the {_ord(m[1], lang)} of {m[2]}" if lang == "en" else f"{_ord(m[1], lang)} {m[2]}"), t)
+    t = re.sub(rf"\b({mo})\s+0?(\d{{1,2}})(?:st|nd|rd|th)?\b", lambda m: f"{m[1]} {_ord(m[2], lang)}" if lang == "en" else f"{m[2]}. {m[1]}", t)
+    t = re.sub(r"(?<![:.,\d])\b0+(\d)", r"\1", t)  # other numbers with a leading zero: "03" is said "3"
     t = t.replace("→", f" {s['to']} ").replace("&", f" {s['and']} ").replace("…", ".").replace(" · ", ", ")
     t = re.sub(r"\s+([.,;:!?])", r"\1", re.sub(r"\s+", " ", t)).strip()
     t = re.sub(r"([.!?])\.+", r"\1", t)

@@ -9,7 +9,12 @@ class Speech(unittest.TestCase):
 
     def test_times_dates_markdown_links(self):
         t = speech_text("**Dentist** at 14:00, the call 15:30–16:00 on 2031-11-05. See [notes](https://x.y) 🎉 [mood:happy]")
-        self.assertEqual(t, "Dentist at 2 PM, the call 3:30 PM to 4 PM on November 5 2031. See notes.")
+        self.assertEqual(t, "Dentist at 2 PM, the call 3:30 PM to 4 PM on November 5th 2031. See notes.")
+
+    def test_days_are_said_as_days(self):
+        self.assertEqual(speech_text("Today is Tuesday, 03 November."), "Today is Tuesday, the 3rd of November.")
+        self.assertEqual(speech_text("Meeting at 09:05."), "Meeting at 9:05 AM.")
+        self.assertIn("3. November", speech_text("Am 03.11.2031.", "de"))
 
     def test_german_times(self):
         self.assertIn("14 Uhr 30", speech_text("Um 14:30.", "de"))
