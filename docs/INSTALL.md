@@ -102,6 +102,9 @@ Thunderbird starts minimised at login. If you close it, Amadeus starts it again 
 Say yes to voice in `./install.sh` (or set `AMADEUS_VOICE=1` in `amadeus.env` and run `./install.sh --only voice`,
 then `./install.sh --only app`). It creates a Python environment in `~/.local/share/amadeus/voice/venv-lite` with
 faster-whisper and Vosk, downloads the small English wake-word model and starts the voice and wake-word services.
+With [uv](https://docs.astral.sh/uv/) installed it also sets up speech normalization ([NeMo Text Processing](https://github.com/NVIDIA/NeMo-text-processing),
+about 900 MB, in its own Python 3.12 environment), so numbers, money, units and dates are read as words. Without it,
+Amadeus' own rules still handle times and dates.
 
 Whisper (speech recognition) downloads itself on first use. Everything runs on the CPU, so the GPU stays free
 for the model. Say "voice off" to close the microphone completely.
