@@ -197,6 +197,13 @@ async function send(text) {
   liveLine(lineHtml({ role: "user", content: text, created: now }));
   subtitle("…");
   let acc = "", started = false, line = null;
+  const render = (n) => {  // show the reply (with speech: only as far as it has been spoken)
+    const t = stripMood(acc).slice(0, n);
+    subtitle(t || "…");
+    const gl = $("#ghost .ln:last-child .m"); if (gl) { gl.innerHTML = md(t || "…"); $("#ghost .gin").scrollTop = 1e6; }
+    if (line) { line.querySelector(".m").innerHTML = md(t || "…"); liveLine(); }
+  };
+  if (aloud) Aloud.reveal = render;
   try {
     const r = await fetch(`/api/conversations/${state.cid}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: spoken }) });
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
@@ -207,26 +214,26 @@ async function send(text) {
         const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
         const ev = chunk.match(/^event: (.*)$/m)?.[1], data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] || "{}");
         if (ev === "token") {
-          acc += data; core.talk(); if (aloud) Aloud.feed(acc, false);
-          if (!started) { started = true; setMode("speak"); line = liveLine(lineHtml({ role: "assistant", content: " ", created: Date.now() / 1000 }));
-            state.msgs.push({ role: "assistant", content: "…", created: Date.now() / 1000 }); renderGhost(); }
-          subtitle(acc);
-          const gl = $("#ghost .ln:last-child .m"); if (gl) { gl.innerHTML = md(stripMood(acc)); $("#ghost .gin").scrollTop = 1e6; }
-          if (line) { line.querySelector(".m").innerHTML = md(stripMood(acc)); liveLine(); }
+          acc += data;
+          if (!started) { started = true; if (!aloud) setMode("speak"); line = liveLine(lineHtml({ role: "assistant", content: " ", created: Date.now() / 1000 }));
+            state.msgs.push({ role: "assistant", content: "…", created: Date.now() / 1000 }); renderGhost(); if (aloud) render(0); }
+          if (aloud && Aloud.active) Aloud.feed(acc, false); else { core.talk(); render(Infinity); }
         }
         if (ev === "tool") setMode("think");
-        if (ev === "approval") { if (aloud) Aloud.feed(acc, true); acc = ""; started = false; if (aloud) Aloud.taken = 0; counts(); subtitle(`I need your OK first: ${data.summary}`); if (curView === "approvals") loadApprovals(); }
+        if (ev === "approval") { if (Aloud.active) { stopAloud(); render(Infinity); } acc = ""; started = false; counts(); subtitle(`I need your OK first: ${data.summary}`); if (curView === "approvals") loadApprovals(); }
         if (ev === "error") subtitle("That didn't work: " + data.message);
       }
     }
   } catch (e) { subtitle("That didn't work: " + e.message); }
   finally {
     state.busy = false;
-    if (aloud) { Aloud.feed(acc, true); if (!Aloud.playing && !Aloud.queue.length) Aloud.end(); }
-    else { setTimeout(() => setMode("idle"), 500); if (window.Voice) Voice.react(acc); }
-    await today();
-    if (curView === "chat" && state.chatTab === "now") renderChat();
-    counts();
+    const settle = async () => {  // the reply is complete (and, with speech, fully spoken): the stored chat takes over
+      await today();
+      if (curView === "chat" && state.chatTab === "now") renderChat();
+      counts();
+    };
+    if (Aloud.active) { Aloud.done = settle; Aloud.feed(acc, true); if (!Aloud.playing && !Aloud.queue.length) Aloud.end(); }
+    else { render(Infinity); setTimeout(() => setMode("idle"), 500); if (window.Voice) Voice.react(acc); settle(); }
   }
 }
 // "show my calendar", "open mail": opens the view right away; everything else goes to the assistant
@@ -263,7 +270,11 @@ $("#spk").onclick = () => {
 // about 600 characters it says the rest is in the chat. The voice is the one from Settings → Voice.
 const Aloud = {
   active: false, gen: 0, queue: [], playing: null, taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false,
-  start() { stopAloud(); Object.assign(this, { active: true, gen: this.gen + 1, queue: [], taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false }); },
+  shown: 0, reveal: null, done: null,
+  start() {
+    stopAloud();
+    Object.assign(this, { active: true, gen: this.gen + 1, queue: [], taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false, shown: 0, reveal: null, done: null });
+  },
   // the reply so far; done = it's complete (the last piece needs no full stop)
   feed(text, done) {
     if (!this.active || this.cut) return;
@@ -272,7 +283,7 @@ const Aloud = {
       const rest = t.slice(this.taken), nl = rest.indexOf("\n");
       if (nl < 0 && !done) {  // an unfinished line: speak its finished sentences already
         const m = !this.inCode && !/^\s*(?:[-*+]|\d+[.)]|\||#)/.test(rest) && rest.match(/^.*?[.!?](?=\s)/);
-        if (m) { this.say(m[0]); this.taken += m[0].length; continue; }
+        if (m) { this.taken += m[0].length; this.say(m[0], 380); continue; }
         return;
       }
       const line = nl < 0 ? rest : rest.slice(0, nl);
@@ -282,43 +293,66 @@ const Aloud = {
     }
   },
   line(l) {
-    if (/^\s*```/.test(l)) { this.inCode = !this.inCode; if (!this.saidCode) { this.saidCode = true; this.say("The code is in the chat."); } return; }
+    if (/^\s*```/.test(l)) { this.inCode = !this.inCode; if (!this.saidCode) { this.saidCode = true; this.say("The code is in the chat.", 450); } return; }
     if (this.inCode || /^\s*\|/.test(l) || !l.trim()) return;
     if (/^\s*(?:[-*+•]|\d+[.)])\s+/.test(l)) {  // a list: the first four items, then a pointer to the chat
-      if (++this.items === 5) return this.say("And more, see the chat.");
+      if (++this.items === 5) return this.say("And more, see the chat.", 450);
       if (this.items > 5) return;
     } else this.items = 0;
-    this.say(l);
+    this.say(l, 550);
   },
-  say(piece) {
+  // one piece to speak; it shows in the chat up to here while it plays, then a short pause (gap, ms) before the next
+  say(piece, gap) {
     if (!piece.trim() || this.cut) return;
     this.spoken += piece.length;
     if (this.spoken > 650) { this.cut = true; piece = "The rest is in the chat."; }
-    const gen = this.gen, audio = fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: piece, speech: true, limit: 2000 }) })
+    const upto = this.cut ? Infinity : this.taken;
+    const audio = fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: piece, speech: true, limit: 2000 }) })
       .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText); return URL.createObjectURL(await r.blob()); });
-    this.queue.push(audio); audio.catch(() => {});
-    if (!this.playing) this.next(gen);
+    audio.catch(() => {});
+    this.queue.push({ audio, upto, gap });
+    if (!this.playing) this.next(this.gen);
   },
   async next(gen) {
     if (gen !== this.gen) return;
-    const p = this.queue.shift();
-    if (!p) { this.playing = null; if (!state.busy) this.end(); return; }
+    const it = this.queue.shift();
+    if (!it) { this.playing = null; if (!state.busy) this.end(); return; }
+    this.playing = true;
     let url;
-    try { url = await p; } catch (e) { this.fail(e); return; }
+    try { url = await it.audio; } catch (e) { this.fail(e); return; }
     if (gen !== this.gen) return;
-    const a = this.playing = new Audio(url);
-    clearInterval(this.talk); this.talk = setInterval(() => core.talk(), 140);  // the core moves with the voice
+    const a = this.playing = new Audio(url), from = this.shown;
+    clearInterval(this.talk); clearInterval(this.type);
+    this.talk = setInterval(() => core.talk(), 140);  // the core moves with the voice
+    // the text types in while it is said, so what you read is what you hear
+    this.type = setInterval(() => {
+      if (!a.duration || !isFinite(a.duration) || !this.reveal) return;
+      const end = Math.min(it.upto, 1e9), f = Math.min(1, a.currentTime / a.duration);
+      this.show(isFinite(it.upto) ? from + Math.round((end - from) * f) : from);
+    }, 50);
     $("#spk").classList.add("speaking"); setMode("speak"); $("#state").textContent = "Speaking";
-    a.onended = a.onerror = () => { clearInterval(this.talk); URL.revokeObjectURL(url); this.next(gen); };
+    a.onended = a.onerror = () => {
+      clearInterval(this.talk); clearInterval(this.type); URL.revokeObjectURL(url);
+      this.show(it.upto);
+      setTimeout(() => this.next(gen), it.gap || 350);  // a breath between sentences
+    };
     a.play().catch(() => a.onended());
   },
-  end() { clearInterval(this.talk); this.active = false; this.playing = null; $("#spk").classList.remove("speaking"); if (!state.busy) setMode("idle"); },
+  show(n) { if (n > this.shown) { this.shown = n; if (this.reveal) this.reveal(n); } },
+  end() {
+    clearInterval(this.talk); clearInterval(this.type);
+    const was = this.active; this.active = false; this.playing = null; this.queue = [];
+    $("#spk").classList.remove("speaking");
+    if (this.reveal) this.reveal(Infinity);
+    if (!state.busy) setMode("idle");
+    const d = this.done; this.done = null; if (was && d) d();
+  },
   fail(e) {
-    this.queue = []; this.end(); $("#spk").classList.add("novoice");
+    this.end(); $("#spk").classList.add("novoice");
     subtitle(/text-to-speech|voice/i.test(e.message) ? "I can't speak yet: pick or download a voice under Settings → Voice." : "I couldn't speak that: " + e.message);
   },
 };
-function stopAloud() { Aloud.gen++; Aloud.queue = []; if (Aloud.playing) Aloud.playing.pause(); if (Aloud.active) Aloud.end(); }
+function stopAloud() { Aloud.gen++; if (Aloud.playing && Aloud.playing.pause) Aloud.playing.pause(); if (Aloud.active) Aloud.end(); }
 addEventListener("keydown", (e) => { if (e.key === "Escape" && Aloud.active) stopAloud(); });
 
 // ---------- voice: the mic, Ctrl + Space, the wake word ----------
