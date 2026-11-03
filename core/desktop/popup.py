@@ -34,7 +34,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 cfg = _cfg
 DATA = cfg.get("data_dir", os.path.expanduser("~/.local/share/amadeus/core"))
 BASE = f"http://127.0.0.1:{cfg.get('port', 8095)}"
-MW, MH = 300, 330  # the mini core window: the round disc with the core (280) and the small pill of buttons below
+MW, MH = 300, 480  # the mini core window: her speech bubble on top (150), the core (280), the small pill of buttons
 CMD = os.path.join(DATA, "popup.cmd")    # target for SIGUSR2 (dashboard), written by the tray icon
 MINICMD = os.path.join(DATA, "popup.mini")  # "toggle" for SIGUSR1 from the tray; otherwise SIGUSR1 = a call
 HIDDEN = os.path.join(DATA, "mini-hidden")  # you closed the mini core: it only comes back for a call or the tray
@@ -237,7 +237,7 @@ class Mini(Gtk.Window):
     def on_press(self, _view, ev):
         if ev.button != 1 or ev.type != Gdk.EventType.BUTTON_PRESS:
             return False
-        cx, cy, r = MW / 2, 140, 280 / 2 / 1.5 * 1.15  # the sphere (as mini.css / mini.js draw it): click and hold
+        cx, cy, r = MW / 2, 150 + 140, 280 / 2 / 1.5 * 1.15  # the sphere (as mini.css / mini.js draw it): click and hold
         if (ev.x - cx) ** 2 + (ev.y - cy) ** 2 <= r * r:
             return False
         if any(x <= ev.x <= x + w and y <= ev.y <= y + h for x, y, w, h in self.zones):

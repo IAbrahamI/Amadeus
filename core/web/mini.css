@@ -1,21 +1,21 @@
 /* The mini core (mini.html): only the core is solid, a dark round disc with the sphere; everything around it is
    see-through (clicks there reach the desktop). Click the sphere: the dashboard. Hold it: she listens. The outer
-   edge of the disc moves the window. On hover a small pill below it has the VOICE tag and close. The window is
-   300 x 330: the disc (280) and the pill. Colours, fonts and the VOICE tag come from hud.css and themes.js. */
+   edge of the disc moves the window. On hover a small pill below it has the VOICE tag and close. Her speech bubble
+   sits above the core, never over it. The window is 300 x 480: room for the bubble (150), the disc (280), the pill. Colours, fonts and the VOICE tag come from hud.css and themes.js. */
 html, body.minibody { background: transparent !important; overflow: hidden; height: 100%; margin: 0; }
 body.minibody::before, body.minibody::after { display: none; }
 .mini { position: fixed; inset: 0; transition: transform .45s cubic-bezier(.2,1.3,.4,1), opacity .3s; transform-origin: 50% 50%; }
 .mini.closed { transform: scale(.2); opacity: 0; pointer-events: none; }
 /* the core's background: 90% solid behind the sphere, fading to 25% in the corners of the window */
-.disc { position: absolute; left: 10px; top: 0; width: 280px; height: 280px; cursor: move; }
-.disc::before { content: ""; position: fixed; inset: 0; pointer-events: none;
-  background: radial-gradient(farthest-corner at 50% 140px, rgba(var(--vd),.9) 0 38%, rgba(var(--vd),.6) 60%, rgba(var(--vd),.25) 100%); }
-.mini.ringing .disc::before { background: radial-gradient(farthest-corner at 50% 140px, rgba(var(--vd),.9) 0 38%, rgba(var(--w),.16) 62%, rgba(var(--vd),.25) 100%); }
-.mini.holding .disc::before { background: radial-gradient(farthest-corner at 50% 140px, rgba(var(--vd),.9) 0 38%, rgba(var(--a),.2) 62%, rgba(var(--vd),.25) 100%); }
+.disc { position: absolute; left: 10px; top: 150px; width: 280px; height: 280px; cursor: move; }
+.disc::before { content: ""; position: absolute; left: -10px; right: -10px; top: -10px; bottom: -40px; pointer-events: none;
+  background: radial-gradient(farthest-corner at 50% 150px, rgba(var(--vd),.9) 0 38%, rgba(var(--vd),.6) 60%, rgba(var(--vd),.25) 100%); }
+.mini.ringing .disc::before { background: radial-gradient(farthest-corner at 50% 150px, rgba(var(--vd),.9) 0 38%, rgba(var(--w),.16) 62%, rgba(var(--vd),.25) 100%); }
+.mini.holding .disc::before { background: radial-gradient(farthest-corner at 50% 150px, rgba(var(--vd),.9) 0 38%, rgba(var(--a),.2) 62%, rgba(var(--vd),.25) 100%); }
 .corewrap { position: absolute; inset: 0; }
 .corewrap .core-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* the two buttons, only on hover, below the disc (never over the core) */
-.ctl { position: absolute; left: 50%; top: 288px; transform: translate(-50%, -4px); display: flex; align-items: center; gap: 4px; padding: 4px 5px;
+.ctl { position: absolute; left: 50%; top: 438px; transform: translate(-50%, -4px); display: flex; align-items: center; gap: 4px; padding: 4px 5px;
   background: rgba(var(--vd),.94); border: 1px solid rgba(var(--a),.25); border-radius: 14px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
 .mini:hover .ctl { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 .ctl .vtag { height: 20px; padding: 0 7px 0 8px; font-size: 10px; letter-spacing: .2em; border-radius: 10px; }
@@ -24,7 +24,7 @@ body.minibody::before, body.minibody::after { display: none; }
 .ib svg { display: block; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 
 /* speech bubbles at the top of the disc: only what is being said right now, then they fade */
-.bubbles { position: absolute; left: 24px; right: 24px; top: 30px; z-index: 5; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.bubbles { position: absolute; left: 10px; right: 10px; bottom: calc(100% - 150px + 4px); z-index: 5; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; pointer-events: none; }
 .bubble { position: relative; max-width: 100%; align-self: center; padding: 8px 12px 9px; background: rgba(var(--vd),.97);
   border: 1.5px solid rgba(var(--a),.75); border-radius: 14px; box-shadow: 0 0 22px rgba(var(--a),.18), inset 0 0 18px rgba(var(--a),.06);
   font-size: 12.5px; line-height: 1.4; color: var(--text); pointer-events: auto; cursor: default;
@@ -33,7 +33,7 @@ body.minibody::before, body.minibody::after { display: none; }
 .bubble::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 12px; height: 12px; margin-left: -6px; background: rgba(var(--vd),.97);
   border-right: 1.5px solid rgba(var(--a),.75); border-bottom: 1.5px solid rgba(var(--a),.75); transform: rotate(45deg); border-bottom-right-radius: 3px; }
 .bubble .who { display: block; font: 600 9px var(--display); letter-spacing: .26em; color: var(--cyan); margin-bottom: 2px; text-transform: uppercase; }
-.bubble .tx { max-height: 8.4em; overflow: hidden; overflow-wrap: anywhere; }
+.bubble .tx { max-height: 6em; overflow: hidden; overflow-wrap: anywhere; }
 .bubble.call { border-color: rgba(var(--w),.85); box-shadow: 0 0 24px rgba(var(--w),.2); } .bubble.call::after { border-color: rgba(var(--w),.85); }
 .bubble.call .who { color: var(--amber); }
 .bubble .acts { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }

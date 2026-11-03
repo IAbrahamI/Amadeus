@@ -4,7 +4,7 @@
 # the second monitor (or the only one). Running this again keeps the place you chose. Also the dashboard: no title
 # bar. Only touches the "amadeus-call" and "amadeus-dash" rules.
 set -euo pipefail
-W=300; H=330  # the mini core window (desktop/popup.py)
+W=300; H=480  # the mini core window (desktop/popup.py)
 F=kwinrulesrc; G=amadeus-call
 kw() { kwriteconfig6 --file "$F" --group "$G" --key "$1" "$2"; }
 kr() { kreadconfig6 --file "$F" --group "$G" --key "$1"; }

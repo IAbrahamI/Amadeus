@@ -112,7 +112,7 @@ async function ask(text, spoken) {
   const aloud = hasVoice && (speakMode === "always" || (speakMode === "voice" && spoken));
   if (aloud) Aloud.start(); else Aloud.stop();
   let acc = "", b = null;
-  const render = (n) => { if (!b) b = bubble("amadeus", NAME_UP(), "", true); b.querySelector(".tx").textContent = plain(acc).slice(0, n === Infinity ? undefined : n) || "…"; shape(); };
+  const render = (n) => { if (!b) b = bubble("amadeus", NAME_UP(), "", true); const tx = b.querySelector(".tx"); tx.textContent = plain(acc).slice(0, n === Infinity ? undefined : n) || "…"; tx.scrollTop = tx.scrollHeight; shape(); };  // the newest words stay in view
   if (aloud) Aloud.reveal = (n) => render(n);
   try {
     const cid = (await api("/api/quickchat")).id;  // today's chat: the dashboard shows the whole conversation
