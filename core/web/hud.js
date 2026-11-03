@@ -288,8 +288,8 @@ const TILES = [["assistant", "Assistant", "Name, personality and look", '<circle
   ["phone", "Phone", "Pair a phone, private or visible", '<rect x="7" y="3" width="10" height="18"/><path d="M11 18h2"/>'],
   ["reminders", "Reminders", "What it will remind you of", '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/>']];
 function loadSettings() {
-  body().innerHTML = `<div class="tiles">${TILES.map(([id, t, s, ic]) => `<a class="tile" href="/classic#${id}"><svg viewBox="0 0 24 24">${ic}</svg><b>${t}</b><span>${s}</span></a>`).join("")}</div>` +
-    `<h3 style="margin-top:24px">Look</h3>${note("This is the new HUD look, still being built. The settings pages open in the classic look for now.")}` +
+  body().innerHTML = `<div class="tiles">${TILES.map(([id, t, s, ic]) => `<button class="tile" data-act="setpage" data-page="${id}"><svg viewBox="0 0 24 24">${ic}</svg><b>${t}</b><span>${s}</span></button>`).join("")}</div>` +
+    `<h3 style="margin-top:24px">Look</h3>${note("The HUD look, or the classic one (it stays at /classic either way).")}` +
     `<div class="acts"><button class="btn" data-act="classic">Use the classic look</button></div>`;
 }
 

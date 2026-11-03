@@ -455,3 +455,20 @@ button.ev:hover { background: rgba(95,216,255,.2); }
 .pcomp .sample { width: 100%; order: 7; margin: 0; }
 .ov.md h1, .ov.md h2 { font: 600 13px var(--display); letter-spacing: .16em; text-transform: uppercase; margin: 0 0 8px; }
 .ov.md h3 { margin: 10px 0 4px; }
+/* settings pages */
+.pform select { background: rgba(3,9,14,.8); border: 1px solid rgba(95,216,255,.3); color: var(--text); font: 400 13px var(--mono); padding: 7px 8px; color-scheme: dark; }
+.pform label small { font: 400 10.5px var(--mono); letter-spacing: 0; text-transform: none; color: var(--dim); }
+.radio { display: flex; align-items: center; gap: 10px; letter-spacing: 0; text-transform: none; }
+.pform .radio label.chk { padding: 0; font: 400 13px var(--body); color: var(--text); letter-spacing: 0; text-transform: none; }
+.avts { display: flex; gap: 10px; flex-wrap: wrap; }
+.avt { display: grid; justify-items: center; gap: 4px; padding: 8px; border: 1px dashed rgba(95,216,255,.25); width: 92px; font: 400 11px var(--mono); color: var(--dim); text-transform: none; letter-spacing: 0; }
+.avt img { width: 56px; height: 56px; object-fit: contain; } .avt.on { border: 1px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 12px rgba(95,216,255,.25); }
+.acts input[type=file] { font: 400 11.5px var(--mono); color: var(--dim); max-width: 260px; }
+.clips { display: flex; gap: 6px; flex-wrap: wrap; }
+.row .t span.wrap { white-space: normal; }
+.phone { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; } .phone > div { flex: 1; min-width: 240px; }
+.qr { width: 180px; height: 180px; background: #fff; padding: 8px; }
+.paircode { font: 500 30px var(--mono); letter-spacing: .3em; color: var(--cyan); text-shadow: 0 0 12px rgba(95,216,255,.5); margin: 12px 0 4px; }
+.dayrep { margin-bottom: 16px; } .dayrep h3 { display: flex; align-items: center; gap: 10px; } .dayrep .btn { padding: 3px 8px; }
+.dayrep .md { font-size: 13.5px; }
+.hud.tl:hover .bigtime { color: var(--cyan); text-shadow: 0 0 14px rgba(95,216,255,.4); }
