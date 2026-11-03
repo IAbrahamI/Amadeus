@@ -196,11 +196,15 @@ phase_ollama() {
     run ollama pull "$OLLAMA_MODEL"
   fi
 
-  if grep -qx "${OLLAMA_CTX_VARIANT}:latest\|${OLLAMA_CTX_VARIANT}" <<<"$models"; then
+  # the variant Amadeus uses: a larger context, and at most a quarter of the CPU threads (the model runs on the GPU;
+  # with every core busy the desktop stutters while it writes, and more threads aren't faster)
+  local threads=$(( $(nproc) / 4 )); (( threads < 2 )) && threads=2
+  if grep -qx "${OLLAMA_CTX_VARIANT}:latest\|${OLLAMA_CTX_VARIANT}" <<<"$models" \
+     && ollama show "$OLLAMA_CTX_VARIANT" --modelfile 2>/dev/null | grep -q '^PARAMETER num_thread'; then
     ok "context variant $OLLAMA_CTX_VARIANT present"
   else
     local mf; mf="$(mktemp)"
-    printf 'FROM %s\nPARAMETER num_ctx %s\n' "$OLLAMA_MODEL" "$OLLAMA_NUM_CTX" >"$mf"
+    printf 'FROM %s\nPARAMETER num_ctx %s\nPARAMETER num_thread %s\nPARAMETER temperature 0.2\n' "$OLLAMA_MODEL" "$OLLAMA_NUM_CTX" "$threads" >"$mf"
     run ollama create "$OLLAMA_CTX_VARIANT" -f "$mf"
     rm -f "$mf"
   fi
