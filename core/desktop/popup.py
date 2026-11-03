@@ -20,6 +20,10 @@ _cfg = json.load(open(_cfg_file)) if os.path.exists(_cfg_file) else {}
 SOFTWARE = os.path.join(_cfg.get("data_dir", os.path.expanduser("~/.local/share/amadeus/core")), "popup-software-rendering")
 if _cfg.get("gpu_rendering") is False or os.path.exists(SOFTWARE):
     os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+# WebKit's JavaScript engine uses SIGUSR1 for its garbage collector by default, and this program uses SIGUSR1 for
+# "show the mini core / a call / the wake word". Sharing it crashed the window (when the wake word or a call sent
+# SIGUSR1 while the engine was active), so the engine gets a signal of its own.
+os.environ.setdefault("JSC_SIGNAL_FOR_GC", str(signal.SIGPWR))
 import gi  # noqa: E402
 
 gi.require_version("Gtk", "3.0")
