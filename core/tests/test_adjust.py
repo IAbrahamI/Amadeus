@@ -38,5 +38,18 @@ class Adjust(unittest.TestCase):
         self.assertIn("error", agent.revise(self.aid, "  "))
 
 
+class MailAccountsOff(unittest.TestCase):
+    """An account you switched off is never read: its mail and its folders are left out, reading one of its mails fails."""
+
+    def test_switched_off_account_is_hidden(self):
+        from amadeus_core import mailbridge
+        off = {"uni"}
+        mails = [{"id": 1, "accountId": "me"}, {"id": 2, "accountId": "uni"}]
+        self.assertEqual(mailbridge._hide("recent", mails, off), [mails[0]])
+        self.assertEqual(mailbridge._hide("accounts", [{"id": "me"}, {"id": "uni"}], off), [{"id": "me"}])
+        with self.assertRaises(RuntimeError):
+            mailbridge._hide("read", {"id": 2, "accountId": "uni"}, off)
+
+
 if __name__ == "__main__":
     unittest.main()

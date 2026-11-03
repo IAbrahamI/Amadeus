@@ -1,0 +1,260 @@
+// The HUD's big views: Calendar (a week), Mail (one inbox per account) and Projects. Helpers come from hud.js.
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const hm = (iso) => (iso && iso.length > 10 ? iso.slice(11, 16) : "");
+const ago = (t) => { const d = new Date(t * 1000), tm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? tm : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${tm}`; };
+
+// ---------- Calendar: one week, your own changes need no approval (the same as the classic page) ----------
+const cal = { week: null, occ: [], edit: null };
+const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return addDays(x, -((x.getDay() + 6) % 7)); };
+async function loadCalendar() {
+  if (!cal.week) cal.week = monday(new Date());
+  const from = cal.week, to = addDays(from, 7);
+  cal.occ = await api(`/api/calendar?from=${ymd(from)}&to=${ymd(to)}`);
+  const days = [...Array(7)].map((_, i) => addDays(from, i)), today = ymd(new Date());
+  const wk = Math.ceil(((from - new Date(from.getFullYear(), 0, 1)) / 864e5 + new Date(from.getFullYear(), 0, 1).getDay() + 1) / 7);
+  $("#pmeta").textContent = `Week ${wk} · ${from.toLocaleDateString([], { day: "numeric", month: "short" })} – ${addDays(from, 6).toLocaleDateString([], { day: "numeric", month: "short" })}`;
+  const timed = cal.occ.filter((o) => !o.all_day), allDay = cal.occ.filter((o) => o.all_day);
+  const hrs = timed.map((o) => [Number(o.occ_start.slice(11, 13)), Math.ceil(Number(o.occ_end.slice(11, 13)) + Number(o.occ_end.slice(14, 16)) / 60)]);
+  const h0 = Math.min(8, ...hrs.map((h) => h[0])), h1 = Math.max(18, ...hrs.map((h) => Math.min(24, h[1] || 24)));
+  const H = 46, hours = [...Array(h1 - h0)].map((_, i) => h0 + i);
+  let h = `<div class="calbar"><button class="btn" data-act="calweek" data-d="-7">‹</button><button class="btn" data-act="calweek" data-d="0">This week</button>` +
+    `<button class="btn" data-act="calweek" data-d="7">›</button><span class="grow"></span><button class="btn go" data-act="calnew">+ New event</button></div>`;
+  h += `<div id="calEdit"></div><div class="weekwrap"><div class="week w7"><div class="dh"></div>` +
+    days.map((d) => `<div class="dh${ymd(d) === today ? " today" : ""}">${d.toLocaleDateString([], { weekday: "short" })} ${d.getDate()}</div>`).join("");
+  if (allDay.length) h += `<div class="hr allday">all day</div>` + days.map((d) => `<div class="alld">${allDay.filter((o) => o.occ_start.slice(0, 10) <= ymd(d) && o.occ_end.slice(0, 10) > ymd(d))
+    .map((o) => `<button class="ev mini${o.created_by === "amadeus" ? " amadeus" : ""}" data-act="calopen" data-id="${esc(o.id)}">${esc(o.title)}</button>`).join("")}</div>`).join("");
+  h += `<div>${hours.map((x) => `<div class="hr">${String(x).padStart(2, "0")}:00</div>`).join("")}</div>`;
+  days.forEach((d) => {
+    const key = ymd(d), list = timed.filter((o) => o.occ_start.slice(0, 10) === key).sort((a, b) => a.occ_start.localeCompare(b.occ_start));
+    const lanes = [];  // side by side when they overlap
+    list.forEach((o) => { let l = lanes.findIndex((end) => end <= o.occ_start); if (l < 0) l = lanes.push("") - 1; lanes[l] = o.occ_end; o._lane = l; });
+    h += `<div class="col${key === today ? " today" : ""}" data-day="${key}">` + hours.map(() => '<div class="slot"></div>').join("");
+    list.forEach((o) => {
+      const s = (new Date(o.occ_start) - new Date(key + "T00:00")) / 36e5, e = Math.min(24, (new Date(o.occ_end) - new Date(key + "T00:00")) / 36e5);
+      const w = 100 / lanes.length;
+      h += `<button class="ev${o.created_by === "amadeus" ? " amadeus" : ""}" data-act="calopen" data-id="${esc(o.id)}" style="top:${(s - h0) * H + 2}px;height:${Math.max(20, (e - s) * H - 4)}px;left:calc(${o._lane * w}% + 3px);width:calc(${w}% - 6px)">` +
+        `<b>${esc(o.title)}${o.repeat ? " ↻" : ""}</b><span>${hm(o.occ_start)}${o.location ? " · " + esc(o.location) : ""}</span></button>`;
+    });
+    if (key === today) { const n = new Date(), y = (n.getHours() + n.getMinutes() / 60 - h0) * H; if (y > 0 && y < hours.length * H) h += `<div class="now" style="top:${y}px"></div>`; }
+    h += "</div>";
+  });
+  body().innerHTML = h + "</div></div>";
+  if (cal.edit) calForm(cal.edit === "new" ? null : cal.occ.find((o) => o.id === cal.edit));
+}
+function calForm(o, day) {
+  const box = $("#calEdit"); if (!box) return;
+  const ev = o || { title: "", start: (day || ymd(new Date())) + "T09:00", end: (day || ymd(new Date())) + "T10:00", all_day: 0, location: "", notes: "" };
+  box.innerHTML = `<form class="pform calform" id="calForm"><div class="calrow"><label>Title<input name="title" value="${esc(ev.title)}" required></label>
+      <label>Day<input type="date" name="date" value="${esc(ev.start.slice(0, 10))}" required></label></div>
+    <div class="calrow"><label class="chk"><input type="checkbox" name="all_day" ${ev.all_day ? "checked" : ""}> All day</label>
+      <label>From<input type="time" name="from" value="${hm(ev.start) || "09:00"}"></label><label>To<input type="time" name="to" value="${hm(ev.end) || "10:00"}"></label>
+      <label>Where<input name="location" value="${esc(ev.location || "")}"></label></div>
+    <label>Notes<input name="notes" value="${esc(ev.notes || "")}"></label>
+    ${o && o.repeat ? note("This repeats: a change applies to the whole series.") : ""}
+    <div class="acts">${o ? '<button type="button" class="btn" data-act="caldel">Delete</button>' : ""}<span class="grow"></span>
+      <button type="button" class="btn" data-act="calcancel">Cancel</button><button class="btn go">${o ? "Save" : "Add"}</button></div><p class="sample" id="calMsg"></p></form>`;
+  box.querySelector("input[name=title]").focus();
+}
+async function calSave(f) {
+  const allDay = f.all_day.checked, date = f.date.value, from = f.from.value || "09:00", to = f.to.value || "10:00";
+  const ev = cal.edit && cal.edit !== "new" ? cal.occ.find((o) => o.id === cal.edit) : null;
+  const b = { title: f.title.value, all_day: allDay, location: f.location.value, notes: f.notes.value,
+    start: allDay ? date : `${date}T${from}`, end: allDay ? "" : `${to > from ? date : ymd(addDays(new Date(date + "T00:00"), 1))}T${to}` };
+  if (ev) Object.assign(b, { repeat: ev.repeat || "", repeat_until: ev.repeat_until || "", alert: ev.alert });
+  const r = await api(ev ? `/api/calendar/${ev.id}` : "/api/calendar", { method: ev ? "PATCH" : "POST", body: JSON.stringify(b) });
+  if (r.error) { $("#calMsg").textContent = "⚠ " + r.error; return; }
+  cal.edit = null; cal.week = monday(new Date(date + "T00:00")); loadCalendar(); nextUp();
+}
+
+// ---------- Mail: one inbox per account, never mixed ----------
+const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: null };
+async function loadMail() {
+  let st;
+  try { st = await (await fetch("/api/mail/status")).json(); } catch { st = { connected: false }; }
+  if (!st.connected) {
+    body().innerHTML = note("<b>Thunderbird isn't connected.</b> Open Thunderbird (with the Amadeus Bridge add-on installed) and the mail shows up here.") +
+      '<div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>';
+    return;
+  }
+  mail.accounts = st.accounts; mail.off = st.off || [];
+  const on = mail.accounts.filter((a) => !mail.off.includes(a.id));
+  if (!mail.acc || (mail.acc !== "__add" && !on.some((a) => a.id === mail.acc))) mail.acc = on[0] ? on[0].id : "__add";
+  try { mail.unread = {}; (await (await fetch("/api/mail/unread")).json()).forEach((m) => (mail.unread[m.accountId] = (mail.unread[m.accountId] || 0) + 1)); } catch {}
+  $("#pmeta").textContent = `${on.length} account${on.length === 1 ? "" : "s"}, kept apart`;
+  await renderMail();
+}
+const mailRail = () => '<nav class="acc-tabs" aria-label="Accounts">' + mail.accounts.filter((a) => !mail.off.includes(a.id)).map((a) => {
+  const n = mail.unread[a.id] || 0, addr = (a.identities[0] || {}).email || a.type;
+  return `<button class="acc${a.id === mail.acc ? " on" : ""}" aria-current="${a.id === mail.acc}" data-act="acc" data-acc="${esc(a.id)}"><span><b>${esc(a.name)}</b><small>${esc(addr)}</small></span>${n ? `<em>${n}</em>` : ""}</button>`;
+}).join("") + `<button class="acc add${mail.acc === "__add" ? " on" : ""}" data-act="acc" data-acc="__add"><span><b>+ Add account</b></span></button></nav>`;
+const when = (d) => { const x = new Date(d), t = new Date(); return x.toDateString() === t.toDateString() ? x.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  : x.toDateString() === addDays(t, -1).toDateString() ? "Yesterday" : x.toLocaleDateString([], { day: "numeric", month: "short" }); };
+async function renderMail() {
+  let main;
+  if (mail.acc === "__add") {
+    main = `<div class="addacc"><h3>Add a mail account</h3>${note(`${esc(NAME())} reads mail through Thunderbird on this PC, so a new account is set up there once, and your sign-in, passwords and 2FA stay in Thunderbird. In Thunderbird: <b>☰ → Account Settings → Account Actions → Add Mail Account</b>. The account then shows up here as its own inbox by itself.`)}
+      <div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>
+      <h3 style="margin-top:22px">Which accounts ${esc(NAME())} may read</h3>${note("Switched off, it never reads that account: not here, not in the chat, not for the evening summary.")}` +
+      rows(mail.accounts.map((a) => { const off = mail.off.includes(a.id);
+        return `<div class="row"><span class="k">${esc((a.identities[0] || {}).email || a.type)}</span><div class="t"><b>${esc(a.name)}</b></div><button class="btn${off ? "" : " go"}" data-act="accread" data-acc="${esc(a.id)}" data-read="${off ? 1 : 0}">${off ? "Off" : "On"}</button></div>`; })) + "</div>";
+  } else if (mail.open) {
+    const m = mail.open;
+    main = `<div class="reader"><div class="phead"><button class="btn" data-act="mailback">‹ Inbox</button><b>${esc(m.subject || "(no subject)")}</b></div>
+      <div class="meta">From ${esc(m.from)}<br>To ${esc((m.to || []).join(", "))}<br>${new Date(m.date).toLocaleString()}${m.attachments && m.attachments.length ? "<br>📎 " + m.attachments.map((a) => esc(a.name)).join(", ") : ""}</div>
+      <div class="acts"><button class="btn" data-act="mailsum">Summarize</button><button class="btn go" data-act="mailreply">Reply with ${esc(NAME())}</button><button class="btn" data-act="mailunread">Mark unread</button></div>
+      <div class="mailbody">${esc(m.body)}${m.truncated ? "\n[…]" : ""}</div></div>`;
+  } else {
+    mail.list = await (await fetch(`/api/mail/recent?days=14&account=${encodeURIComponent(mail.acc)}`)).json().catch(() => []);
+    main = Array.isArray(mail.list) && mail.list.length ? rows(mail.list.map((m) => `<button class="row pick${m.read ? "" : " unread"}" data-act="mailopen" data-id="${m.id}"><span class="k">${when(m.date)}</span><div class="t"><b>${esc(m.from)}</b><span>${esc(m.subject || "(no subject)")}</span></div><span></span></button>`))
+      : note(Array.isArray(mail.list) ? "No mail in the last two weeks." : "⚠ " + esc(mail.list.error || "Mail didn't load."));
+  }
+  body().innerHTML = `<div class="mailwrap">${mailRail()}<div class="mailmain">${main}</div></div>`;
+}
+// asks in today's chat (sent right away, or left in the ask bar for you to finish)
+function askChat(text, now) { if (now) { open("chat"); send(text); } else { $("#q").value = text; $("#q").focus(); } }
+
+// ---------- Projects: a list, and inside one the overview, files, runs and a message box ----------
+const proj = { sel: null, d: null, to: "a", preview: null, poll: null };
+const ST = { needs: ["st-wait", "Needs you"], active: ["st-active", "Active"], idle: ["st-idle", "Idle"], done: ["st-done", "Done"] };
+async function loadProjects() { proj.sel = null; await renderProjects(); }
+async function renderProjects() {
+  clearInterval(proj.poll);
+  if (proj.sel === "new") {
+    body().innerHTML = `<div class="pnew"><button class="btn" data-act="proj" data-p="">‹ Projects</button><h3 style="margin-top:18px">New project</h3>
+      ${note(`Give it a name and say in a sentence what it's about. ${esc(NAME())} then asks you a few questions in the chat and writes a clean spec for the project. You approve it before anything is saved.`)}
+      <form class="pform" id="projNew"><label>Name<input id="pName" placeholder="e.g. Learn Rust" autocomplete="off" required></label>
+      <label>What is it about?<textarea id="pAbout" rows="3" placeholder="e.g. I want to build a small CLI tool in Rust by Christmas"></textarea></label>
+      <div class="acts"><button class="btn go">Start the interview</button></div></form></div>`;
+    return;
+  }
+  if (proj.sel) return renderProject();
+  const list = await api("/api/projects");
+  $("#pmeta").textContent = "Vault · Projects/";
+  body().innerHTML = `<div class="rows"><button class="row pick newp" data-act="proj" data-p="new"><span class="k">+</span><div class="t"><b>New project</b><span>${esc(NAME())} interviews you and writes the overview</span></div><span></span></button>` +
+    list.map((p) => { const [c, l] = ST[p.state] || ST.idle;
+      return `<button class="row pick ps ${c}" data-act="proj" data-p="${esc(p.name)}"><span class="k">▸</span><div class="t"><b>${esc(p.name)}</b><span>${p.files} file${p.files === 1 ? "" : "s"} · changed ${ago(p.updated)}${p.last_run ? " · last run " + ago(p.last_run) : ""}</span></div><span class="chip st ${c}">${l}</span></button>`; }).join("") + "</div>" +
+    '<div class="stlegend"><span class="st-wait">Needs you</span><span class="st-active">Active</span><span class="st-idle">Idle</span><span class="st-done">Done</span></div>';
+}
+async function renderProject() {
+  const d = proj.d = await api(`/api/projects/${encodeURIComponent(proj.sel)}`);
+  if (d.error) { proj.sel = null; return renderProjects(); }
+  const [c, l] = ST[d.state] || ST.idle, last = d.runs[d.runs.length - 1];
+  const items = d.messages.map((m) => ({ t: m.created, h: m.role === "user" ? `<div class="tline you"><span class="ts">${ago(m.created)}</span><div><b>You → ${esc(NAME())}</b><p>${esc(m.content)}</p></div></div>`
+      : `<div class="tline"><span class="ts">${ago(m.created)}</span><div><b>${esc(NAME())}</b><div class="md">${md(stripMood(m.content))}</div></div></div>` }))
+    .concat(d.runs.map((r) => ({ t: r.created, h: `<div class="tline you"><span class="ts">${ago(r.created)}</span><div><b>You → Claude Code</b><p>${esc((r.task || "").slice(0, 600))}</p></div></div>` +
+      `<div class="tline${r.status === "running" ? " run" : ""}"><span class="ts">${r.finished ? ago(r.finished) : "now"}</span><div><b class="cc">Claude Code · ${r.status === "running" ? "working…" : r.status}${r.cost ? ` · $${r.cost.toFixed(2)}` : ""}</b>${r.summary ? `<div class="md">${md(r.summary)}</div>` : ""}</div></div>` })))
+    .sort((a, b) => a.t - b.t);
+  const q = d.state === "needs" && last ? `<div class="tline q"><span class="ts">${ago(last.finished || last.created)}</span><div><b>Questions for you</b>${note("The last run ended with questions. Your answer goes to Claude Code (through the privacy filter, and you see exactly what leaves first).")}
+    <form class="qform" id="projAnswer"><input placeholder="Your answers, e.g. 1 yes, 2 Munich, 3 yes" aria-label="Answer"><button class="btn go">Continue the project</button></form></div></div>` : "";
+  $("#pmeta").textContent = `${d.files.length} file${d.files.length === 1 ? "" : "s"}`;
+  body().innerHTML = `<div class="phead"><button class="btn" data-act="proj" data-p="">‹ Projects</button><b>${esc(d.name)}</b><span class="chip st ${c}">${l}</span><span class="grow"></span>
+      <button class="btn" data-act="projdone" data-done="${d.state === "done" ? 0 : 1}">${d.state === "done" ? "Open again" : "Mark done"}</button><button class="btn" data-act="projterm" title="Opens a terminal with Claude Code in this project's folder">Open in Claude Code</button></div>
+    <div class="pgrid"><div class="pside"><h3>Overview</h3><div class="ov md">${d.overview ? md(d.overview) : note("No Overview.md yet.")}</div>
+      <h3 style="margin-top:18px">Files</h3><div class="files">${d.files.map((f) => `<div><button class="linkfile" data-act="projfile" data-f="${esc(f.path)}">▤ ${esc(f.path)}</button><small>${Math.max(1, Math.round(f.size / 1024))} KB</small></div>`).join("") || note("No files yet.")}</div><div id="projFile"></div></div>
+    <div class="pmain"><h3>Timeline</h3><div class="tlist">${items.map((i) => i.h).join("") || note(`Nothing here yet. Talk to ${esc(NAME())} about the project, or give Claude Code its first task.`)}${q}</div>
+      <form class="pcomp${proj.to === "c" ? " cc" : ""}" id="projSend"><span class="tolabel">Send to</span><div class="to" role="radiogroup" aria-label="Send to">
+        <button type="button" class="${proj.to === "a" ? "on" : ""}" role="radio" aria-checked="${proj.to === "a"}" data-act="to" data-who="a">${esc(NAME())}</button>
+        <button type="button" class="${proj.to === "c" ? "on" : ""}" role="radio" aria-checked="${proj.to === "c"}" data-act="to" data-who="c">Claude Code</button></div>
+        <p class="tohint">${proj.to === "c" ? "Starts or continues a Claude Code run in this project's folder. You see exactly what leaves the PC before it's sent." : `${esc(NAME())} knows this project and can hand work to Claude Code for you.`}</p>
+        <input id="projText" placeholder="${proj.to === "c" ? "Task or answer for Claude Code…" : `Message to ${esc(NAME())} about this project…`}" aria-label="Message" autocomplete="off">
+        <button class="btn go psend">${proj.to === "c" ? "Send to Claude Code ›" : `Send to ${esc(NAME())} ›`}</button><div id="projPreview" class="preview" hidden></div><p class="sample" id="projInfo"></p></form></div></div>`;
+  const tl = body().querySelector(".tlist"); if (tl && tl.lastElementChild) tl.lastElementChild.scrollIntoView({ block: "nearest" });
+  if (d.running) proj.poll = setInterval(async () => { const x = await api(`/api/projects/${encodeURIComponent(d.name)}`); if (!x.running && proj.sel === d.name && curView === "projects") renderProject(); }, 5000);
+}
+// to Claude Code: first the privacy filter's preview (exactly what leaves), then the send you confirm
+async function toClaude(text, info) {
+  const name = proj.d.name;
+  if (!proj.preview || proj.preview.text !== text) {
+    const pv = await post(`/api/projects/${encodeURIComponent(name)}/claude`, { text });
+    if (pv.error) { info.textContent = "⚠ " + pv.error; return; }
+    proj.preview = { text, preview: pv.preview };
+    const box = $("#projPreview"); box.hidden = false;
+    box.innerHTML = `<b>Exactly this goes to Claude Code${pv.findings.length ? ` (the privacy filter replaced: ${esc(pv.findings.join(", "))})` : ""}:</b><div>${esc(pv.preview)}</div>
+      <div class="acts"><button type="button" class="btn" data-act="pvcancel">Cancel</button><button type="button" class="btn go cc" data-act="pvsend">Send it</button></div>`;
+    return;
+  }
+  const r = await post(`/api/projects/${encodeURIComponent(name)}/claude`, { text, confirm: true, preview: proj.preview.preview });
+  proj.preview = null;
+  if (r.error) { info.textContent = "⚠ " + r.error; return; }
+  subtitle(r.resumed ? "Claude Code continues the project." : "Claude Code started on the project.");
+  renderProject();
+}
+async function toAssistant(text) {
+  const name = proj.d.name, { id } = await post(`/api/projects/${encodeURIComponent(name)}/chat`, {});
+  const tl = body().querySelector(".tlist");
+  tl.insertAdjacentHTML("beforeend", `<div class="tline you"><span class="ts">now</span><div><b>You → ${esc(NAME())}</b><p>${esc(text)}</p></div></div><div class="tline"><span class="ts">now</span><div><b>${esc(NAME())}</b><div class="md">…</div></div></div>`);
+  const out = tl.lastElementChild.querySelector(".md"); out.scrollIntoView({ block: "nearest" });
+  setMode("think"); let acc = "";
+  try {
+    const r = await fetch(`/api/conversations/${id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true }); let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = chunk.match(/^event: (.*)$/m)?.[1], data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] || "{}");
+        if (ev === "token") { acc += data; setMode("speak"); core.talk(); out.innerHTML = md(stripMood(acc)); subtitle(acc); }
+        if (ev === "approval") { counts(); subtitle(`I need your OK first: ${data.summary}`); }
+        if (ev === "error") out.textContent = "⚠ " + data.message;
+      }
+    }
+  } finally { setTimeout(() => setMode("idle"), 500); if (proj.sel === name && curView === "projects") renderProject(); }
+}
+
+// ---------- clicks and forms of these views ----------
+body().addEventListener("click", async (e) => {
+  const a = e.target.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act === "calweek") { const n = Number(a.dataset.d); cal.week = n ? addDays(cal.week, n) : monday(new Date()); cal.edit = null; loadCalendar(); }
+  if (act === "calnew") { cal.edit = "new"; calForm(null); }
+  if (act === "calopen") { cal.edit = a.dataset.id; calForm(cal.occ.find((o) => o.id === a.dataset.id)); body().scrollTop = 0; }
+  if (act === "calcancel") { cal.edit = null; $("#calEdit").innerHTML = ""; }
+  if (act === "caldel") {
+    const o = cal.occ.find((x) => x.id === cal.edit);
+    if (!confirm(`Delete "${o ? o.title : "this event"}"${o && o.repeat ? " (the whole series)" : ""}?`)) return;
+    await api(`/api/calendar/${cal.edit}`, { method: "DELETE" }); cal.edit = null; loadCalendar(); nextUp();
+  }
+  if (act === "acc") { mail.acc = a.dataset.acc; mail.open = null; renderMail(); }
+  if (act === "accread") { const r = await post("/api/mail/accounts", { id: a.dataset.acc, read: a.dataset.read === "1" }); mail.off = r.off; renderMail(); mailCount(); }
+  if (act === "tbopen") { await post("/api/mail/thunderbird", {}); a.textContent = "Opening Thunderbird…"; }
+  if (act === "mailopen") {
+    const id = Number(a.dataset.id), m = await (await fetch(`/api/mail/message/${id}`)).json();
+    if (m.error) { subtitle("⚠ " + m.error); return; }
+    mail.open = m; renderMail();
+    if (!m.read) { post("/api/mail/markread", { ids: [id], read: true }); mail.unread[m.accountId] = Math.max(0, (mail.unread[m.accountId] || 1) - 1); mailCount(); }
+  }
+  if (act === "mailback") { mail.open = null; renderMail(); }
+  if (act === "mailunread") { await post("/api/mail/markread", { ids: [mail.open.id], read: false }); mail.open = null; renderMail(); mailCount(); }
+  if (act === "mailsum") askChat(`Summarize email [${mail.open.id}] ("${mail.open.subject}") in a few sentences and tell me if I need to do anything.`, true);
+  if (act === "mailreply") askChat(`Draft a reply to email [${mail.open.id}] ("${mail.open.subject}") from ${mail.open.from}. My points: `, false);
+  if (act === "proj") { proj.sel = a.dataset.p || null; proj.preview = null; renderProjects(); body().scrollTop = 0; }
+  if (act === "projdone") { await post(`/api/projects/${encodeURIComponent(proj.d.name)}/state`, { done: a.dataset.done === "1" }); renderProject(); }
+  if (act === "projterm") { const r = await post(`/api/projects/${encodeURIComponent(proj.d.name)}/terminal`, {}); $("#projInfo").textContent = r.error ? "Couldn't open it: " + r.error : "Opened Claude Code in a terminal."; }
+  if (act === "projfile") {
+    const f = await api(`/api/projects/${encodeURIComponent(proj.d.name)}/file?path=${encodeURIComponent(a.dataset.f)}`);
+    $("#projFile").innerHTML = `<div class="filebox"><div class="phead"><b>${esc(a.dataset.f)}</b><span class="grow"></span><button class="btn" data-act="projfileclose">Close</button></div>` +
+      (f.error ? note("⚠ " + esc(f.error)) : f.binary ? note("Not a text file: open it in Obsidian or the file manager.") : /\.md$/i.test(a.dataset.f) ? `<div class="md">${md(f.text)}</div>` : `<pre>${esc(f.text)}</pre>`) + "</div>";
+  }
+  if (act === "projfileclose") $("#projFile").innerHTML = "";
+  if (act === "to") { proj.to = a.dataset.who; proj.preview = null; const keep = $("#projText").value; await renderProject(); $("#projText").value = keep; $("#projText").focus(); }
+  if (act === "pvcancel") { proj.preview = null; $("#projPreview").hidden = true; }
+  if (act === "pvsend") toClaude(proj.preview.text, $("#projInfo"));
+});
+body().addEventListener("submit", async (e) => {
+  const f = e.target;
+  if (f.id === "calForm") { e.preventDefault(); calSave(f); }
+  if (f.id === "projNew") {
+    e.preventDefault();
+    const n = $("#pName").value.trim(), about = $("#pAbout").value.trim(); if (!n) return;
+    open("chat"); send(`New project: ${n}. ${about}`.trim());
+  }
+  if (f.id === "projAnswer" || f.id === "projSend") {
+    e.preventDefault();
+    const inp = f.querySelector("input"), text = inp.value.trim(); if (!text) return;
+    if (f.id === "projAnswer" || proj.to === "c") return toClaude(text, $("#projInfo"));
+    inp.value = ""; toAssistant(text);
+  }
+});

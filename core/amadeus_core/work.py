@@ -166,17 +166,48 @@ def project_of_chat(cid):
     return c["title"][3:] if c and c["title"].startswith("🗂️ ") else None
 
 
+def _asks(summary):
+    """The run ended with questions for you (a line that ends in a question mark near the end)."""
+    return bool(re.search(r"\?\s*(\*+)?\s*$", summary[-800:], re.M))
+
+
+def state(name, last=None):
+    """needs (amber: a run asked you something), active (Claude Code is working), idle, done (you closed it)."""
+    if name.lower() in {n.lower() for n in db.get_setting("projects_done", [])}:
+        return "done"
+    if last is None:
+        last = db.q("SELECT status, created, finished, summary FROM work_jobs WHERE lower(project)=lower(?) ORDER BY created DESC LIMIT 1",
+                    (name,), one=True)
+    if not last:
+        return "idle"
+    if last["status"] == "running":
+        return "active"
+    if last["status"] == "done" and _asks(last.get("summary") or ""):
+        cid = project_chat(name, create=False)
+        later = cid and db.q("SELECT id FROM messages WHERE conversation_id=? AND role='user' AND created>?",
+                             (cid, last.get("finished") or last["created"]))
+        return "idle" if later else "needs"
+    return "idle"
+
+
+def set_done(name, done):
+    name, _ = _project_dir(name)
+    keep = [n for n in db.get_setting("projects_done", []) if n.lower() != name.lower()]
+    db.set_setting("projects_done", keep + ([name] if done else []))
+    return {"name": name, "state": state(name)}
+
+
 def projects():
     out = []
     for name in sorted(os.listdir(_projects_root()), key=str.lower):
         path = os.path.join(_projects_root(), name)
         if not os.path.isdir(path) or name.startswith("."):
             continue
-        last = db.q("SELECT status, created, finished FROM work_jobs WHERE lower(project)=lower(?) ORDER BY created DESC LIMIT 1",
+        last = db.q("SELECT status, created, finished, summary FROM work_jobs WHERE lower(project)=lower(?) ORDER BY created DESC LIMIT 1",
                     (name,), one=True)
         files = [f for f in os.listdir(path) if not f.startswith(".") and f != "__pycache__"]
         out.append({"name": name, "files": len(files), "status": last["status"] if last else None,
-                    "last_run": last["created"] if last else None,
+                    "last_run": last["created"] if last else None, "state": state(name, last),
                     "updated": max([os.path.getmtime(os.path.join(path, f)) for f in files] or [os.path.getmtime(path)])})
     return sorted(out, key=lambda p: p["updated"], reverse=True)
 
@@ -201,7 +232,7 @@ def project(name):
     msgs = [{"role": m["role"], "content": m["content"], "created": m["created"]}
             for m in (db.messages(cid) if cid else []) if m["role"] in ("user", "assistant") and m["content"].strip()]
     return {"name": name, "files": files, "overview": overview, "runs": runs, "chat": cid, "messages": msgs,
-            "running": any(r["status"] == "running" for r in runs)}
+            "running": any(r["status"] == "running" for r in runs), "state": state(name)}
 
 
 def project_file(name, rel):

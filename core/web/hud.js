@@ -53,9 +53,9 @@ const VIEWS = {
   chat: { side: 1, title: "Chat", meta: "Today", load: loadChat },
   todo: { side: 1, title: "ToDo", meta: "ToDo.md", load: loadTodo },
   approvals: { side: 1, title: "Approvals", meta: "", load: loadApprovals },
-  calendar: { title: "Calendar", meta: "", load: () => classic("calendar", "The calendar") },
-  mail: { title: "Mail", meta: "Thunderbird", load: () => classic("mail", "Mail") },
-  projects: { title: "Projects", meta: "Vault · Projects/", load: () => classic("projects", "Projects") },
+  calendar: { title: "Calendar", meta: "", load: () => loadCalendar() },
+  mail: { title: "Mail", meta: "Thunderbird", load: () => loadMail() },
+  projects: { title: "Projects", meta: "Vault · Projects/", load: () => loadProjects() },  // Calendar, Mail, Projects: hud-views.js
   memory: { title: "Memory", meta: "Hindsight · local", load: loadMemory },
   settings: { title: "Settings", meta: "", load: loadSettings },
 };
@@ -77,11 +77,6 @@ $("#close").onclick = () => open("home");
 addEventListener("keydown", (e) => { if (e.key === "Escape" && curView !== "home" && !e.target.closest("input, textarea")) open("home"); });
 const rows = (list) => `<div class="rows">${list.join("")}</div>`;
 const note = (t) => `<p class="prose">${t}</p>`;
-// views that aren't in the new look yet open the classic page there
-function classic(view, label) {
-  body().innerHTML = note(`${esc(label)} is still in the classic look while the new one is being built.`) +
-    `<div class="acts"><a class="btn go" href="/classic#${view}">Open it in the classic view ›</a></div>`;
-}
 
 // ---------- counts: what waits for you ----------
 async function counts() {

@@ -87,6 +87,8 @@ class Handler(BaseHTTPRequestHandler):
         data = open(f, "rb").read()
         self.send_response(200)
         self.send_header("content-type", mimetypes.guess_type(f)[0] or "application/octet-stream")
+        if f.endswith((".html", ".js", ".css")):  # checked every time, so an update shows without clearing a cache
+            self.send_header("cache-control", "no-cache")
         self.send_header("content-length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -447,6 +449,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(work.new_project(str(b.get("name", "")), str(b.get("goal", ""))[:4000]))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
+        m = re.fullmatch(r"/api/projects/([^/]+)/state", p)
+        if m:  # you mark a project done (or open it again)
+            from . import work
+            try:
+                return self._json(work.set_done(urllib.parse.unquote(m.group(1)), bool(b.get("done"))))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 404)
+        if p == "/api/mail/accounts":  # which mail accounts Amadeus may read (switched off = never read, anywhere)
+            off = set(db.get_setting("mail_accounts_off", []))
+            aid = str(b.get("id", ""))[:80]
+            (off.discard if b.get("read", True) else off.add)(aid)
+            db.set_setting("mail_accounts_off", sorted(off))
+            return self._json({"off": sorted(off)})
+        if p == "/api/mail/thunderbird":  # open Thunderbird (to add an account there: sign-in stays in Thunderbird)
+            from .tools import _to_front, launch
+            launch(["thunderbird"], "thunderbird")
+            _to_front(["thunderbird"])
+            return self._json({"ok": True})
         m = re.fullmatch(r"/api/projects/([^/]+)/terminal", p)
         if m:  # "Open in Claude Code": a terminal with Claude Code in the project's folder (your own session)
             from . import work

@@ -46,7 +46,22 @@ def _start_thunderbird():
     return False
 
 
-def call(op, timeout=120, autostart=True, **args):
+def accounts_off():
+    """Accounts you switched off in Mail (+ Add account): Amadeus doesn't read them, anywhere."""
+    from . import db
+    return set(db.get_setting("mail_accounts_off", []))
+
+
+def _hide(op, res, off):
+    if op == "read" and isinstance(res, dict) and res.get("accountId") in off:
+        raise RuntimeError("Reading this mail account is switched off (Mail → + Add account).")
+    if isinstance(res, list):
+        return [x for x in res if not (isinstance(x, dict) and (x.get("accountId") in off or (op == "accounts" and x.get("id") in off)))]
+    return res
+
+
+def call(op, timeout=120, autostart=True, all_accounts=False, **args):
+    """all_accounts: also the accounts you switched off (only for the list where you switch them)."""
     try:
         s = _connect(timeout)
     except OSError:
@@ -62,12 +77,14 @@ def call(op, timeout=120, autostart=True, **args):
         resp = json.loads(f.readline() or b'{"ok": false, "error": "no answer from Thunderbird"}')
     if not resp.get("ok"):
         raise RuntimeError(resp.get("error", "mail bridge error"))
-    return resp.get("result")
+    off = set() if all_accounts else accounts_off()
+    return _hide(op, resp.get("result"), off) if off else resp.get("result")
 
 
 def status():
     try:
-        return {"connected": call("ping", timeout=5) == "pong", "accounts": call("accounts", timeout=10)}
+        return {"connected": call("ping", timeout=5) == "pong", "accounts": call("accounts", timeout=10, all_accounts=True),
+                "off": sorted(accounts_off())}
     except Exception as e:
         return {"connected": False, "error": str(e), "accounts": []}
 

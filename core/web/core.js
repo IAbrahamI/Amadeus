@@ -84,7 +84,7 @@
       void main() {
         float w = uAmp * (.07 * sin(aP.y * 7. + uT * 11. + aPh) + .06 * sin(aP.x * 5. - uT * 7.))
                 + uIdle * (.07 * sin(aP.y * 5. + uT * 2.4 + aPh * .4) + .06 * sin(aP.x * 4. - uT * 1.7));
-        vec3 q = turn(aP); float d = (q.z + 1.) / 2., small = step(uR, 110.);
+        vec3 q = turn(aP); float d = (q.z + 1.) / 2., small = step(uR / uDpr, 110.);
         gl_Position = place(q, uR * uBreathe * (1. + w));
         vA = q.z >= 0. ? .05 + d * .32 + uAmp * .15 * d : .05 + d * .22;
         gl_PointSize = (mix(1., .7, small) + d * mix(.9, .5, small)) * uDpr;
@@ -97,7 +97,7 @@
       }`, `precision mediump float; varying vec4 vC; void main() { gl_FragColor = vC; }`],
     node: [`attribute vec3 aP; attribute float aPh, aSize, aKind, aLit; varying vec3 vCol; varying float vA, vDot, vDA, vLit;${PROJ}
       void main() {
-        vec3 q = turn(drift(aP, aPh)); float d = (q.z + 1.) / 2., small = step(uR, 110.);
+        vec3 q = turn(drift(aP, aPh)); float d = (q.z + 1.) / 2., small = step(uR / uDpr, 110.);
         gl_Position = place(q, uR * uBreathe);
         float base = mix(2.1, 1., small) * aSize * (.6 + d * .7), gs = base * (9. + aLit * 7. + uAmp * 3.);
         gl_PointSize = gs * uDpr;
@@ -114,7 +114,7 @@
         gl_FragColor = vec4(c, max(c.r, max(c.g, c.b)));
       }`],
     pulse: [`attribute vec3 aP; attribute float aAmber; varying float vAmber;${PROJ}
-      void main() { gl_Position = place(turn(aP), uR * uBreathe); gl_PointSize = (uR < 110. ? 8. : 16.) * uDpr; vAmber = aAmber; }`,
+      void main() { gl_Position = place(turn(aP), uR * uBreathe); gl_PointSize = (uR / uDpr < 110. ? 8. : 16.) * uDpr; vAmber = aAmber; }`,
       `precision mediump float; varying float vAmber;
       void main() {
         float r = length(gl_PointCoord - .5) * 2.; if (r > 1.) discard;
