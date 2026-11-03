@@ -19,7 +19,7 @@ jobs:
         working-directory: core
         run: python -m unittest -v
       - name: Python compiles
-        run: python -m py_compile core/amadeus_core/*.py core/desktop/*.py core/voice/*.py obsidian/vault-guard.py
+        run: python -m py_compile core/amadeus_core/*.py core/desktop/*.py core/voice/*.py core/deploy/work-guard.py
       - name: JavaScript parses
         run: for f in core/web/*.js core/thunderbird/addon/*.js; do node --check "$f"; done
       - name: Shell scripts parse

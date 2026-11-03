@@ -130,13 +130,21 @@ async function renderProjects() {
     return;
   }
   if (proj.sel) return renderProject();
-  const list = await api("/api/projects");
-  $("#pmeta").textContent = "Vault · Projects/";
-  body().innerHTML = `<div class="rows"><button class="row pick newp" data-act="proj" data-p="new"><span class="k">+</span><div class="t"><b>New project</b><span>${esc(NAME())} interviews you and writes the overview</span></div><span></span></button>` +
+  const [list, fo] = await Promise.all([api("/api/projects"), api("/api/projects/folder")]);
+  proj.folder = fo;
+  $("#pmeta").textContent = fo.path.replace(/^\/home\/[^/]+/, "~");
+  body().innerHTML = folderBar(fo) + `<div class="rows"><button class="row pick newp" data-act="proj" data-p="new"><span class="k">+</span><div class="t"><b>New project</b><span>${esc(NAME())} interviews you and writes the overview</span></div><span></span></button>` +
     list.map((p) => { const [c, l] = ST[p.state] || ST.idle;
       return `<button class="row pick ps ${c}" data-act="proj" data-p="${esc(p.name)}"><span class="k">▸</span><div class="t"><b>${esc(p.name)}</b><span>${p.files} file${p.files === 1 ? "" : "s"} · changed ${ago(p.updated)}${p.last_run ? " · last run " + ago(p.last_run) : ""}</span></div><span class="chip st ${c}">${l}</span></button>`; }).join("") + "</div>" +
     '<div class="stlegend"><span class="st-wait">Needs you</span><span class="st-active">Active</span><span class="st-idle">Idle</span><span class="st-done">Done</span></div>';
 }
+// where the projects live: shown on top, changed here (or with ./install.sh --setup); amber while still in the vault
+const folderBar = (fo) => fo.in_vault
+  ? `<div class="pfolder warn"><b>Your projects are still inside your Obsidian vault.</b><span>Give them their own folder, so a work run never sees your notes.</span>${folderForm(fo, "~/Amadeus/Projects")}</div>`
+  : `<div class="pfolder"><span class="k">Folder</span><code>${esc(fo.path)}</code><button class="btn" data-act="pfchange">Change</button><div id="pfForm"></div></div>`;
+const folderForm = (fo, suggest) => `<form class="pform pfform" id="pfSet"><div class="calrow"><label>New folder<input id="pfPath" value="${esc(suggest || fo.path)}" autocomplete="off"></label></div>
+  ${fo.projects.length ? `<label class="chk"><input type="checkbox" id="pfMove" checked> Move my ${fo.projects.length} project${fo.projects.length === 1 ? "" : "s"} there (${fo.projects.map(esc).join(", ")})</label>` : ""}
+  <div class="acts"><span class="grow"></span><button class="btn go">Use this folder</button></div><p class="sample" id="pfInfo"></p></form>`;
 async function renderProject() {
   const d = proj.d = await api(`/api/projects/${encodeURIComponent(proj.sel)}`);
   if (d.error) { proj.sel = null; return renderProjects(); }
@@ -230,6 +238,7 @@ body().addEventListener("click", async (e) => {
   if (act === "mailunread") { await post("/api/mail/markread", { ids: [mail.open.id], read: false }); mail.open = null; renderMail(); mailCount(); }
   if (act === "mailsum") askChat(`Summarize email [${mail.open.id}] ("${mail.open.subject}") in a few sentences and tell me if I need to do anything.`, true);
   if (act === "mailreply") askChat(`Draft a reply to email [${mail.open.id}] ("${mail.open.subject}") from ${mail.open.from}. My points: `, false);
+  if (act === "pfchange") $("#pfForm").innerHTML = folderForm(proj.folder);
   if (act === "proj") { proj.sel = a.dataset.p || null; proj.preview = null; renderProjects(); body().scrollTop = 0; }
   if (act === "projdone") { await post(`/api/projects/${encodeURIComponent(proj.d.name)}/state`, { done: a.dataset.done === "1" }); renderProject(); }
   if (act === "projterm") { const r = await post(`/api/projects/${encodeURIComponent(proj.d.name)}/terminal`, {}); $("#projInfo").textContent = r.error ? "Couldn't open it: " + r.error : "Opened Claude Code in a terminal."; }
@@ -246,6 +255,16 @@ body().addEventListener("click", async (e) => {
 body().addEventListener("submit", async (e) => {
   const f = e.target;
   if (f.id === "calForm") { e.preventDefault(); calSave(f); }
+  if (f.id === "pfSet") {
+    e.preventDefault();
+    const path = $("#pfPath").value.trim(), move = !!($("#pfMove") && $("#pfMove").checked), fo = proj.folder;
+    if (move && !confirm(`Move these projects to ${path}?\n\n${fo.projects.join("\n")}\n\nThey are moved, not copied: afterwards they're only in the new folder. Their Claude Code sessions move with them.`)) return;
+    $("#pfInfo").textContent = move ? "Moving…" : "Saving…";
+    const r = await post("/api/projects/folder", { path, move });
+    if (r.error) { $("#pfInfo").textContent = "⚠ " + r.error; return; }
+    subtitle(r.moved && r.moved.length ? `Moved ${r.moved.length} project(s) to ${r.path}.` : `Projects now live in ${r.path}.`);
+    renderProjects();
+  }
   if (f.id === "projNew") {
     e.preventDefault();
     const n = $("#pName").value.trim(), about = $("#pAbout").value.trim(); if (!n) return;

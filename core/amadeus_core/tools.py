@@ -762,7 +762,7 @@ def send_to_work_preview(task):
 
 
 def send_to_work(task, project=""):
-    """After your OK: one Claude Code run works on it in Projects/<project>/ (see work.py). Only the filtered text leaves."""
+    """After your OK: one Claude Code run works on it in <projects folder>/<project>/ (see work.py). Only the filtered text leaves."""
     from . import work
     clean, findings, hold = _scrub(task, keep=("ORGANIZATION",))
     if hold:
@@ -771,7 +771,7 @@ def send_to_work(task, project=""):
     r = work.start(name, clean, CURRENT_CID)
     if isinstance(r, str):
         return r
-    return f"Started on **{r[1]}** (folder Projects/{r[1]}/). I'll tell you when it's done."
+    return f"Started on **{r[1]}** (its folder in your projects folder). I'll tell you when it's done."
 
 
 def continue_project(project, text):
@@ -1259,7 +1259,7 @@ TOOLS = [
     T("notes_add", "Add a note to the user's Notes (Notes.md) when they ask ('note that…', 'write down…').", {"text": S},
       ["text"], notes_add, "notes", True, lambda a: f"Add to your Notes: {a.get('text', '')}"),
     T("list_notes", "List notes in the Amadeus folder (optionally a subfolder). ToDo.md and Notes.md are the user's; "
-      "_Amadeus/ is yours; Projects/ holds the work team's project folders.", {"folder": S}, [], list_notes, "notes"),
+      "_Amadeus/ is yours.", {"folder": S}, [], list_notes, "notes"),
     T("search_notes", "Search the text of notes in the Amadeus folder.", {"text": S}, ["text"], search_notes, "notes"),
     T("read_note", "Read one note (path relative to the Amadeus folder).", {"path": S}, ["path"], read_note, "notes"),
     T("write_note", "Create or overwrite a note in YOUR folder _Amadeus/ (only what you really need; never logs or "
@@ -1404,8 +1404,8 @@ TOOLS = [
       lambda a: "Teach speech recognition these words: **" + ", ".join(a.get("words", [])) + "**"),
     T("voice_words_remove", "Remove words from the speech recognition word list.", {"words": {"type": "array", "items": S}},
       ["words"], voice_words_remove, "voice", True, lambda a: "Remove from speech recognition: **" + ", ".join(a.get("words", [])) + "**"),
-    T("send_to_work", "Send a task to the work side (one Claude Code run in the cloud, working in the vault folder "
-      "Projects/<project>/), e.g. coding, writing, research or bigger projects. Use only when the user asks for it. "
+    T("send_to_work", "Send a task to the work side (one Claude Code run in the cloud, working in its own project folder "
+      "<projects folder>/<project>/, never the user's notes), e.g. coding, writing, research or bigger projects. Use only when the user asks for it. "
       "project: a short name for the folder (an existing project's name to work in it).",
       {"task": S, "project": S}, ["task"], send_to_work, "work", True,
       lambda a: f"Send to work (cloud), project **{a.get('project') or 'new'}**. **Exactly this text leaves your PC:**\n\n> "

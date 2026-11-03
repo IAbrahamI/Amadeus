@@ -19,7 +19,7 @@
 | **Playbooks** | Fixed recipes run by code: *plan my day*, *week ahead* (also a Sunday-evening call), *sort my inbox*, *newsletter cleanup*, *new project* (a short interview, a spec you confirm, then a work run). With **＋ Add your own playbook** you write a recipe in your own words (a title, the phrases that start it, the steps); when you say one of the phrases, it follows the steps with its normal tools. |
 | **Skills** | Instructions in the open [agentskills.io](https://agentskills.io) format (a folder with `SKILL.md`) that load only when your message matches their trigger words (calendar, replies in your style, work briefs, …). **＋ Add your own skill** on the Skills page writes one for you, or takes a `SKILL.md` file from a public library; they are saved in `~/.local/share/amadeus/core/skills/`. |
 | **Connectors** | The built-in ones (calendar, mail, notes, memory, …) can each be switched off. **＋ Add your own connector** adds any [MCP](https://modelcontextprotocol.io) server that runs on your PC (a name and the command that starts it). Every tool of your own connectors asks you first and shows exactly what it sends, and what comes back is treated as data, never as instructions. |
-| **Projects and work runs** | One folder per project in the vault's `Projects/`. Talk about a project with Amadeus, or write to Claude Code directly from the project page. You see the filtered text first, and **Open in Claude Code** opens the session in a terminal. |
+| **Projects and work runs** | One folder per project in a projects folder you choose, outside your vault (shown and changed on the Projects page; moving takes the projects and their Claude Code sessions along). Talk about a project with Amadeus, or write to Claude Code directly from the project page. You see the filtered text first, and **Open in Claude Code** opens the session in a terminal. |
 | **Voice** | Wake word (its name, as you set it), push-to-talk, local Whisper speech recognition (English, German, Spanish), a word list it extends when you ask, "voice off" to close the microphone, and optional voice lines you add yourself. |
 | **Phone** | An Android app over your Tailscale network: chat, approvals, calls that ring like a phone call, today, mail. "It is where you are": while you use the PC the phone stays quiet, and the other way round. |
 | **Desktop actions** | Opening apps and web pages ("open Steam", "open YouTube"). A link from a mail it just read, for a site you never named yourself, is shown to you first. |
@@ -34,8 +34,8 @@
   Actions proposed right after reading mail get a warning on their card, and saving to memory then needs
   approval too.
 - **The privacy filter** for everything that leaves the PC is described in [ARCHITECTURE.md](ARCHITECTURE.md#the-privacy-filter).
-- **Work runs** can only read and write the vault's `Projects/` folder (a pre-tool hook, deny rules and Claude
-  Code's sandbox without network), and a nightly leak scan checks that no canary marker ever reached them.
+- **Work runs** can only write in your projects folder and never read your vault (a pre-tool hook, deny rules and
+  Claude Code's sandbox without network), and a nightly leak scan checks that no canary marker ever reached them.
 - **The phone** needs your Tailscale network and its own key from a one-time pairing code.
 
 ## Settings

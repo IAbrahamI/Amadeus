@@ -10,16 +10,18 @@ Install the packages from [What you need](#1-what-you-need) first. Then:
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 ./install.sh --check     # what's there and what's missing (changes nothing)
-./install.sh             # asks three questions, then sets everything up
+./install.sh             # asks four questions, then sets everything up
 amadeus                  # opens it
 ```
 
-The first run asks:
+The first run asks four things:
 
 1. **Your Obsidian vault folder.** It suggests the one Obsidian knows about. Amadeus works in its own `Amadeus/`
-   folder there: your to-dos, notes and work projects. Say `none` to skip it for now.
-2. **Mail through Thunderbird?** Yes if you use Thunderbird; your logins stay there.
-3. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
+   folder there: your to-dos and notes. Say `none` to skip it for now.
+2. **A folder for Claude Code projects,** outside your vault (suggested: `~/Amadeus/Projects`), so a work run never
+   sees your notes. You can change it later on the Projects page.
+3. **Mail through Thunderbird?** Yes if you use Thunderbird; your logins stay there.
+4. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
 
 The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
 downloading the local model (about 6.6 GB). Afterwards it lists what's left to do by hand: installing the
@@ -66,13 +68,14 @@ It sets up, in this order:
 4. **Memory.** A Hindsight container that only answers requests carrying your key, with its data in the Docker
    volume `hindsight-data`. The first start downloads embedding models and can take a few minutes.
 5. **The Obsidian folder** (only with `OBSIDIAN_VAULT` set). Creates `Amadeus/` in your vault (`ToDo.md` and
-   `Notes.md` are yours, `Projects/` is for work runs), installs the guard for work runs and an hourly
-   snapshot of the vault.
-6. **Voice** (if you said yes): speech recognition and the wake word, see [Optional: voice](#5-optional-voice).
-7. **The assistant itself** (`core/deploy/install.sh`), see below.
-8. **The mail bridge** (if you said yes), see [Optional: mail](#4-optional-mail).
+   `Notes.md` are yours) and an hourly snapshot of the vault.
+6. **The projects folder and the guard for work runs:** writes the guard for the folder you chose (see
+   [work runs](#7-optional-work-runs-with-claude-code)).
+7. **Voice** (if you said yes): speech recognition and the wake word, see [Optional: voice](#5-optional-voice).
+8. **The assistant itself** (`core/deploy/install.sh`), see below.
+9. **The mail bridge** (if you said yes), see [Optional: mail](#4-optional-mail).
 
-Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|obsidian|voice|app|mail`.
+Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|obsidian|work|voice|app|mail`.
 
 ## 3. The assistant itself
 
@@ -141,7 +144,7 @@ The phone reaches Amadeus only through your private Tailscale network, never the
 ## 7. Optional: work runs with Claude Code
 
 1. Install Claude Code, `bubblewrap` and `socat`, and log in once by running `claude`.
-2. Make sure the Obsidian step of `install.sh` ran (it needs `OBSIDIAN_VAULT`), because it installs the guard.
+2. `install.sh` has set up your projects folder and the guard for it (`./install.sh --only work` redoes it).
 3. Ask Amadeus to "send … to work", or start a project on the **Projects** page.
 
 Runs use your Claude subscription. The model and limits are in the settings (`work_model`, `work_effort`,

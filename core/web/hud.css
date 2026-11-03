@@ -487,3 +487,10 @@ button.ev:hover { background: rgba(var(--a),.2); }
 .sw button:hover { color: var(--text); border-style: solid; }
 .sw button.on { color: var(--text); border: 1px solid var(--s); box-shadow: inset 0 0 14px color-mix(in srgb, var(--s) 25%, transparent); }
 .thn { margin-top: 10px; font: 400 12px var(--body); color: var(--dim); }
+.pfolder { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed rgba(var(--a),.2); font-size: 13px; }
+.pfolder .k { font: 600 10px var(--display); letter-spacing: .22em; color: var(--dim); text-transform: uppercase; }
+.pfolder code { font: 400 12px var(--mono); color: var(--text); }
+.pfolder #pfForm, .pfolder .pfform { width: 100%; }
+.pfolder.warn { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid rgba(var(--w),.45); box-shadow: inset 3px 0 0 var(--amber); }
+.pfolder.warn b { color: var(--amber); font-weight: 500; } .pfolder.warn span { color: var(--dim); }
+.pfform { max-width: none; margin-top: 8px; gap: 8px; }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Amadeus installer: everything in one go. The first run asks a few questions (your vault, mail, voice) and keeps the
 # answers in ./amadeus.env. Then it sets up Ollama (local LLM), private keys, Presidio (privacy filter), Hindsight
-# (memory), the Obsidian vault with the guard for work runs, voice, the assistant itself (core/deploy/install.sh:
+# (memory), the Obsidian vault, the projects folder with the guard for work runs, voice, the assistant itself (core/deploy/install.sh:
 # services, window, tray) and the Thunderbird bridge.
 #
 # Idempotent: every step checks the current state first and skips what is already done.
@@ -13,7 +13,7 @@
 #   ./install.sh --update     get the latest version (git pull), then install / repair and restart (= amadeus update)
 #   ./install.sh --check      read-only: prerequisites and status, changes nothing
 #   ./install.sh --dry-run    print what would be done, changes nothing
-#   ./install.sh --only ollama|secrets|presidio|hindsight|obsidian|voice|app|mail
+#   ./install.sh --only ollama|secrets|presidio|hindsight|obsidian|work|voice|app|mail
 #   ./install.sh --help
 #
 # Settings (override with environment variables, or put them in ./amadeus.env):
@@ -27,6 +27,7 @@
 #   HINDSIGHT_LLM_MODEL    Ollama model Hindsight uses         (default: $OLLAMA_CTX_VARIANT)
 #   HINDSIGHT_WORKER_ID    stable worker id                    (default: amadeus-hindsight)
 #   OBSIDIAN_VAULT         absolute path of your Obsidian vault (unset: Obsidian step is skipped)
+#   AMADEUS_PROJECTS       folder for Claude Code projects, outside the vault (default asked: ~/Amadeus/Projects)
 #   AMADEUS_MAIL=1         set up the Thunderbird bridge (mail)
 #   AMADEUS_VOICE=1        set up voice: speech recognition and the wake word (about 1 GB, runs on the CPU)
 #   ASSUME_YES=1           do not prompt; non-interactive onboarding
@@ -50,6 +51,7 @@ HINDSIGHT_API_PORT=8888
 HINDSIGHT_UI_PORT=9999
 OBSIDIAN_VAULT="${OBSIDIAN_VAULT:-}"
 AMADEUS_MAIL="${AMADEUS_MAIL:-}"
+AMADEUS_PROJECTS="${AMADEUS_PROJECTS:-}"
 AMADEUS_VOICE="${AMADEUS_VOICE:-}"
 VOICE="$HOME/.local/share/amadeus/voice"
 VOSK_MODEL=vosk-model-small-en-us-0.15
@@ -161,10 +163,12 @@ phase_prereqs() {
   fi
 
   if want obsidian && [[ -n "$OBSIDIAN_VAULT" ]]; then
-    have python3 && ok "python3 (vault guard hook)" || err "python3 is missing; the vault guard hook needs it."
     have zstd && ok "zstd (vault snapshots)" || err "zstd is missing; vault snapshots use tar --zstd."
+  fi
+  if want work; then
+    have python3 && ok "python3 (work-run guard)" || err "python3 is missing; the work-run guard needs it."
     if have bwrap && have socat; then ok "bubblewrap + socat (Claude Code sandbox)"
-    else err "bubblewrap and socat are required for the Claude Code sandbox that locks the vault (package names: bubblewrap, socat)."; fi
+    else warn "bubblewrap and socat are needed for work runs with Claude Code (package names: bubblewrap, socat); without them runs refuse to start."; fi
   fi
 
   if (( ERRORS > 0 )); then
@@ -313,7 +317,7 @@ put_file() {
 }
 
 phase_obsidian() {
-  head_ "Obsidian vault and the guard for work runs"
+  head_ "Obsidian vault"
   if [[ -z "$OBSIDIAN_VAULT" ]]; then
     info "OBSIDIAN_VAULT is not set; skipping. Set it in amadeus.env to enable this step."
     return
@@ -321,16 +325,11 @@ phase_obsidian() {
   local vault="${OBSIDIAN_VAULT%/}"
   [[ -d "$vault" ]] || { err "vault not found: $vault"; return; }
   [[ -d "$vault/.obsidian" ]] || warn "$vault has no .obsidian folder; is it really an Obsidian vault?"
-  local guard_dir="$HOME/.local/share/amadeus/work-guard"
   local src="$SCRIPT_DIR/obsidian"
   local q_vault; q_vault="$(printf %q "$vault")"
-  local py_vault; py_vault="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$vault")"
 
-  # 1. Amadeus's folder in the vault: its own notes (_Amadeus) and one folder per work project (Projects).
-  local d
-  for d in _Amadeus Projects; do
-    [[ -d "$vault/Amadeus/$d" ]] || run mkdir -p "$vault/Amadeus/$d"
-  done
+  # 1. Amadeus's folder in the vault: your ToDo.md and Notes.md, and its own notes (_Amadeus).
+  [[ -d "$vault/Amadeus/_Amadeus" ]] || run mkdir -p "$vault/Amadeus/_Amadeus"
   if [[ -f "$vault/Amadeus/README.md" ]]; then ok "vault folder Amadeus/ present"
   else put_file "$vault/Amadeus/README.md" 644 <"$src/vault-README.md"; fi
   # tell Amadeus where the vault is (its config; other settings in it are kept)
@@ -347,36 +346,7 @@ if c.get("vault_dir") != sys.argv[1]:
 PYC
   fi
 
-  # 2. Guard for the work runs (one Claude Code run per task, core/amadeus_core/work.py): a PreToolUse hook, deny
-  #    rules and Claude Code's sandbox, in a read-only folder. Runs may use only Amadeus/Projects/ in the vault.
-  [[ "$MODE" == install && -d "$guard_dir" ]] && chmod u+w "$guard_dir"
-  local guard_py; guard_py="$(<"$src/vault-guard.py")"
-  printf '%s\n' "${guard_py//\"@VAULT@\"/"$py_vault"}" | put_file "$guard_dir/vault-guard.py" 555
-  python3 - "$vault" "$guard_dir" <<'PYS' | put_file "$guard_dir/settings.json" 444
-import json, os, shlex, sys
-vault, guard = sys.argv[1:3]
-deny = []
-for name in sorted(os.listdir(vault)):
-    if name in ("Amadeus", ".trash"):
-        continue
-    path = os.path.join(vault, name)
-    deny.append(f"Edit(/{path}/**)" if os.path.isdir(path) else f"Edit(/{path})")
-deny.append(f"Edit(/{guard}/**)")
-projects = os.path.join(vault, "Amadeus", "Projects")
-print(json.dumps({
-  "permissions": {"deny": deny},
-  "hooks": {"PreToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|LS",
-    "hooks": [{"type": "command", "command": shlex.quote(os.path.join(guard, "vault-guard.py"))}]}]},
-  "sandbox": {"enabled": True, "allowUnsandboxedCommands": False, "failIfUnavailable": True,
-    "filesystem": {"allowWrite": [projects], "allowRead": [projects],
-      "denyRead": [vault, "~/.ssh", "~/.gnupg", "~/.aws", "~/.ollama", "~/.thunderbird", "~/.config/amadeus-core",
-                   "~/.local/share/amadeus/core", "~/.local/share/amadeus/secrets", "~/.local/share/amadeus/backup",
-                   "~/.local/share/amadeus/work-guard", "~/.claude/.credentials.json"]},
-    "network": {"allowedDomains": []}}}, indent=2))
-PYS
-  [[ "$MODE" == install ]] && chmod a-w "$guard_dir"
-
-  # 3. Hourly vault snapshots, so any change can be undone.
+  # 2. Hourly vault snapshots, so any change can be undone.
   local snap; snap="$(<"$src/amadeus-vault-snapshot")"
   printf '%s\n' "${snap//\"@VAULT@\"/"$q_vault"}" | put_file "$HOME/.local/bin/amadeus-vault-snapshot" 755
   local udir="$HOME/.config/systemd/user" u
@@ -420,13 +390,50 @@ phase_setup() {
   local v; v="$(ask "Vault folder (or 'none')" "${guess:-none}")"
   if [[ "$v" != none && -n "$v" ]]; then v="${v/#\~/$HOME}"; OBSIDIAN_VAULT="$v"; env_set OBSIDIAN_VAULT "$v"; ok "vault: $v"
   else info "no vault for now: to-dos, notes and work runs stay off until you set one (./install.sh --setup)"; fi
-  # 2. mail through Thunderbird
+  # 2. where Claude Code projects live: its own folder, never in the vault
+  local cur; cur="$(python3 -c 'import json,os,sys; print(json.load(open(sys.argv[1])).get("projects_dir","") if os.path.exists(sys.argv[1]) else "")' "$HOME/.config/amadeus-core/config.json" 2>/dev/null || true)"
+  info "Claude Code projects get their own folder, outside your vault, so a work run never sees your notes."
+  local pr; pr="$(ask "Folder for projects" "${AMADEUS_PROJECTS:-${cur:-$HOME/Amadeus/Projects}}")"
+  pr="${pr/#\~/$HOME}"; AMADEUS_PROJECTS="$pr"; env_set AMADEUS_PROJECTS "$pr"; ok "projects: $pr"
+  # 3. mail through Thunderbird
   local m="n"; have thunderbird && m="y"
   m="$(ask "Read mail through Thunderbird? (y/n)" "$m")"
   [[ "$m" =~ ^[Yy] ]] && AMADEUS_MAIL=1 || AMADEUS_MAIL=0; env_set AMADEUS_MAIL "$AMADEUS_MAIL"
-  # 3. voice
+  # 4. voice
   local s; s="$(ask "Talk to it: speech recognition and wake word, about 1 GB? (y/n)" "y")"
   [[ "$s" =~ ^[Yy] ]] && AMADEUS_VOICE=1 || AMADEUS_VOICE=0; env_set AMADEUS_VOICE "$AMADEUS_VOICE"
+}
+
+# ---------------------------------------------------------------- the projects folder and the guard for work runs
+phase_work() {
+  head_ "Work runs: the projects folder and its guard"
+  local cfg="$HOME/.config/amadeus-core/config.json"
+  if [[ -n "$AMADEUS_PROJECTS" && "$MODE" == install ]]; then  # tell Amadeus (other settings in its config are kept)
+    python3 - "$cfg" "$AMADEUS_PROJECTS" <<'PYC'
+import json, os, sys
+p, d = sys.argv[1], os.path.realpath(os.path.expanduser(sys.argv[2]))
+c = json.load(open(p)) if os.path.exists(p) else {}
+if c.get("projects_dir") != d:
+    c["projects_dir"] = d
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    json.dump(c, open(p, "w"), indent=2)
+    print("  · Amadeus config: projects_dir =", d)
+PYC
+  fi
+  local out where vault  # the effective projects folder and the vault, one per line (paths may have spaces)
+  mapfile -t out < <(python3 - "$cfg" "$AMADEUS_PROJECTS" <<'PYW'
+import json, os, sys
+c = json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else {}
+v = c.get("vault_dir", os.path.expanduser("~/Documents/Obsidian Vault/Amadeus"))
+print(os.path.realpath(os.path.expanduser(sys.argv[2] or c.get("projects_dir") or os.path.join(v, "Projects"))))
+print(os.path.dirname(v.rstrip("/")) if os.path.isdir(v) else "")
+PYW
+  )
+  where="${out[0]}"; vault="${out[1]:-}"
+  case "$where/" in "${vault:-/nonexistent}"/*) warn "projects are inside your vault ($where): run ./install.sh --setup to give them their own folder";; *) ok "projects folder: $where";; esac
+  if [[ "$MODE" == install ]]; then python3 "$SCRIPT_DIR/core/amadeus_core/workguard.py" "$where" "$vault"
+  else python3 "$SCRIPT_DIR/core/amadeus_core/workguard.py" "$where" "$vault" --check; fi
+  have claude && ok "Claude Code installed" || info "Claude Code isn't installed: work runs stay off until you install it and log in once (claude)"
 }
 
 # ---------------------------------------------------------------- update (amadeus update)
@@ -503,6 +510,7 @@ want secrets   && phase_secrets
 want presidio  && phase_presidio
 want hindsight && phase_hindsight
 want obsidian  && phase_obsidian
+want work      && phase_work
 want voice     && phase_voice
 want app       && phase_app
 want mail      && phase_mail
@@ -517,6 +525,6 @@ ok "Done with $WARNINGS warning(s)."
 printf '\nOpen it with: %samadeus%s   ·   update later with: %samadeus update%s\n' "$C_HEAD" "$C_OFF" "$C_HEAD" "$C_OFF"
 left=()
 [[ "$AMADEUS_MAIL" == 1 ]] && left+=("Mail: in Thunderbird, Add-ons and Themes → gear icon → Install Add-on From File… → ~/.local/share/amadeus/amadeus-bridge.xpi")
-[[ -n "$OBSIDIAN_VAULT" ]] && ! have claude && left+=("Work runs (optional): install Claude Code and log in once by running: claude")
+! have claude && left+=("Work runs (optional): install Claude Code and log in once by running: claude")
 left+=("Phone (optional): see docs/INSTALL.md, The phone app")
 printf '\nStill to do by hand:\n'; printf '  · %s\n' "${left[@]}"

@@ -238,7 +238,7 @@ ABOUT_ME = """
   closed and only typing or the tray turns it back on), push-to-talk, Whisper speech recognition; your replies are text, you
   only play short voice lines if the user added some. You can open apps and web pages on the PC.
 - Work (cloud): send_to_work starts ONE Claude Code run on a project (coding, writing, research), privacy-filtered and
-  approved; it works only in Obsidian Projects/<project>/ and reports back when done. If it ends with "## Questions",
+  approved; it works only in its own project folder (outside the user's notes) and reports back when done. If it ends with "## Questions",
   the user's answers go back with continue_project (same session). work_status lists the runs. The new-project
   playbook (interview → spec → approval) starts a bigger one.
 - You CANNOT: search the internet or look up current facts (prices, news, weather), run scripts or code yourself, read or send
@@ -279,7 +279,7 @@ def _system(cid, user_text):
             info = work.project(proj)
             runs = "\n".join(f"- {time.strftime('%d %b %H:%M', time.localtime(r['created']))} ({r['status']}): "
                              f"{(r['summary'] or '')[:400]}" for r in info["runs"][-3:])
-            text += (f"\n\n## This chat is about the project \"{proj}\" (vault folder Projects/{proj}/)\n"
+            text += (f"\n\n## This chat is about the project \"{proj}\" (its folder {proj}/ in the projects folder)\n"
                      f"When the user wants Claude Code to work on it, use send_to_work / continue_project with project="
                      f"\"{proj}\".\nOverview.md:\n{info['overview'][:3000]}" + (f"\n\nLatest Claude Code runs:\n{runs}" if runs else ""))
         except Exception:

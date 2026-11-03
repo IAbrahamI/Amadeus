@@ -13,6 +13,7 @@ DEFAULTS = {
     "ollama_url": "http://127.0.0.1:11434",
     "default_model": "qwen3.5-9b-48k",
     "vault_dir": os.path.join(HOME, "Documents", "Obsidian Vault", "Amadeus"),
+    "projects_dir": "",           # where Claude Code projects live (you choose it); "" = the vault's Projects/ (older installs)
     "hindsight_url": "http://127.0.0.1:8888",
     "hindsight_bank": "amadeus-private",
     "secrets_dir": os.path.join(HOME, ".local", "share", "amadeus", "secrets"),  # created by install.sh, never in git
@@ -29,6 +30,11 @@ DEFAULTS = {
     "persona": "default",         # a file in data_dir/personas/ or core/personas/ (without .md); "" = no persona
     "avatar": "",                 # a sprite set in data_dir/avatar/<name>/ (<name>_<mood><1-3>.png); "" = the default icon
 }
+
+
+def projects_dir(cfg):
+    """The folder with one subfolder per Claude Code project. Outside the vault unless an older install had it there."""
+    return os.path.realpath(os.path.expanduser(cfg.get("projects_dir") or os.path.join(cfg["vault_dir"], "Projects")))
 
 
 def load():

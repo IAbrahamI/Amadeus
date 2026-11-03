@@ -275,9 +275,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(events.unseen())
         if p == "/api/app/home":  # the Android app's home screen
             return self._json(phoneapp.home())
-        if p == "/api/projects":  # the Projects page: one folder each in the vault's Projects/
+        if p == "/api/projects":  # the Projects page: one folder each in your projects folder
             from . import work
             return self._json(work.projects())
+        if p == "/api/projects/folder":  # where the projects live, and whether that's (still) inside the vault
+            from . import work
+            return self._json(work.folder_info())
         m = re.fullmatch(r"/api/projects/([^/]+)(/file)?", p)
         if m:
             from . import work
@@ -444,6 +447,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(work.new_project(str(b.get("name", "")), str(b.get("goal", ""))[:4000]))
             except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if p == "/api/projects/folder":  # you pick the folder for the projects (and whether to move the existing ones)
+            from . import work
+            try:
+                return self._json(work.set_folder(b.get("path", ""), bool(b.get("move"))))
+            except (ValueError, OSError) as e:
                 return self._json({"error": str(e)}, 400)
         m = re.fullmatch(r"/api/projects/([^/]+)/state", p)
         if m:  # you mark a project done (or open it again)

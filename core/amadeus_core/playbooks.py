@@ -222,7 +222,7 @@ def new_project(cid, text, state):
             preview = tools.send_to_work_preview(md)[0]
             _approval(cid, "start_work_project", {"name": name, "spec": md},
                       f"Start work project **{name}** (one Claude Code run, folder "
-                      f"`Projects/{name}/` in Obsidian). **Exactly this text leaves your PC:**\n\n> " + preview.replace("\n", "\n> "))
+                      f"`{name}/` in your projects folder). **Exactly this text leaves your PC:**\n\n> " + preview.replace("\n", "\n> "))
             return "Here it is as one approval. Once you approve, the work starts and I'll tell you when results come back.", True
         spec = _ask_model(PROJECT_SPEC_SYSTEM, "CURRENT SPEC:\n" + json.dumps(state["spec"], ensure_ascii=False) +
                           f"\n\nCHANGE REQUESTED BY THE USER:\n{text}", as_json=True) or state["spec"]
@@ -238,8 +238,7 @@ def start_work_project(name, spec):
     clean, findings, hold = tools._scrub(spec, keep=("ORGANIZATION",))
     if hold:
         return "Not sent: the spec contains something from your deny-list or a canary marker."
-    folder = os.path.join(tools.VAULT, "Projects", name)
-    os.makedirs(folder, exist_ok=True)
+    name, folder = work._folder(name)
     overview = os.path.join(folder, "Overview.md")
     if not os.path.exists(overview):
         with open(overview, "w") as f:
@@ -248,7 +247,7 @@ def start_work_project(name, spec):
                          "concrete part of the work.\n\n" + clean, tools.CURRENT_CID)
     if isinstance(r, str):
         return r
-    return f"Project **{name}** started; its folder is Projects/{name}/ in Obsidian. I'll tell you when the first part is done."
+    return f"Project **{name}** started; its folder is {name}/ in your projects folder. I'll tell you when the first part is done."
 
 
 # ---------- private / visible mode (phone access over Tailscale on or off) ----------

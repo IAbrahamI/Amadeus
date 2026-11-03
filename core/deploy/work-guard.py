@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """PreToolUse guard for the work runs (Claude Code started by Amadeus, see core/amadeus_core/work.py).
-- The vault: only Amadeus/Projects/ (one folder per project: docs, blueprints, images). Everything else in the vault,
-  including the user's ToDo/Notes and Amadeus's own folder, is off-limits (read and write).
+- Writing only inside your projects folder (one subfolder per project: docs, blueprints, images, code).
+- Your Obsidian vault is off-limits completely (read and write), unless an older install keeps the projects in it.
 - Never this guard or its settings, Amadeus's own data, secrets, SSH keys, mail or service configs.
-install.sh fills in @VAULT@. Exit 2 blocks the tool call."""
+core/amadeus_core/workguard.py fills in @PROJECTS@ and @VAULT@. Exit 2 blocks the tool call."""
 import json, os, sys
 
-VAULT = os.path.realpath("@VAULT@")
-ALLOWED = os.path.join(VAULT, "Amadeus", "Projects")
+PROJECTS = os.path.realpath("@PROJECTS@")
+VAULT = "@VAULT@"
+VAULT = os.path.realpath(VAULT) if VAULT else ""
 HOME = os.path.expanduser("~")
 GUARD = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
 SECRET_DIRS = [os.path.join(HOME, p) for p in (
@@ -16,10 +17,10 @@ SECRET_DIRS = [os.path.join(HOME, p) for p in (
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 def inside(path, root):
-    return path == root or path.startswith(root + os.sep)
+    return bool(root) and (path == root or path.startswith(root + os.sep))
 
 def block(msg):
-    print(f"vault-guard: {msg}", file=sys.stderr); sys.exit(2)
+    print(f"work-guard: {msg}", file=sys.stderr); sys.exit(2)
 
 try:
     data = json.load(sys.stdin)
@@ -38,7 +39,8 @@ if any(inside(real, d) for d in SECRET_DIRS) or base == ".env" or base.startswit
     block(f"{real} holds secrets or private data and is off-limits for work runs.")
 if tool in WRITE_TOOLS and (inside(real, GUARD) or real.endswith(os.path.join(".claude", "settings.json"))):
     block(f"{real} is protected configuration.")
-if inside(real, VAULT) and not inside(real, ALLOWED):
-    block(f"{real} is in the user's private vault. Work runs may only use {ALLOWED} (one folder per project). "
-          "Anything else from the user comes through Amadeus.")
+if inside(real, VAULT) and not inside(real, PROJECTS):
+    block(f"{real} is in the user's private notes. Anything from the user comes through Amadeus.")
+if tool in WRITE_TOOLS and not inside(real, PROJECTS):
+    block(f"Work runs may only write inside {PROJECTS} (one folder per project).")
 sys.exit(0)

@@ -1,14 +1,14 @@
 """Work in the cloud, the light way: one Claude Code run per task.
 
 Amadeus filters the task and you approve it (tools.send_to_work / the new-project playbook); then one `claude -p` run
-works in the project's folder in the vault (Projects/<Name>/), on your Claude subscription. No coordinator, no agents
+works in the project's folder (<your projects folder>/<Name>/, outside your vault), on your Claude subscription. No coordinator, no agents
 waking each other. When it finishes the assistant tells you (a notification, and the result in the chat it came from).
 
-Guard rails (~/.local/share/amadeus/work-guard, read-only): the run may read and write only Projects/ in the vault
-(PreToolUse hook + Claude Code's sandbox for shell commands), never your private notes, Amadeus's own data, mail,
-chats or keys. It can't ask you mid-run: missing facts come back as "## Questions"; your answers continue the same
+Guard rails (~/.local/share/amadeus/work-guard, read-only, see workguard.py): the run may write only in your projects
+folder (PreToolUse hook + Claude Code's sandbox for shell commands), and never reads your vault, Amadeus's own data,
+mail, chats or keys. It can't ask you mid-run: missing facts come back as "## Questions"; your answers continue the same
 session (continue_project). Every run is a normal Claude Code session, so you can also resume it yourself:
-`cd "Projects/<Name>" && claude --resume <session>`."""
+`cd "<projects folder>/<Name>" && claude --resume <session>`."""
 import json
 import os
 import re
@@ -17,7 +17,7 @@ import threading
 import time
 
 from . import db, events
-from .config import CFG
+from .config import CFG, projects_dir
 
 db.q("""CREATE TABLE IF NOT EXISTS work_jobs (id TEXT PRIMARY KEY, project TEXT, folder TEXT, session_id TEXT, status TEXT,
         created REAL, finished REAL, summary TEXT, cost REAL, conversation_id TEXT)""")
@@ -51,8 +51,7 @@ RULES = """You work for the user, handed over by their private local assistant.
 
 def _folder(project):
     name = re.sub(r"[\\/:*?\"<>|\x00]", "-", project).strip(" .-")[:80] or "Task"
-    from .tools import VAULT
-    path = os.path.join(VAULT, "Projects", name)
+    path = os.path.join(_projects_root(), name)
     os.makedirs(path, exist_ok=True)
     return name, path
 
@@ -133,10 +132,9 @@ def status():
                      + (f" · session `{r['session_id']}`" if r["session_id"] else "") for r in rows)
 
 
-# ---------- projects (the dashboard's Projects page): one folder each in the vault's Projects/ ----------
+# ---------- projects (the dashboard's Projects page): one folder each in your projects folder ----------
 def _projects_root():
-    from .tools import VAULT
-    root = os.path.join(VAULT, "Projects")
+    root = projects_dir(CFG)
     os.makedirs(root, exist_ok=True)
     return root
 
@@ -260,3 +258,55 @@ def new_project(name, goal=""):
         with open(ov, "w") as f:
             f.write(f"# {name}\n\n_Started {time.strftime('%d %b %Y')}_\n\n{goal.strip()}\n")
     return {"name": name}
+
+
+# ---------- where the projects live (you choose it in the Projects view or with ./install.sh --setup) ----------
+def _vault():
+    v = os.path.realpath(CFG["vault_dir"])
+    return os.path.dirname(v) if os.path.isdir(v) else ""
+
+
+def folder_info():
+    root, vault = projects_dir(CFG), _vault()
+    names = [n for n in os.listdir(root) if os.path.isdir(os.path.join(root, n)) and not n.startswith(".")] if os.path.isdir(root) else []
+    return {"path": root, "in_vault": bool(vault) and (root + os.sep).startswith(vault + os.sep), "projects": sorted(names, key=str.lower)}
+
+
+def set_folder(path, move=False):
+    """Use another folder for the projects. move=True also moves the existing ones (and their Claude Code sessions,
+    so "continue" keeps working); without it they stay where they are, untouched. The guard is rewritten for it."""
+    from . import workguard
+    from .config import CONFIG_PATH
+    new = os.path.realpath(os.path.expanduser(str(path or "").strip()))
+    vault, old, home = _vault(), projects_dir(CFG), os.path.expanduser("~")
+    if not str(path or "").strip() or new in ("/", home) or not (new + os.sep).startswith(home + os.sep):
+        raise ValueError("Pick a folder inside your home folder, for example ~/Amadeus/Projects.")
+    if vault and (new + os.sep).startswith(vault + os.sep):
+        raise ValueError("That's inside your Obsidian vault. Projects get their own folder, so a work run never sees your notes.")
+    if any(f["status"] == "running" for f in running()):
+        raise ValueError("A work run is still going. Change the folder when it's done.")
+    os.makedirs(new, exist_ok=True)
+    moved = []
+    if move and new != old and os.path.isdir(old):
+        clash = [n for n in folder_info()["projects"] if os.path.exists(os.path.join(new, n))]
+        if clash:
+            raise ValueError("The new folder already has a project named " + ", ".join(clash) + ".")
+        sessions = os.path.join(home, ".claude", "projects")
+        key = lambda p: re.sub(r"[^A-Za-z0-9]", "-", p)
+        import shutil
+        for n in folder_info()["projects"]:
+            src, dst = os.path.join(old, n), os.path.join(new, n)
+            shutil.move(src, dst)  # a rename on the same disk, else copy then remove
+            db.q("UPDATE work_jobs SET folder=? WHERE folder=?", (dst, src))
+            s_old, s_new = os.path.join(sessions, key(src)), os.path.join(sessions, key(dst))
+            if os.path.isdir(s_old) and not os.path.exists(s_new):
+                os.rename(s_old, s_new)
+            moved.append(n)
+    c = json.load(open(CONFIG_PATH)) if os.path.exists(CONFIG_PATH) else {}
+    c["projects_dir"] = new
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(c, f, indent=2)
+    CFG["projects_dir"] = new
+    workguard.install(new, vault)
+    return {**folder_info(), "moved": moved}

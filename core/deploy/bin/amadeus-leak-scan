@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Nightly leak scan: the canary markers (secrets/canaries.json) must never show up in what went to the cloud:
-# the Claude Code work runs' conversations and the vault's Projects folder they work in.
+# the Claude Code work runs' conversations and the projects folder they work in.
 set -uo pipefail
 S="$HOME/.local/share/amadeus/secrets"
 LOG="$HOME/.local/share/amadeus/core/reports/logs/leak-scan.md"
-VAULT=$(python3 -c "import json,os;p=os.path.expanduser('~/.config/amadeus-core/config.json');c=json.load(open(p)) if os.path.exists(p) else {};print(c.get('vault_dir',os.path.expanduser('~/Documents/Obsidian Vault/Amadeus')))")
-PROJECTS="$VAULT/Projects"
+PROJECTS=$(python3 -c "import json,os;p=os.path.expanduser('~/.config/amadeus-core/config.json');c=json.load(open(p)) if os.path.exists(p) else {};v=c.get('vault_dir',os.path.expanduser('~/Documents/Obsidian Vault/Amadeus'));print(os.path.realpath(os.path.expanduser(c.get('projects_dir') or os.path.join(v,'Projects'))))")
+RUNKEY=$(printf '%s' "$PROJECTS" | sed 's|[^A-Za-z0-9]|-|g')  # how Claude Code names a folder's sessions
 RUNS="$HOME/.claude/projects"
 mkdir -p "$(dirname "$LOG")"
 mapfile -t MARKERS < <(python3 -c "import json;[print(v) for v in json.load(open('$S/canaries.json')).values()]" 2>/dev/null)
 hits=(); problems=()
 [ ${#MARKERS[@]} -gt 0 ] || problems+=("no canary markers (run install.sh --only secrets)")
 for m in "${MARKERS[@]}"; do
-  for d in "$RUNS"/*Amadeus-Projects*; do [ -d "$d" ] && grep -rqF -- "$m" "$d" && hits+=("$m in a work run's conversation ($(basename "$d"))"); done
-  grep -rqF -- "$m" "$PROJECTS" 2>/dev/null && hits+=("$m in the vault's Projects folder")
+  for d in "$RUNS"/"$RUNKEY"*; do [ -d "$d" ] && grep -rqF -- "$m" "$d" && hits+=("$m in a work run's conversation ($(basename "$d"))"); done
+  grep -rqF -- "$m" "$PROJECTS" 2>/dev/null && hits+=("$m in the projects folder")
 done
 stamp=$(date '+%Y-%m-%d %H:%M')
 if [ ${#hits[@]} -gt 0 ]; then

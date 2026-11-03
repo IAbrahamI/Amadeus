@@ -18,4 +18,4 @@ Before calling send_to_work:
    Example: "remind me to follow up with my landlord Mr. Becker at Hauptstr. 5" → "remind the user weekly to follow up with
    their landlord about an unresolved heating issue".
 3. If something important is missing (deadline, format, audience), ask the user one short question first.
-4. Then call send_to_work with the brief and a short project name (the folder in Projects/; an existing name continues there). The user sees exactly what leaves the PC and approves it.
+4. Then call send_to_work with the brief and a short project name (its folder in the projects folder; an existing name continues there). The user sees exactly what leaves the PC and approves it.

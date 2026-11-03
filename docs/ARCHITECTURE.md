@@ -45,7 +45,7 @@ flowchart TB
     agent --> vault
     agent -- "send to work" --> presidio
     presidio -- "filtered text,<br/>after your approval" --> cc
-    cc -- "works only in" --> projects["vault: Amadeus/Projects/"]
+    cc -- "works only in" --> projects["your projects folder<br/>(outside the vault)"]
 ```
 
 | Part | Where | Notes |
@@ -58,7 +58,7 @@ flowchart TB
 | Phone | `android/` | Kotlin + Compose; pairs with a one-time code and talks to Core over Tailscale |
 | Memory extension | `core/hindsight_ext/` | Makes every Hindsight request need your local key |
 | Your own connectors | `core/amadeus_core/mcp.py` | A small MCP client (stdio): the servers you add on Settings → Connectors, their tools always need approval |
-| Work guard | `obsidian/` | Hook, deny rules and sandbox settings that keep Claude Code inside `Projects/` |
+| Work guard | `core/amadeus_core/workguard.py`, `core/deploy/work-guard.py` | Hook, deny rules and sandbox settings that keep Claude Code inside your projects folder and out of your vault |
 
 ## A request, end to end
 
@@ -106,7 +106,7 @@ flowchart LR
 - Company and brand names are kept on purpose, so a task about GitHub or a framework still makes sense.
   Words you add to the allow-list are never replaced.
 - Canary markers are random strings created at install time. A nightly leak scan checks that none of them
-  ever shows up in a work run's conversation or in the `Projects/` folder.
+  ever shows up in a work run's conversation or in the projects folder.
 - If Presidio isn't reachable, the text is held, never sent unchecked.
 
 ## Limits
@@ -146,10 +146,10 @@ than good disappears by itself. The lessons are listed under Settings → Memory
 
 ## The work side
 
-A work run is one `claude -p` call in the vault's `Amadeus/Projects/<Name>/` folder, on your own Claude
-subscription. The guard installed by `install.sh` (a pre-tool hook, deny rules and Claude Code's sandbox)
-lets it read and write only that `Projects/` folder: not the rest of your vault, not Amadeus's data, not your
-keys. If a run ends with questions, your answers continue the same session. The project page has an
+A work run is one `claude -p` call in `<projects folder>/<Name>/`, on your own Claude subscription. You choose
+the projects folder (`./install.sh` asks, or **Change** on the Projects page), and it's never inside your vault.
+The guard (a pre-tool hook, deny rules and Claude Code's sandbox, rewritten whenever the folder changes) lets a run
+write only in that folder and keeps it out of your vault, Amadeus's data and your keys. If a run ends with questions, your answers continue the same session. The project page has an
 **Open in Claude Code** button that opens the session in a terminal.
 
 ## Where data lives
@@ -160,7 +160,8 @@ keys. If a run ends with questions, your answers continue the same session. The 
 | Memory | Docker volume `hindsight-data` | never |
 | Keys, canary markers, deny-list | `~/.local/share/amadeus/secrets/` (mode 700) | never |
 | Your settings | `~/.config/amadeus-core/config.json` | never |
-| Notes, to-dos, work projects | your Obsidian vault, `Amadeus/` folder | never |
+| Notes, to-dos | your Obsidian vault, `Amadeus/` folder | never |
+| Work projects | the projects folder you chose (e.g. `~/Amadeus/Projects`) | only the approved text of each run |
 | Your own skills, playbooks and connectors | `~/.local/share/amadeus/core/skills/`, the database | never |
 | Your persona, avatar sprites, voice clips | `~/.local/share/amadeus/core/personas/`, `…/core/avatar/`, `~/.local/share/amadeus/voice/clips/` | never |
 

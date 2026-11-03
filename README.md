@@ -67,7 +67,7 @@ flowchart LR
     core -- "send to work" --> filter["Privacy filter<br/>Presidio"]
     filter --> ok{"your<br/>approval"}
     ok --> cc["Claude Code<br/>one run per task"]
-    cc --> projects["vault: Projects/ only"]
+    cc --> projects["your projects folder only"]
     cc -. result .-> core
 
     subgraph pc ["Your PC (everything here stays local)"]
@@ -96,7 +96,7 @@ The exact packages for Arch, Debian/Ubuntu and Fedora are in [docs/INSTALL.md](d
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 ./install.sh --check        # what's there and what's missing (changes nothing)
-./install.sh                # asks for your vault, mail and voice, then sets everything up
+./install.sh                # asks for your vault, a projects folder, mail and voice, then sets everything up
 amadeus                     # open it; later, amadeus update gets the newest version
 ```
 
@@ -122,8 +122,8 @@ my private life and cloud models. That led to a few decisions:
   that changes or sends something waits for you. That makes a 9B local model good enough for daily use.
 - **Anonymise, don't pseudonymise.** Text for Claude Code gets fixed labels like `[PERSON]`, never a mapping that
   could be reversed, and you see the exact text before it leaves. The filter is best effort; your approval is the gate.
-- **Guarded work runs.** Each Claude Code run is one task in one project folder, with a hook that blocks it from
-  reading or writing anything else in your vault.
+- **Guarded work runs.** Each Claude Code run is one task in one project folder, in a projects folder you choose
+  outside your vault. A hook and Claude Code's sandbox keep it from writing anywhere else or reading your notes.
 - **It learns without retraining.** Your 👍 / 👎 become short lessons overnight, and a lesson is kept only if a test
   on your own past requests doesn't get worse.
 
@@ -135,7 +135,7 @@ More, including the limits of the privacy filter: [docs/ARCHITECTURE.md](docs/AR
 |---|---|
 | `core/` | The assistant: server, web UI, desktop window and tray, voice, Thunderbird bridge, privacy filter, skills, personas |
 | `android/` | The phone app |
-| `obsidian/` | The guard that keeps work runs inside the vault's `Projects/` folder, and hourly vault snapshots |
+| `obsidian/` | The hourly vault snapshots and the README for Amadeus's folder in your vault |
 | `install.sh` | Sets up the local services |
 | `docs/` | [Install guide](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [features and settings](docs/FEATURES.md) |
 
