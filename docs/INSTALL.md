@@ -232,6 +232,19 @@ app) on every push.
 Defaults live in `core/amadeus_core/config.py`. Change any of them in `~/.config/amadeus-core/config.json`,
 then run `systemctl --user restart amadeus-core`. The most useful ones are listed in [FEATURES.md](FEATURES.md#settings).
 
+## Making the model fit on the GPU
+
+On a 12 GB card the model and its working memory (48k context) only just fit next to the desktop, so a couple of
+layers can end up on the CPU, which is slower and keeps the CPU busy. Two Ollama settings halve the working memory
+with practically no quality loss:
+
+```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d && printf '[Service]\nEnvironment="OLLAMA_FLASH_ATTENTION=1"\nEnvironment="OLLAMA_KV_CACHE_TYPE=q8_0"\n' | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+```
+
+`journalctl -u ollama | grep offloaded` then shows every layer on the GPU.
+
 ## Troubleshooting
 
 | Problem | What to do |
