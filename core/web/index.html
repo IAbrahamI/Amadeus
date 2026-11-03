@@ -11,7 +11,7 @@
 <body>
 <div class="app crt" id="app">
   <nav class="rail" aria-label="Views">
-    <div class="mark" data-name-title="{name}"><i></i></div>
+    <button type="button" class="mark" id="toMini" title="Back to the mini core"><i></i></button>
     <button class="nav" data-v="home" aria-current="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span class="tip">Home</span></button>
     <button class="nav" data-v="chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span class="tip">Chat</span></button>
     <button class="nav" data-v="calendar"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15"/><path d="M4 10h16M9 3v4m6-4v4"/></svg><span class="tip">Calendar</span></button>
@@ -30,6 +30,7 @@
     <span class="grow"></span>
     <span class="state" id="state">Idle</span>
     <span class="clock" id="clock">--:--:--</span>
+    <button type="button" class="quit" id="quitApp" title="Close Amadeus (the tray icon stays)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </header>
 
   <main class="stage" id="stage">

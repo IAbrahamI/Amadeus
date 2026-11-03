@@ -262,23 +262,34 @@ class Dash(Gtk.Window):
                 self.set_icon_from_file(ICON)
             except GLib.Error:
                 pass
-        css = Gtk.CssProvider()
-        css.load_from_data(b"""
-            headerbar { min-height: 30px; padding: 0 4px; }
-            headerbar .title { font-size: 12.5px; }
-            headerbar button.titlebutton { min-height: 18px; min-width: 18px; padding: 1px; margin: 4px 2px; }
-        """)
-        Gtk.StyleContext.add_provider_for_screen(self.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        bar = Gtk.HeaderBar(title=DASH_TITLE, show_close_button=True)
-        bar.set_decoration_layout(":minimize,maximize,close")
-        self.set_titlebar(bar)
+        self.set_decorated(False)  # no title bar: the page's own top bar moves it, its logo and X do the rest
         self.view = make_view(self.on_msg)
+        self.view.connect("button-press-event", self.on_press)
         self.add(self.view)
         self.connect("delete-event", lambda *_: (self.app.close_dash(), True)[1])
 
     def on_msg(self, msg):
         if msg.startswith("open:"):
             self.view.load_uri(BASE + msg[5:])
+        elif msg == "mini":  # the logo: back to the mini core
+            os.path.exists(HIDDEN) and os.remove(HIDDEN)
+            self.app.close_dash()
+        elif msg == "quit":  # the X: Amadeus closes, only the tray icon stays (a click there brings the core back)
+            open(HIDDEN, "w").close()
+            quit_now()
+
+    def on_press(self, _view, ev):
+        """The top bar (52 px, right of the rail, left of the clock and X) moves the window; a double click maximizes."""
+        w = self.get_allocated_width()
+        if ev.button != 1 or not (64 < ev.x < w - 170 and ev.y < 52):
+            return False
+        if ev.type == Gdk.EventType._2BUTTON_PRESS:
+            self.unmaximize() if self.is_maximized() else self.maximize()
+            return True
+        if ev.type == Gdk.EventType.BUTTON_PRESS:
+            self.begin_move_drag(ev.button, int(ev.x_root), int(ev.y_root), ev.time)
+            return True
+        return False
 
 
 class App:
