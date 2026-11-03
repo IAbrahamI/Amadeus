@@ -188,6 +188,8 @@ async function send(text) {
   if (!text || state.busy) return;
   state.busy = true; setMode("think");
   const spoken = state.spoken; state.spoken = false;
+  const aloud = spkMode === "always" || (spkMode === "voice" && spoken);
+  if (aloud) Aloud.start(); else stopAloud();
   if (!state.cid) await today();
   const now = Date.now() / 1000;
   state.msgs.push({ role: "user", content: text, created: now });
@@ -205,7 +207,7 @@ async function send(text) {
         const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
         const ev = chunk.match(/^event: (.*)$/m)?.[1], data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] || "{}");
         if (ev === "token") {
-          acc += data; core.talk();
+          acc += data; core.talk(); if (aloud) Aloud.feed(acc, false);
           if (!started) { started = true; setMode("speak"); line = liveLine(lineHtml({ role: "assistant", content: " ", created: Date.now() / 1000 }));
             state.msgs.push({ role: "assistant", content: "…", created: Date.now() / 1000 }); renderGhost(); }
           subtitle(acc);
@@ -213,15 +215,15 @@ async function send(text) {
           if (line) { line.querySelector(".m").innerHTML = md(stripMood(acc)); liveLine(); }
         }
         if (ev === "tool") setMode("think");
-        if (ev === "approval") { acc = ""; started = false; counts(); subtitle(`I need your OK first: ${data.summary}`); if (curView === "approvals") loadApprovals(); }
+        if (ev === "approval") { if (aloud) Aloud.feed(acc, true); acc = ""; started = false; if (aloud) Aloud.taken = 0; counts(); subtitle(`I need your OK first: ${data.summary}`); if (curView === "approvals") loadApprovals(); }
         if (ev === "error") subtitle("That didn't work: " + data.message);
       }
     }
   } catch (e) { subtitle("That didn't work: " + e.message); }
   finally {
-    state.busy = false; setTimeout(() => { if (!aloud) setMode("idle"); }, 500);
-    if (acc.trim() && (spkMode === "always" || (spkMode === "voice" && spoken))) sayAloud(acc);
-    else if (window.Voice) Voice.react(acc);
+    state.busy = false;
+    if (aloud) { Aloud.feed(acc, true); if (!Aloud.playing && !Aloud.queue.length) Aloud.end(); }
+    else { setTimeout(() => setMode("idle"), 500); if (window.Voice) Voice.react(acc); }
     await today();
     if (curView === "chat" && state.chatTab === "now") renderChat();
     counts();
@@ -247,33 +249,77 @@ $("#ask").onsubmit = (e) => {
 // ---------- spoken answers: when you talked (default), always, or off. The chat always keeps the full text. ----------
 const SPK = { voice: ["When I talk", "Answers are spoken when you talked to it (click: always)"], always: ["Always", "Every answer is spoken (click: off)"],
   off: ["Off", "Answers are never spoken (click: when I talk)"] };
-let spkMode = "voice", aloud = null;
+let spkMode = "voice";
 const paintSpk = () => { const b = $("#spk"); b.dataset.mode = spkMode; $("#spkL").textContent = SPK[spkMode][0]; b.title = SPK[spkMode][1]; };
 api("/api/voice/replies").then((d) => { spkMode = SPK[d.mode] ? d.mode : "voice"; paintSpk(); if (!d.voice) $("#spk").classList.add("novoice"); }).catch(paintSpk);
 $("#spk").onclick = () => {
-  if (aloud) return stopAloud();  // while it speaks, the button stops it
+  if (Aloud.active) return stopAloud();  // while it speaks, the button stops it
   spkMode = { voice: "always", always: "off", off: "voice" }[spkMode]; paintSpk();
   post("/api/voice/replies", { mode: spkMode });
 };
-function stopAloud() { if (aloud) { aloud.pause(); aloud.onended && aloud.onended(); } }
-// read an answer aloud: the server turns it into what a person would say (no Markdown, "2 PM" not "14:00", the gist
-// of a long answer), with the voice from Settings → Voice; the core moves with it
-async function sayAloud(text) {
-  stopAloud();
-  try {
-    const r = await fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, speech: true }) });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
-    const a = aloud = new Audio(URL.createObjectURL(await r.blob()));
-    const talk = setInterval(() => core.talk(), 140);
-    a.onended = () => { clearInterval(talk); if (aloud === a) { aloud = null; $("#spk").classList.remove("speaking"); if (!state.busy) setMode("idle"); } };
+// Read an answer aloud while it is still being written: every finished sentence goes to the voice right away, the next
+// one is prepared while the current one plays, so you hear it within a few seconds. The server turns each piece into
+// what a person would say ("2 PM", no links, ids or Markdown). Code, tables and long lists stay in the chat, and after
+// about 600 characters it says the rest is in the chat. The voice is the one from Settings → Voice.
+const Aloud = {
+  active: false, gen: 0, queue: [], playing: null, taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false,
+  start() { stopAloud(); Object.assign(this, { active: true, gen: this.gen + 1, queue: [], taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false }); },
+  // the reply so far; done = it's complete (the last piece needs no full stop)
+  feed(text, done) {
+    if (!this.active || this.cut) return;
+    const t = stripMood(text);
+    for (;;) {
+      const rest = t.slice(this.taken), nl = rest.indexOf("\n");
+      if (nl < 0 && !done) {  // an unfinished line: speak its finished sentences already
+        const m = !this.inCode && !/^\s*(?:[-*+]|\d+[.)]|\||#)/.test(rest) && rest.match(/^.*?[.!?](?=\s)/);
+        if (m) { this.say(m[0]); this.taken += m[0].length; continue; }
+        return;
+      }
+      const line = nl < 0 ? rest : rest.slice(0, nl);
+      this.taken += nl < 0 ? rest.length : nl + 1;
+      this.line(line);
+      if (nl < 0 || this.cut) return;
+    }
+  },
+  line(l) {
+    if (/^\s*```/.test(l)) { this.inCode = !this.inCode; if (!this.saidCode) { this.saidCode = true; this.say("The code is in the chat."); } return; }
+    if (this.inCode || /^\s*\|/.test(l) || !l.trim()) return;
+    if (/^\s*(?:[-*+•]|\d+[.)])\s+/.test(l)) {  // a list: the first four items, then a pointer to the chat
+      if (++this.items === 5) return this.say("And more, see the chat.");
+      if (this.items > 5) return;
+    } else this.items = 0;
+    this.say(l);
+  },
+  say(piece) {
+    if (!piece.trim() || this.cut) return;
+    this.spoken += piece.length;
+    if (this.spoken > 650) { this.cut = true; piece = "The rest is in the chat."; }
+    const gen = this.gen, audio = fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: piece, speech: true, limit: 2000 }) })
+      .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText); return URL.createObjectURL(await r.blob()); });
+    this.queue.push(audio); audio.catch(() => {});
+    if (!this.playing) this.next(gen);
+  },
+  async next(gen) {
+    if (gen !== this.gen) return;
+    const p = this.queue.shift();
+    if (!p) { this.playing = null; if (!state.busy) this.end(); return; }
+    let url;
+    try { url = await p; } catch (e) { this.fail(e); return; }
+    if (gen !== this.gen) return;
+    const a = this.playing = new Audio(url);
+    clearInterval(this.talk); this.talk = setInterval(() => core.talk(), 140);  // the core moves with the voice
     $("#spk").classList.add("speaking"); setMode("speak"); $("#state").textContent = "Speaking";
-    await a.play();
-  } catch (e) {
-    $("#spk").classList.add("novoice");
-    subtitle(e.message.includes("No text-to-speech") || e.message.includes("voice") ? "I can't speak yet: pick or download a voice under Settings → Voice." : "I couldn't speak that: " + e.message);
-  }
-}
-addEventListener("keydown", (e) => { if (e.key === "Escape" && aloud) stopAloud(); });
+    a.onended = a.onerror = () => { clearInterval(this.talk); URL.revokeObjectURL(url); this.next(gen); };
+    a.play().catch(() => a.onended());
+  },
+  end() { clearInterval(this.talk); this.active = false; this.playing = null; $("#spk").classList.remove("speaking"); if (!state.busy) setMode("idle"); },
+  fail(e) {
+    this.queue = []; this.end(); $("#spk").classList.add("novoice");
+    subtitle(/text-to-speech|voice/i.test(e.message) ? "I can't speak yet: pick or download a voice under Settings → Voice." : "I couldn't speak that: " + e.message);
+  },
+};
+function stopAloud() { Aloud.gen++; Aloud.queue = []; if (Aloud.playing) Aloud.playing.pause(); if (Aloud.active) Aloud.end(); }
+addEventListener("keydown", (e) => { if (e.key === "Escape" && Aloud.active) stopAloud(); });
 
 // ---------- voice: the mic, Ctrl + Space, the wake word ----------
 if (window.Voice) {
