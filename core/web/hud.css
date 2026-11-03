@@ -592,3 +592,6 @@ button.ev:hover { background: rgba(var(--a),.2); }
 .pop .pm { font: 400 10.5px var(--mono); color: var(--dim); }
 .pop .pf { margin: 8px 0 0; font-size: 11px; color: var(--dim); }
 @media (max-width: 760px) { .chip2 small { display: none; } .pop { width: calc(100% - 32px); } }
+.row.ahist { grid-template-columns: auto 1fr; } .row.ahist .acts { grid-column: 1 / -1; justify-content: flex-end; align-items: center; }
+.app .row.ahist { box-shadow: inset 3px 0 0 var(--st); }
+.row .t small.when { display: block; font: 400 10.5px var(--mono); color: var(--dim); margin-top: 4px; }

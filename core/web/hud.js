@@ -54,7 +54,7 @@ $("#sub").onclick = () => open("chat");
 const VIEWS = {
   chat: { side: 1, title: "Chat", meta: "Today", load: loadChat },
   todo: { side: 1, title: "ToDo", meta: "ToDo.md", load: loadTodo },
-  approvals: { side: 1, title: "Approvals", meta: "", load: loadApprovals },
+  approvals: { side: 1, title: "Approvals", meta: "", load: () => { apprTab = "pending"; loadApprovals(); } },
   calendar: { title: "Calendar", meta: "", load: () => loadCalendar() },
   mail: { title: "Mail", meta: "Thunderbird", load: () => loadMail() },
   projects: { title: "Projects", meta: "Vault · Projects/", load: () => loadProjects() },  // Calendar, Mail, Projects: hud-views.js
@@ -389,14 +389,44 @@ async function loadTodo() {
 }
 
 // ---------- Approvals: Reject / Adjust / Approve ----------
+// two tabs: what waits for you, and History (what you approved or rejected, with a way to where it landed)
+let apprTab = "pending";
 async function loadApprovals() {
+  if (apprTab === "history") return loadApprovalHistory();
   const list = await api("/api/approvals?status=pending");
   $("#pmeta").textContent = `${list.length} waiting`;
-  body().innerHTML = note("Anything that changes something waits here first. Approve it, reject it, or press Adjust and say what should be different.") +
+  body().innerHTML = apprTabs(list.length) + note("Anything that changes something waits here first. Approve it, reject it, or press Adjust and say what should be different.") +
     (list.length ? rows(list.map((a) => `<div class="row ask" data-id="${esc(a.id)}"><span class="chip">${esc(TOOL_KIND(a.tool))}</span>` +
       `<div class="t"><b>${esc(a.conversation_title || "Chat")}${a.revised ? '<em class="chip amber rev">Revised</em>' : ""}</b><span class="md">${md(noEmoji(a.summary))}</span>${a.feedback ? `<em class="why">Changed: ${esc(a.feedback)}</em>` : ""}</div>` +
       `<div class="acts"><button class="btn" data-act="reject">Reject</button><button class="btn adj" data-act="adj">Adjust</button><button class="btn go" data-act="approve">Approve</button></div></div>`))
       : note("Nothing waiting for you."));
+}
+const apprTabs = (n) => `<div class="ctabs"><button class="ctab${apprTab === "pending" ? " on" : ""}" data-act="atab" data-tab="pending">Waiting${n ? `<small>${n}</small>` : ""}</button>` +
+  `<button class="ctab${apprTab === "history" ? " on" : ""}" data-act="atab" data-tab="history">History</button></div>`;
+const ASTATE = { done: ["st-done", "Done"], rejected: ["st-idle", "Rejected"], failed: ["st-wait", "Failed"] };
+async function loadApprovalHistory() {
+  const [all, waiting] = await Promise.all([api("/api/approvals?status=all"), api("/api/approvals?status=pending")]);
+  const list = all.filter((a) => a.status !== "pending").slice(0, 80);
+  $("#pmeta").textContent = "History";
+  body().innerHTML = apprTabs(waiting.length) + (list.length ? rows(list.map((a) => {
+    const [c, l] = ASTATE[a.status] || ["st-idle", a.status], link = whereItLanded(a);
+    return `<div class="row ahist ${c}"><span class="chip">${esc(TOOL_KIND(a.tool))}</span><div class="t"><b>${esc(a.conversation_title || "Chat")}</b>` +
+      `<span class="md">${md(noEmoji(a.summary))}</span>${a.feedback ? `<em class="why">Changed: ${esc(a.feedback)}</em>` : ""}` +
+      `${a.status === "failed" && a.result ? `<em class="why">${esc(String(a.result).slice(0, 200))}</em>` : ""}<small class="when">${ago(a.decided || a.created)}</small></div>` +
+      `<div class="acts"><span class="chip st ${c}">${l}</span>${link ? `<button class="btn" data-act="landed" data-link="${esc(JSON.stringify(link))}">Open ›</button>` : ""}</div></div>`;
+  })) : note("Nothing decided yet."));
+}
+// where a done action can be seen: the calendar week, the reminders, the mail, the to-dos, the project
+function whereItLanded(a) {
+  if (a.status !== "done") return null;
+  let args = {}; try { args = JSON.parse(a.args || "{}"); } catch {}
+  const t = a.tool;
+  if (t.startsWith("calendar")) return { view: "calendar", day: (args.start || args.start_date || "").slice(0, 10) };
+  if (t.includes("reminder")) return { view: "reminders" };
+  if (t.startsWith("todo") || t === "notes_add") return { view: t.startsWith("todo") ? "todo" : "memory" };
+  if (t.startsWith("mail_") && t !== "mail_send") return { view: "mail" };
+  if (t === "send_to_work" || t === "continue_project") return { view: "projects", project: args.project || "" };
+  return null;
 }
 const TOOL_KIND = (t) => (t.startsWith("mail") ? "Mail" : t.startsWith("calendar") ? "Calendar" : t.includes("reminder") ? "Reminder" : t.includes("todo") ? "ToDo"
   : t.startsWith("mcp_") ? "Connector" : t.includes("work") || t.includes("claude") ? "Work" : t.replace(/_/g, " "));
@@ -482,6 +512,14 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "ctab" || act === "past") { state.chatTab = act === "past" ? Number(a.dataset.i) : a.dataset.tab; if (act === "ctab" && a.dataset.tab === "history") state.past = null; renderChat(); }
   if (act === "toappr") open("approvals");
+  if (act === "atab") { apprTab = a.dataset.tab; loadApprovals(); }
+  if (act === "landed") {
+    const l = JSON.parse(a.dataset.link);
+    if (l.view === "calendar") { if (l.day) { cal.week = monday(new Date(l.day + "T00:00")); } open("calendar"); }
+    else if (l.view === "reminders") { open("settings"); settingsPage("reminders"); }
+    else if (l.view === "projects") { open("projects"); if (l.project) { proj.sel = l.project; renderProjects(); } }
+    else open(l.view);
+  }
   if (act === "rate") {  // your rating teaches it (core/amadeus_core/learning.py): "Not good" asks what was wrong, optionally
     const box = a.closest(".rate"), id = box.dataset.mid, score = Number(a.dataset.s);
     if (score < 0 && !box.querySelector("form")) {
