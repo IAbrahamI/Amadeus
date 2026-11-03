@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # KDE Plasma (Wayland): the KWin rule for Amadeus' mini core (the window titled "Amadeus core"): always on top, not in
 # the taskbar or the task switcher, and KWin remembers where you dragged it. The first time it starts bottom-right on
-# the second monitor (or the only one). Running this again keeps the place you chose. Only touches the "amadeus-call" rule.
+# the second monitor (or the only one). Running this again keeps the place you chose. Also the dashboard: no title
+# bar. Only touches the "amadeus-call" and "amadeus-dash" rules.
 set -euo pipefail
 W=300; H=300  # the mini core window (desktop/popup.py)
 F=kwinrulesrc; G=amadeus-call
@@ -36,8 +37,16 @@ print(o["g"] if o else "0,0 1920x1080")')
   kw position "$((X0 + SW - W - 16)),$((Y0 + SH - H - 8))"
 fi
 kw positionrule 4                           # remember: wherever you drag it, it opens there again
+# the dashboard (same app, the window titled "Amadeus"): no title bar, its own top bar moves it
+D=amadeus-dash
+kd() { kwriteconfig6 --file "$F" --group "$D" --key "$1" "$2"; }
+kd Description "Amadeus dashboard"
+kd wmclass amadeus-call; kd wmclassmatch 1
+kd title "Amadeus"; kd titlematch 1
+kd noborder true; kd noborderrule 2
 rules=$(kreadconfig6 --file "$F" --group General --key rules)
 case ",$rules," in *",$G,"*) ;; *) rules=${rules:+$rules,}$G ;; esac
+case ",$rules," in *",$D,"*) ;; *) rules=${rules:+$rules,}$D ;; esac
 kwriteconfig6 --file "$F" --group General --key rules "$rules"
 kwriteconfig6 --file "$F" --group General --key count "$(tr ',' '\n' <<<"$rules" | grep -c .)"
 qdbus6 org.kde.KWin /KWin reconfigure

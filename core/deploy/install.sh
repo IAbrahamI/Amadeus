@@ -27,11 +27,13 @@ if [ "$DRY" = "--uninstall" ]; then
     "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" "$HOME/.mozilla/native-messaging-hosts/amadeus_bridge.json"
   if [ -d "$HOME/.local/share/amadeus/work-guard" ]; then chmod -R u+w "$HOME/.local/share/amadeus/work-guard"; rm -rfv "$HOME/.local/share/amadeus/work-guard"; fi
   if command -v kwriteconfig6 >/dev/null; then  # the KWin rule for the small window
-    rules=$(kreadconfig6 --file kwinrulesrc --group General --key rules | tr ',' '\n' | grep -vx amadeus-call | paste -sd, -)
+    rules=$(kreadconfig6 --file kwinrulesrc --group General --key rules | tr ',' '\n' | grep -vx 'amadeus-call\|amadeus-dash' | paste -sd, -)
     kwriteconfig6 --file kwinrulesrc --group General --key rules "$rules"
     kwriteconfig6 --file kwinrulesrc --group General --key count "$(tr ',' '\n' <<<"$rules" | grep -c . || true)"
-    for k in Description wmclass wmclassmatch above aboverule position positionrule; do
-      kwriteconfig6 --file kwinrulesrc --group amadeus-call --key "$k" --delete 2>/dev/null || true; done
+    for g in amadeus-call amadeus-dash; do
+      for k in Description wmclass wmclassmatch title titlematch above aboverule position positionrule noborder noborderrule \
+               skiptaskbar skiptaskbarrule skippager skippagerrule skipswitcher skipswitcherrule; do
+        kwriteconfig6 --file kwinrulesrc --group "$g" --key "$k" --delete 2>/dev/null || true; done; done
     qdbus6 org.kde.KWin /KWin reconfigure 2>/dev/null || true
   fi
   echo "Removed. Your data in ~/.local/share/amadeus/ and the containers are still there (see docs/INSTALL.md, Uninstall)."
