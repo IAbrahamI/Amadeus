@@ -18,7 +18,7 @@ const CALL = new URLSearchParams(location.search).has("call");  // opened for a 
 
 // ---------- the core ----------
 const core = Core.start($("#corewrap"), { points: "mini" });
-const placeCore = () => core.target(140, 140, 92);
+const placeCore = () => { const r = $("#corewrap").getBoundingClientRect(); core.target(r.width / 2, r.height / 2, Math.min(r.width, r.height) / 2 / 1.5); };
 new ResizeObserver(placeCore).observe($("#corewrap")); placeCore();
 let mode = "idle";
 const setMode = (m) => { mode = m; core.mode(m); };
@@ -184,7 +184,7 @@ async function refresh() {
   if (!ringing && queue.length && !busy && !listenB) ring(queue.shift());
 }
 function ring(e) {
-  ringing = e; Aloud.stop(); setMode("think");  // the heartbeat; the ring plays on each beat
+  ringing = e; $("#mini").classList.add("ringing"); Aloud.stop(); setMode("think");  // the heartbeat; the ring plays on each beat
   const acts = e.kind === "approval" && e.status === "pending"
     ? '<button data-a="reject">Reject</button><button class="adj" data-a="adjust">Adjust</button><button class="go" data-a="approve">Approve</button>'
     : e.kind === "reminder" ? '<button class="go" data-a="ok">Got it</button><button data-a="snooze">Snooze 10 min</button>'
@@ -200,7 +200,7 @@ function endCall(reply) {
   stopRing();
   const b = document.querySelector(`.bubble.call[data-ev="${ringing && ringing.id}"]`); drop(b);
   if (ringing) handled.add(ringing.id);
-  ringing = null; if (!busy) setMode("idle");
+  ringing = null; $("#mini").classList.remove("ringing"); if (!busy) setMode("idle");
   if (reply) say(reply);
   setTimeout(refresh, 600);
 }
@@ -233,7 +233,7 @@ $("#bubbles").addEventListener("click", async (ev) => {
   }
   if (a === "snooze") {  // the reminder stays; it rings again in ten minutes
     snoozed[e.id] = Date.now() + 10 * 60000; stopRing(); drop(document.querySelector(`.bubble.call[data-ev="${e.id}"]`));
-    ringing = null; setMode("idle"); say("I'll remind you again in ten minutes."); return;
+    ringing = null; $("#mini").classList.remove("ringing"); setMode("idle"); say("I'll remind you again in ten minutes."); return;
   }
   if (a === "copy") { try { await navigator.clipboard.writeText(e.ref); } catch {} }
   await post(`/api/events/${e.id}/seen`).catch(() => {});
@@ -254,7 +254,7 @@ function maybeHide() {
   clearTimeout(hideT);
   hideT = setTimeout(() => { if (!ringing && !queue.length && !busy && !Aloud.active && !listenB && !adjusting && !document.querySelector(".bubble")) native("hide"); }, 1500);
 }
-function stopAll() { Aloud.stop(); stopRing(); ringing = null; setMode("idle"); }
+function stopAll() { Aloud.stop(); stopRing(); ringing = null; $("#mini").classList.remove("ringing"); setMode("idle"); }
 window.amadeusShown = (reason) => { if (reason === "call") refresh(); };  // popup.py: the window was shown (again)
 
 (async () => {

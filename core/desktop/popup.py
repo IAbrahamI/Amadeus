@@ -30,7 +30,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 cfg = _cfg
 DATA = cfg.get("data_dir", os.path.expanduser("~/.local/share/amadeus/core"))
 BASE = f"http://127.0.0.1:{cfg.get('port', 8095)}"
-MW, MH = 300, 500  # the mini core window: the core (280 px) at the bottom, room for her speech bubbles above
+MW, MH = 300, 300  # the mini core window: just the core on its dark screen (bubbles and controls inside)
 CMD = os.path.join(DATA, "popup.cmd")    # target for SIGUSR2 (dashboard), written by the tray icon
 MINICMD = os.path.join(DATA, "popup.mini")  # "toggle" for SIGUSR1 from the tray; otherwise SIGUSR1 = a call
 HIDDEN = os.path.join(DATA, "mini-hidden")  # you closed the mini core: it only comes back for a call or the tray

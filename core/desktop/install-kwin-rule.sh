@@ -3,7 +3,7 @@
 # the taskbar or the task switcher, and KWin remembers where you dragged it. The first time it starts bottom-right on
 # the second monitor (or the only one). Running this again keeps the place you chose. Only touches the "amadeus-call" rule.
 set -euo pipefail
-W=300; H=500  # the mini core window (desktop/popup.py)
+W=300; H=300  # the mini core window (desktop/popup.py)
 F=kwinrulesrc; G=amadeus-call
 kw() { kwriteconfig6 --file "$F" --group "$G" --key "$1" "$2"; }
 kr() { kreadconfig6 --file "$F" --group "$G" --key "$1"; }
@@ -13,6 +13,7 @@ kw Description "Amadeus mini core"
 kw wmclass amadeus-call; kw wmclassmatch 1
 kw title "Amadeus core"; kw titlematch 1    # only the mini core, not the dashboard (same app)
 kw above true; kw aboverule 2               # always on top (force)
+kw noborder true; kw noborderrule 2         # no title bar: it closes from its own controls
 kw skiptaskbar true; kw skiptaskbarrule 2
 kw skippager true; kw skippagerrule 2
 kw skipswitcher true; kw skipswitcherrule 2
