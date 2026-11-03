@@ -1,98 +1,9 @@
-// Voice in the window: optional voice lines you added (a "voice pack": which clip plays on which action or word;
-// replies themselves are text), the avatar's mouth follows the audio, and push-to-talk records you
-// (mic button or Ctrl+Space).
+// Talking to her in the window: push-to-talk (the mic, holding the core, or Ctrl+Space) records you and turns it
+// into text (local Whisper through the voice service). Her answers are spoken by speak.js; there are no voice lines.
 (() => {
-  const V = { on: true, queue: [], playing: false, sent: 0, lang: "en", rec: null, chunks: [], ctx: null, onText: null, busy: null,
-    pack: {} };  // ~/.local/share/amadeus/voice/clips/voice-pack.json (empty: no clips)
-  fetch("/api/voice/pack").then((r) => r.json()).then((p) => { V.pack = p || {}; }).catch(() => {});
-  const pick = (list) => (list && list.length ? list[Math.floor(Math.random() * list.length)] : null);
-  // voice lines are on unless you mute them (🔇); the setting is shared by the dashboard and the small window
-  try { V.on = localStorage.getItem("voice") !== "off"; } catch { V.on = true; }
-  addEventListener("storage", (e) => { if (e.key === "voice") { V.on = e.newValue === "on"; if (!V.on) V.queue = []; window.dispatchEvent(new Event("voicechange")); } });
-
-  const WORDS = { de: /\b(und|ich|nicht|du|ist|der|die|das|ein|eine|mit|für|auf|noch|heute|ja|nein|bitte)\b/gi,
-    es: /\b(el|la|los|las|que|de|y|en|un|una|por|para|con|hoy|sí|no|qué|está|eres)\b/gi,
-    en: /\b(the|and|you|is|are|to|of|it|not|what|for|with|today|yes|please)\b/gi };
-  function detect(text) {
-    let best = V.lang, n = 0;
-    for (const [l, re] of Object.entries(WORDS)) { const c = (text.match(re) || []).length; if (c > n) { n = c; best = l; } }
-    return n >= 2 ? best : V.lang;
-  }
-  const clean = (t) => t.replace(/```[\s\S]*?```/g, " (code) ").replace(/\[mood:\s*\w*\]?/gi, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, "").replace(/[*_`#>|~]/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
-
-  function analyser(audio) {
-    try {
-      V.ctx = V.ctx || new AudioContext();
-      const src = V.ctx.createMediaElementSource(audio), an = V.ctx.createAnalyser();
-      an.fftSize = 512; src.connect(an); an.connect(V.ctx.destination);
-      const buf = new Uint8Array(an.fftSize);
-      const tick = () => {
-        if (audio.paused || audio.ended) return;
-        an.getByteTimeDomainData(buf);
-        let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
-        if (peak > 10 && window.Avatar) Avatar.talk();  // the mouth moves with the actual audio
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    } catch { const t = setInterval(() => (audio.paused || audio.ended ? clearInterval(t) : window.Avatar && Avatar.talk()), 150); }
-  }
-
-  async function next() {
-    if (V.playing || !V.queue.length) return;
-    V.playing = true;
-    const item = V.queue.shift();
-    try {
-      if (!item.clip) throw new Error("no clip");  // replies are text; only voice-pack clips are played
-      const a = new Audio(`/voice-clip/${item.clip}.ogg`);
-      analyser(a);
-      await new Promise((res) => { a.onended = res; a.onerror = res; a.play().catch(res); });
-    } catch (e) { console.warn("voice:", e.message); }
-    V.playing = false;
-    next();
-  }
-
-  function enqueue() {}  // text is never read aloud (replies are text); kept so older callers do nothing
+  const V = { lang: "en", rec: null, chunks: [], onText: null, busy: null, hint: null, auto: false };
 
   window.Voice = {
-    get on() { return V.on; },
-    toggle() { V.on = !V.on; try { localStorage.setItem("voice", V.on ? "on" : "off"); } catch {} if (!V.on) this.stop();
-      window.dispatchEvent(new Event("voicechange")); return V.on; },
-    stop() { V.queue = []; },
-    // feed the growing reply while it streams; complete sentences are spoken right away
-    start() { V.sent = 0; },
-    stream(full) {
-      const text = full.replace(/\[mood:[^\]]*\]?/gi, "");
-      for (;;) {
-        const rest = text.slice(V.sent), m = rest.match(/[.!?…](\s|$)/);
-        if (!m) return;
-        const end = m.index + m[0].length;
-        if (end === rest.length && !/\s$/.test(rest)) return;                     // could still be "3.5": wait for more
-        if ((text.slice(0, V.sent + end).match(/```/g) || []).length % 2) return;  // inside a code block: wait
-        enqueue(rest.slice(0, end)); V.sent += end;
-      }
-    },
-    finish(full) { const text = full.replace(/\[mood:[^\]]*\]?/gi, ""); enqueue(text.slice(V.sent)); V.sent = text.length; },
-    say(text) { enqueue(text); },
-    clip(name) { if (V.on) { V.queue.push({ clip: name }); next(); } },
-    // short lines for actions (hello = you answered a call, approved, rejected, failed; only when sounds are on). Replies are never read aloud.
-    sfx(action) {
-      const line = pick((V.pack.actions || {})[action]);
-      if (line) this.clip(line);
-    },
-    // reactions to things YOU say (the pack's "hear" list: [regex, [clips]]); at most one per message
-    hear(text) {
-      const t = (text || "").toLowerCase();
-      const eggs = (V.pack.hear || []).map(([re, lines]) => { try { return [new RegExp(re, "i"), lines]; } catch { return null; } }).filter(Boolean);
-      for (const [re, lines] of eggs) if (re.test(t)) { this.clip(pick(lines)); return true; }
-      return false;
-    },
-    // reactions to its own replies (the pack's "reply" list)
-    react(reply) {
-      const t = (reply || "").replace(/\[mood:[^\]]*\]?/gi, "").trim();
-      for (const [re, lines] of V.pack.reply || []) { try { if (new RegExp(re, "i").test(t)) { this.clip(pick(lines)); return; } } catch {} }
-    },
-    get ringtone() { return V.pack.ringtone || ""; },
     // push-to-talk: start() on press, stop() on release → onText(text, lang)
     // listen(true) (after the wake word): stops by itself 2 s after you stop talking (8 s if nothing is said, 60 s max)
     async listen(auto = false) {
@@ -120,13 +31,13 @@
           V.busy && V.busy(false);
         };
         V.rec.start();
-        V.queue = [];  // it stops talking when you start
       } catch (e) { V.hint ? V.hint("Microphone not available: " + e.message) : console.warn(e); }
     },
     release() { if (V.rec && V.rec.state === "recording") V.rec.stop(); },
     get recordingAuto() { return !!V.auto; },
     get recording() { return !!V.rec; },
     set onText(fn) { V.onText = fn; },
+    get onText() { return V.onText; },  // the wake word hands its text to the page through this
     set onBusy(fn) { V.busy = fn; },
     set onSpeak(fn) { V.speaking = fn; },
     set onHint(fn) { V.hint = fn; },

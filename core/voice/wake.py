@@ -10,10 +10,8 @@ Paused while ~/.local/share/amadeus/core/wake-off exists (tray: Wake word on/off
 import io
 import json
 import os
-import random
 import re
 import subprocess
-import threading
 import time
 import urllib.request
 import wave
@@ -26,7 +24,6 @@ HOME = os.path.expanduser("~")
 DATA = os.path.join(HOME, ".local/share/amadeus/core")
 VOICE = os.path.join(HOME, ".local/share/amadeus/voice")
 MODEL = os.path.join(VOICE, "models/vosk-model-small-en-us-0.15")
-CLIPS = os.path.join(VOICE, "clips")
 OFF = os.path.join(DATA, "wake-off")
 CFG_FILE = os.path.join(HOME, ".config/amadeus-core/config.json")
 RATE, CHUNK = 16000, 1600  # 100 ms of 16-bit mono
@@ -36,14 +33,6 @@ GREETINGS = ["hey", "okay", "ok", "hi"]
 def _cfg():
     try:
         return json.load(open(CFG_FILE))
-    except Exception:
-        return {}
-
-
-def _pack():
-    """Your optional voice lines: which clip plays when (clips/voice-pack.json, see docs/INSTALL.md)."""
-    try:
-        return json.load(open(os.path.join(CLIPS, "voice-pack.json")))
     except Exception:
         return {}
 
@@ -69,16 +58,6 @@ def tell_window(**data):
         _post(f"http://127.0.0.1:{_cfg().get('port', 8095)}/api/wake", json.dumps(data).encode(), timeout=10)
     except Exception as e:
         print("window call failed:", e, flush=True)
-
-
-def play(names, wait=True):
-    names = [n for n in names if os.path.exists(os.path.join(CLIPS, n + ".ogg"))]
-    if not names:
-        return
-    p = subprocess.Popen(["paplay", os.path.join(CLIPS, random.choice(names) + ".ogg")],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if wait:
-        p.wait(timeout=10)
 
 
 def transcribe(pcm):
@@ -179,9 +158,7 @@ def handle(mic, word, phrase_audio):
         print(f"wake: false alarm (Whisper's first word: {(heard.split() or ['-'])[0][:20]!r})", flush=True)
         return
     if len(re.sub(r"\W", "", text)) < 2:  # only the name: greet, then listen for the request
-        tell_window(stage="listening", word=word)
-        greet = _pack().get("wake_greet", {})
-        play(greet.get(word) or greet.get("", []))
+        tell_window(stage="listening", word=word)  # the mini core shows that it listens (no sound)
         pcm = record_request(mic, [])
         heard = transcribe(pcm) if pcm else ""
         text = strip_name(heard) if strip_name(heard) is not None else heard
@@ -189,8 +166,6 @@ def handle(mic, word, phrase_audio):
         tell_window(stage="cancel")
         return
     print(f"wake request: {len(text.split())} words", flush=True)
-    heard_lines = _pack().get("actions", {}).get("heard", [])  # e.g. "OK": it heard you and is on it
-    threading.Thread(target=play, args=(heard_lines,), daemon=True).start()
     tell_window(stage="text", word=word, text=text)
 
 

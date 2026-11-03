@@ -19,7 +19,6 @@ const PAGES = {
     const d = await api("/api/assistant"), own = d.persona === "custom";
     set.avatar = d.avatar;
     const tile = (id, img, label) => `<button type="button" class="avt${id === set.avatar ? " on" : ""}" data-act="avpick" data-av="${esc(id)}"><img src="${img}" alt="" onerror="this.src='/agent.svg'"><span>${esc(label)}</span></button>`;
-    let clips = { lines: [], ringtones: [] }; try { clips = await api("/api/voice/clips"); } catch {}
     body().innerHTML = head("Assistant", "Who your assistant is. Saving restarts it once, which takes a few seconds.") +
       `<form class="pform" id="asForm">${field("Name", `<input id="asName" value="${esc(d.name)}" autocomplete="off">`)}
         <label>Personality<span class="radio"><label class="chk"><input type="radio" name="pm" value="pick" ${own ? "" : "checked"}> One of these</label>
@@ -28,9 +27,7 @@ const PAGES = {
           <textarea id="asPersonaText" rows="4" placeholder="A few lines about how it should be: tone, what it cares about…">${own ? esc(d.persona_text) : ""}</textarea></label>
         <label>Face (for calls and the phone app)<div class="avts">${tile("", "/agent.svg", "Default agent")}${d.avatars.map((a) => tile(a, `/avatar/${encodeURIComponent(a)}/${encodeURIComponent(a)}_normal1.png`, a)).join("")}</div></label>
         <div class="acts"><input type="file" id="asFiles" accept="image/png" multiple><button type="button" class="btn" data-act="avup">Upload as my avatar</button></div>
-        <div class="acts"><button type="button" class="btn" data-act="asreset">Use the defaults</button><span class="grow"></span><button class="btn go">Save</button></div>${info("asInfo")}</form>
-      <h3 style="margin-top:22px">Voice lines</h3>${note(`${clips.lines.length} voice lines and ${clips.ringtones.length} ringtones from your voice-pack.json. Click to play.`)}
-      <div class="clips">${clips.lines.concat(clips.ringtones).map((n) => `<button class="btn" data-act="clip" data-clip="${esc(n)}">▶ ${esc(n.replace(/^ringtone_/, "").replace(/_/g, " "))}</button>`).join("")}</div>`;
+        <div class="acts"><button type="button" class="btn" data-act="asreset">Use the defaults</button><span class="grow"></span><button class="btn go">Save</button></div>${info("asInfo")}</form>`;
   },
   async voice() {
     const d = await api("/api/voice/voices");
@@ -131,7 +128,6 @@ body().addEventListener("click", async (e) => {
     body().querySelectorAll(".avt").forEach((x) => x.classList.toggle("on", x.dataset.av === "custom"));
   }
   if (act === "asreset") { if (!confirm("Use the default assistant (default name, personality and icon)? Your own files are kept.")) return; await post("/api/assistant/reset", {}); restarted(); }
-  if (act === "clip") new Audio(`/voice-clip/${d.clip}.ogg`).play();
   if (act === "vuse") { await post("/api/voice/voices/select", { id: d.v }); PAGES.voice(); }
   if (act === "vget") { await post("/api/voice/voices/download", { id: d.v }); PAGES.voice(); }
   if (act === "vtest") {

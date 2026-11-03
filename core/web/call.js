@@ -76,7 +76,6 @@ async function decide(id, ok) {
   say(ok ? (failed ? "I tried, but it failed. Check the chat." : "Done.") : "Fine, I won't do it.", ok && !failed ? "happy" : "normal");
   if (e.conversation_id) followUp(e.conversation_id);
   dismiss(id, ok && !failed ? "ok" : "bad", ok ? (failed ? "✗ Failed" : "✓ Approved") : "✗ Rejected");
-  if (window.Voice) Voice.sfx(ok ? (failed ? "failed" : "approved") : "rejected");
 }
 // after a decision it often continues (e.g. a corrected proposal): show that it's working and then the answer
 async function followUp(cid) {
@@ -131,13 +130,8 @@ async function refresh() {
   if (added || !events.length) render();
 }
 
-// The ringtone: your own clip if the voice pack names one, otherwise a soft two-tone ring made right here.
-function makeRing(clip) {
-  if (clip) {
-    const a = new Audio(`/voice-clip/${clip}.ogg`); a.loop = true; a.volume = 0.6;
-    a.onerror = () => console.warn("ring: audio error", a.error && a.error.code);
-    return { play: () => a.play(), stop: () => { a.pause(); a.currentTime = 0; } };
-  }
+// The ringtone: a soft two-tone ring made right here.
+function makeRing() {
   let ctx = null, timer = null;
   const beep = () => {
     const t = ctx.currentTime;
@@ -168,7 +162,6 @@ function bubble(cls, text) {
 async function loadHistory() { $("#log").innerHTML = ""; }
 // While it talks, the words are only in the speech bubble at the top; when it's done they move into the conversation.
 async function ask(text, voice = false) {
-  const egg = window.Voice ? Voice.hear(text) : false;
   bubble("user", text);
   const wait = bubble("note typing", `${NAME()} is thinking`);
   Avatar.setMood("thinking");
@@ -196,7 +189,6 @@ async function ask(text, voice = false) {
   }
   wait.remove();
   if (!reply && stripMood(acc).trim()) bubble("amadeus", stripMood(acc).trim());
-  if (window.Voice && !egg) Voice.react(acc);
   if (note) bubble("note", note);
 }
 
@@ -217,15 +209,12 @@ async function answer() {
   $("#decline").onclick = hangUp;
   if (window.Voice) {
     Voice.onSpeak = (sentence) => Avatar.subtitle(sentence, Math.max(2500, sentence.length * 75));  // subtitle = what it is saying right now
-    const vt = $("#voiceToggle");
-    const paint = () => { vt.textContent = Voice.on ? "🔊" : "🔇"; vt.title = Voice.on ? "Voice lines are on (click to mute)" : "Muted (click for voice lines)"; };
-    vt.onclick = () => Voice.toggle(); addEventListener("voicechange", paint); paint();
   }
   $("#ask").onsubmit = (e) => { e.preventDefault(); const t = $("#askInput").value.trim(); if (!t) return; $("#askInput").value = ""; ask(t).catch((err) => bubble("note", "⚠️ " + err.message)); };
   let timeout;
-  const ring = makeRing((await window.IDENTITY).voice.ringtone);
+  const ring = makeRing();
   const stopRing = () => ring.stop();
-  $("#accept").onclick = () => { stopRing(); clearTimeout(timeout); api("/api/call/answered", { method: "POST" }).catch(() => {}); if (window.Voice) Voice.sfx("hello"); answer(); };
+  $("#accept").onclick = () => { stopRing(); clearTimeout(timeout); api("/api/call/answered", { method: "POST" }).catch(() => {}); answer(); };
   // picked up on the phone: stop ringing here and close
   const ringStart = Date.now() / 1000;
   setInterval(async () => {
@@ -267,7 +256,7 @@ async function answer() {
   setInterval(() => refresh().catch(() => {}), 5000);
   if (STAY) return answer();
   if (!events.length && !$("#count").textContent.startsWith("Couldn't")) return native("close");
-  ring.play().catch((e) => console.warn("ring: play() refused:", e.name, e.message));  // rings even when voice lines are off
+  ring.play().catch((e) => console.warn("ring: play() refused:", e.name, e.message));  // rings even when spoken answers are off
   timeout = setTimeout(() => native("close"), 120000);  // missed call after 2 minutes: the events stay for the next one
   $("#accept").focus();
 })();

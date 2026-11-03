@@ -163,7 +163,7 @@ write only in that folder and keeps it out of your vault, Amadeus's data and you
 | Notes, to-dos | your Obsidian vault, `Amadeus/` folder | never |
 | Work projects | the projects folder you chose (e.g. `~/Amadeus/Projects`) | only the approved text of each run |
 | Your own skills, playbooks and connectors | `~/.local/share/amadeus/core/skills/`, the database | never |
-| Your persona, avatar sprites, voice clips | `~/.local/share/amadeus/core/personas/`, `…/core/avatar/`, `~/.local/share/amadeus/voice/clips/` | never |
+| Your persona, avatar sprites | `~/.local/share/amadeus/core/personas/`, `…/core/avatar/` | never |
 
 ## Network
 

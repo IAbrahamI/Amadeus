@@ -48,7 +48,7 @@ You decide who your assistant is: its name, its personality, and whether it has 
 | **Personality** | Write a short persona in `~/.local/share/amadeus/core/personas/<name>.md` and set `"persona": "<name>"`. The default is friendly and to the point. |
 | **Look** | Three main colours (Default blue, Purple, Red) at the top of Settings. |
 | **Face** | For calls and the phone: the default is a small chibi agent. Add your own animated sprites (moods, lip-sync, eyes that follow the mouse) and set `"avatar": "<set>"`. |
-| **Voice** | Add your own short clips (greetings, a ringtone, reactions to words) with a small `voice-pack.json`. Without them it stays silent and rings with a soft tone. |
+| **Voice** | Pick the reading voice under Settings → Voice. Calls ring with a soft tone. |
 
 All of this can be set under **Settings → Assistant** (name, personality, your own avatar images, or "Use the
 defaults") and **Settings → Voice**; details in [docs/INSTALL.md](docs/INSTALL.md#make-it-yours). Everything you add

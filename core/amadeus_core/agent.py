@@ -237,8 +237,8 @@ ABOUT_ME = """
   work team). Skills: calendar, reply in my style, work brief.
 - Phone: the user's paired phone reaches you over Tailscale. "Private mode" switches that off, "visible mode" on.
 - Voice: a wake word (your name; the user can say "voice off" / "voice on"; while off the mic is
-  closed and only typing or the tray turns it back on), push-to-talk, Whisper speech recognition; your replies are text, you
-  only play short voice lines if the user added some. You can open apps and web pages on the PC.
+  closed and only typing or the tray turns it back on), push-to-talk, Whisper speech recognition; your replies are
+  read aloud by a local voice when the user wants that. You can open apps and web pages on the PC.
 - Work (cloud): send_to_work starts ONE Claude Code run on a project (coding, writing, research), privacy-filtered and
   approved; it works only in its own project folder (outside the user's notes) and reports back when done. If it ends with "## Questions",
   the user's answers go back with continue_project (same session). work_status lists the runs. The new-project

@@ -18,18 +18,6 @@ mimetypes.add_type("text/javascript", ".js")
 WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 
 
-CLIPS_DIR = os.path.expanduser("~/.local/share/amadeus/voice/clips")
-
-
-def voice_pack():
-    """Optional sounds you add yourself: clips in ~/.local/share/amadeus/voice/clips/ and a voice-pack.json there that
-    says which clip plays when (greetings, approved/rejected, a ringtone, reactions to words). Without it: no clips."""
-    try:
-        return json.load(open(os.path.join(CLIPS_DIR, "voice-pack.json")))
-    except (OSError, ValueError):
-        return {}
-
-
 def _tailscale_host():
     """This PC's private HTTPS name in your Tailscale network (e.g. pc.tailXXXX.ts.net), or ''."""
     import subprocess
@@ -115,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
             if not self._phone():
-                if u.path.endswith((".js", ".css", ".png", ".svg", ".webmanifest")) and not u.path.startswith(("/avatar/", "/voice-clip/")):
+                if u.path.endswith((".js", ".css", ".png", ".svg", ".webmanifest")) and not u.path.startswith("/avatar/"):
                     return self._static(u.path)
                 if u.path.startswith("/api/"):
                     return self._json({"error": "This phone is not paired."}, 401)
@@ -133,29 +121,6 @@ class Handler(BaseHTTPRequestHandler):
             nxt = qs.get("next", ["/"])[0]
             self.send_header("location", nxt if nxt.startswith("/") and not nxt.startswith("//") else "/")
             self.end_headers()
-            return
-        if u.path.startswith("/voice-clip/"):  # voice lines you added (private, from the voice folder)
-            if not self._authed():
-                return self._json({"error": "unauthorized"}, 401)
-            base = os.path.realpath(CLIPS_DIR)
-            f = os.path.realpath(os.path.join(base, u.path[len("/voice-clip/"):]))
-            if not f.startswith(base + os.sep) or not os.path.isfile(f):
-                return self._json({"error": "not found"}, 404)
-            data = open(f, "rb").read()
-            m = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("range", ""))
-            start, end = 0, len(data) - 1
-            if m and (m.group(1) or m.group(2)):  # media players ask for byte ranges
-                start = int(m.group(1)) if m.group(1) else max(0, len(data) - int(m.group(2)))
-                end = min(int(m.group(2)), len(data) - 1) if m.group(1) and m.group(2) else len(data) - 1
-            self.send_response(206 if m else 200)
-            self.send_header("content-type", "audio/ogg")
-            self.send_header("accept-ranges", "bytes")
-            self.send_header("cache-control", "private, max-age=86400")
-            if m:
-                self.send_header("content-range", f"bytes {start}-{end}/{len(data)}")
-            self.send_header("content-length", str(end - start + 1))
-            self.end_headers()
-            self.wfile.write(data[start:end + 1])
             return
         if u.path.startswith("/avatar/"):
             if not self._authed():
@@ -197,10 +162,7 @@ class Handler(BaseHTTPRequestHandler):
             from . import voices
             return self._json(voices.listing())
         if p == "/api/identity":  # the assistant's name and look, for the window and the phone app
-            return self._json({"name": CFG["assistant_name"], "avatar": os.path.basename(CFG.get("avatar") or ""),
-                               "voice": voice_pack(), "theme": db.get_setting("theme", "blue")})
-        if p == "/api/voice/pack":
-            return self._json(voice_pack())
+            return self._json({"name": CFG["assistant_name"], "avatar": os.path.basename(CFG.get("avatar") or ""), "theme": db.get_setting("theme", "blue")})
         if p == "/api/voice/replies":  # read replies aloud: "voice" (when you talked), "always" or "off"; the mini core has its own
             from . import voices
             mini = qs.get("for", [""])[0] == "mini"
@@ -245,11 +207,6 @@ class Handler(BaseHTTPRequestHandler):
                                for s in agent.skills().values()])
         if p == "/api/reminders":
             return self._json(db.q("SELECT * FROM reminders WHERE active=1 ORDER BY next_run"))
-        if p == "/api/voice/clips":  # the voice lines you added (names only), for the preview list
-            d = CLIPS_DIR
-            names = sorted(f[:-4] for f in os.listdir(d) if f.endswith(".ogg")) if os.path.isdir(d) else []
-            return self._json({"lines": [n for n in names if not n.startswith("ringtone_")],
-                               "ringtones": [n for n in names if n.startswith("ringtone_")]})
         if p == "/api/devices/qr":  # QR code for pairing: the address, plus the one-time code when the dashboard just made one
             import subprocess
             if self._tailnet():

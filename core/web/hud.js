@@ -233,7 +233,7 @@ async function send(text) {
       counts();
     };
     if (Aloud.active) { Aloud.done = settle; Aloud.feed(acc, true); if (!Aloud.playing && !Aloud.queue.length) Aloud.end(); }
-    else { render(Infinity); setTimeout(() => setMode("idle"), 500); if (window.Voice) Voice.react(acc); settle(); }
+    else { render(Infinity); setTimeout(() => setMode("idle"), 500); settle(); }
   }
 }
 // "show my calendar", "open mail": opens the view right away; everything else goes to the assistant
@@ -427,7 +427,6 @@ body().addEventListener("click", async (e) => {
   if (act === "approve" || act === "reject") {
     row.querySelectorAll("button").forEach((b) => (b.disabled = true));
     const r = await api(`/api/approvals/${row.dataset.id}/${act}`, { method: "POST" });
-    if (window.Voice) Voice.sfx(act === "approve" ? (r.status === "failed" ? "failed" : "approved") : "rejected");
     subtitle(act === "approve" ? (r.status === "failed" ? "That didn't work: " + (r.result || "") : "Done.") : "Okay, I won't do that.");
     loadApprovals(); counts();
   }

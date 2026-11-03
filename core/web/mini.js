@@ -164,11 +164,9 @@ if (window.Voice) {
 }
 
 // ---------- calls: the heartbeat rings, the actions are in the bubble ----------
-// The ring: your own clip if the voice pack names one, else the soft two-tone beep. It plays on every heartbeat.
-let ctx = null, clip = null, ringing = null, ringTimer = 0;
-window.IDENTITY && IDENTITY.then((id) => { if (id.voice && id.voice.ringtone) { clip = new Audio(`/voice-clip/${id.voice.ringtone}.ogg`); clip.volume = .6; } });
+// The ring: a soft two-tone beep on every heartbeat.
+let ctx = null, ringing = null, ringTimer = 0;
 function beep() {
-  if (clip) { clip.currentTime = 0; clip.play().catch(() => {}); return; }
   ctx = ctx || new AudioContext();
   const t = ctx.currentTime;
   [[660, 0], [880, .18]].forEach(([f, d]) => {
@@ -212,7 +210,7 @@ function ring(e) {
   clearTimeout(ringTimer);
   ringTimer = setTimeout(() => { if (ringing === e) { endCall(null); say("It's waiting for you on the dashboard."); } }, 30000);  // nobody answered
 }
-function stopRing() { clearTimeout(ringTimer); if (clip) clip.pause(); }
+function stopRing() { clearTimeout(ringTimer); }
 function endCall(reply) {
   stopRing();
   const b = document.querySelector(`.bubble.call[data-ev="${ringing && ringing.id}"]`); drop(b);
@@ -238,7 +236,6 @@ $("#bubbles").addEventListener("click", async (ev) => {
   if (a === "approve" || a === "reject") {
     const r = await post(`/api/approvals/${e.ref}/${a}`).catch((x) => ({ status: "failed", error: x.message }));
     await post(`/api/events/${e.id}/seen`).catch(() => {});
-    if (window.Voice) Voice.sfx(a === "approve" ? (r.status === "failed" ? "failed" : "approved") : "rejected");
     return endCall(a === "approve" ? (r.status === "failed" || r.error ? "I tried, but it didn't work. It's in the chat." : "Done.") : "Okay, I won't do that.");
   }
   if (a === "adjust") {

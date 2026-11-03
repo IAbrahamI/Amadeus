@@ -181,23 +181,8 @@ transparent PNG sprites as `~/.local/share/amadeus/core/avatar/<set>/<set>_<mood
 `annoyed`, `blush`, `winking`; frames `1` (mouth closed) to `3` (open) make the lip-sync. Your own logo goes into
 `core/web/logo-512.png`, `logo-192.png`, `logo-wide.png` and `favicon.png` (ignored by git).
 
-**Voice.** Put short `.ogg` clips into `~/.local/share/amadeus/voice/clips/`, plus a `voice-pack.json` there that
-says which clip plays when (all keys are optional; a random clip from a list is picked):
-
-```json
-{
-  "ringtone": "my_ringtone",
-  "wake_greet": { "": ["hello", "what_is_it"] },
-  "actions": { "hello": ["hi"], "heard": ["ok"], "approved": ["nice"], "rejected": ["you_sure"], "failed": ["sorry"] },
-  "hear":  [["\\b(thank you|thanks)\\b", ["youre_welcome"]]],
-  "reply": [["^done", ["ok"]]]
-}
-```
-
-`wake_greet` plays when you say only its name (keys are wake words, `""` for all), `actions` when you answer a call
-(`hello`), after the wake word (`heard`), and on approvals and errors,
-`hear` when what *you* say matches a pattern, `reply` when its answer does. Without a pack it stays silent, and calls
-ring with a soft built-in tone (the phone uses its own ringtone).
+**Voice.** Pick the voice that reads answers aloud under Settings → Voice. Calls ring with a soft built-in tone
+(the phone uses its own ringtone).
 
 ## Skills
 
