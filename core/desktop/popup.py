@@ -316,8 +316,12 @@ class App:
         else:
             self.show_mini()
 
-    # ---- the dashboard ----
+    # ---- the dashboard (the mini core steps aside while it's open, and comes back when it closes) ----
     def show_dash(self, target="/#home"):
+        if self.mini_visible:
+            self.mini.hide()
+            self.mini_visible = False
+            self.mini.view.load_uri("about:blank")
         if not self.dash:
             self.dash = Dash(self)
             if self.mini is None:
@@ -335,6 +339,8 @@ class App:
         if self.dash:
             self.dash.destroy()
             self.dash = None
+        if not os.path.exists(HIDDEN):  # back to the mini core (unless you closed it)
+            self.show_mini()
         self.quit_if_idle()
 
     def quit_if_idle(self):
@@ -456,8 +462,6 @@ def main():
             add(GLib.PRIORITY_DEFAULT, sig, lambda: quit_now() or GLib.SOURCE_REMOVE)
         if start.startswith("/"):
             app.show_dash(start)
-            if not os.path.exists(HIDDEN):
-                GLib.timeout_add(1500, lambda: app.show_mini() or False)
         elif start == "mini":
             app.show_mini()
             GLib.timeout_add(1500, lambda: app.check_wake() and False)
