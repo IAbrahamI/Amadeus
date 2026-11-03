@@ -99,7 +99,7 @@ systemctl --user restart amadeus-voice
 ```
 
 Then pick, test or download more voices under **Settings → Voice**: Piper voices (US and UK English, a calm
-"Jarvis-style" British voice, German, Spanish) and the more natural Kokoro voices (George, Lewis, Emma, …; one
+British voice, German, Spanish) and the more natural Kokoro voices (George, Lewis, Emma, …; one
 download of about 340 MB for all of them). **＋ Add a voice** takes any other Piper voice by name or your own files.
 
 ## 6. Optional: the phone app
@@ -225,10 +225,10 @@ then run `systemctl --user restart amadeus-core`. The most useful ones are liste
 ## Uninstall
 
 ```bash
-systemctl --user disable --now amadeus-core amadeus-tray amadeus-voice amadeus-wake \
-  amadeus-leak-scan.timer amadeus-vault-snapshot.timer
+core/deploy/install.sh --uninstall            # services, the amadeus command, menu and autostart entries,
+                                              # the KWin rule, the Thunderbird bridge registration, the work-run guard
 docker rm -f hindsight presidio-analyzer presidio-anonymizer
 ```
 
-That removes the programs and keeps your data. Deleting the data (`~/.local/share/amadeus/`, the
+Then remove the Amadeus Bridge add-on in Thunderbird (Add-ons and Themes). That removes the programs and keeps your data. Deleting the data (`~/.local/share/amadeus/`, the
 `hindsight-data` volume and the vault's `Amadeus/` folder) is permanent, so back it up first.

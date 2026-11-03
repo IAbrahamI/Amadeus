@@ -109,6 +109,23 @@ flowchart LR
   ever shows up in a work run's conversation or in the `Projects/` folder.
 - If Presidio isn't reachable, the text is held, never sent unchecked.
 
+## Limits
+
+What the design does and doesn't promise, so you can judge it yourself:
+
+- **Your approval is the real guarantee.** The privacy filter is best effort. It catches the fixed patterns above
+  and the names, places and groups Presidio recognises, but it can miss an unusual name, and context ("my sister
+  who works at the bakery in our street") can identify someone without any name in it. That's why nothing goes to
+  Claude Code until you've read and approved the exact text, and the approval card shows what the filter replaced.
+- **The local model can be wrong or be tricked.** Mail and web pages can hide instructions. They are treated as data,
+  outbound actions suggested right after reading mail are marked, and every change still needs your OK, but read
+  what you approve.
+- **What does go online:** the work runs to Claude Code (only the approved text); downloads at install and update
+  time (the model, container images, voices); Tailscale's coordination servers when you use the phone (your data
+  itself goes directly between your devices, encrypted); and Thunderbird talking to your mail provider, as usual.
+- **Not a multi-user system.** It assumes one person and their own PC. Anyone who can use your desktop session can
+  use Amadeus.
+
 ## How it learns
 
 The local model isn't retrained. It gets better through what it is told, from your own feedback

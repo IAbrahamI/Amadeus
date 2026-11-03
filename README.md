@@ -1,20 +1,29 @@
 # Amadeus
 
+[![tests](https://github.com/IAbrahamI/Amadeus/actions/workflows/tests.yml/badge.svg)](https://github.com/IAbrahamI/Amadeus/actions/workflows/tests.yml)
+![license: personal use](https://img.shields.io/badge/license-personal%20non--commercial-blue)
+
 **Your own private AI assistant, running on your own PC.** Amadeus runs on a local model, knows your calendar, mail,
-notes and to-dos, remembers what matters about you, and calls you when something needs you. It never changes
-anything without your OK, and nothing private leaves your machine. Bigger work (code, documents, research) it
-hands to Claude Code, but only through a privacy filter and only after you approved the exact text.
+notes and to-dos, remembers what matters about you, and calls you when something needs you (the small window rings,
+or your phone). It never changes anything without your OK, and your private life stays on your machine. Bigger work
+(code, documents, research) it hands to Claude Code, but only through a privacy filter and only after you approved
+the exact text that leaves.
+
+> **Status:** a personal project, built for and tested on one Linux PC (CachyOS, KDE Plasma, NVIDIA 12 GB) by one
+> user. It works every day there; on other setups expect rough edges. Issues are welcome, pull requests aren't expected.
 
 You decide who your assistant is: its name, its personality, and whether it has a face and a voice.
 
 ![The Amadeus dashboard (demo data)](docs/images/dashboard.png)
 
-<sub>The dashboard with demo data and the default avatar, in dark mode. There is also a [light mode](docs/images/dashboard-light.png).</sub>
+<sub>The dashboard with demo data: the core in the middle is the assistant, drawn from its memory. More:
+[approvals with Adjust](docs/images/dashboard-approvals.png), [the Purple theme](docs/images/dashboard-purple.png).</sub>
 
 ## What it does
 
 - **Chat, one conversation per day.** A small always-on-top window for quick questions, a full dashboard for
-  everything else. Type or talk (a wake word with its name, local speech recognition).
+  everything else, with the assistant as a living core of its memories in the middle. Type or talk (a wake word
+  with its name, local speech recognition).
 - **Calendar, reminders, to-dos.** It plans your day, adds and moves appointments, and calls you before they start.
 - **Mail through Thunderbird.** Overviews, verification codes, drafts in your style, filing. Only urgent mail
   calls you; the rest goes into a short evening summary.
@@ -22,7 +31,8 @@ You decide who your assistant is: its name, its personality, and whether it has 
 - **Work runs.** "Send this to work": the text is anonymised, you approve exactly what leaves, and one
   Claude Code run works on it in a project folder of your Obsidian vault. The result comes back into the chat.
 - **Phone.** An Android app reaches it over your private Tailscale network, rings for its calls and syncs with the PC.
-- **Approvals for everything.** Every action that changes something becomes a card you approve or reject.
+- **Approvals for everything.** Every action that changes something becomes a card you approve, reject, or adjust
+  ("make it 16:00 instead", and it redrafts the same action for your OK).
 - **Learns from you.** Rate answers with 👍 / 👎. Every night it turns its mistakes into short lessons, and keeps a
   lesson only if a test on your own past requests doesn't get worse. No retraining, nothing leaves the PC.
 - **Skills in an open format.** Skills use the [agentskills.io](https://agentskills.io) format, so skills from public
@@ -36,7 +46,8 @@ You decide who your assistant is: its name, its personality, and whether it has 
 |---|---|
 | **Name** | `"assistant_name": "Nova"` in `~/.config/amadeus-core/config.json`. It's used everywhere, including the wake word. |
 | **Personality** | Write a short persona in `~/.local/share/amadeus/core/personas/<name>.md` and set `"persona": "<name>"`. The default is friendly and to the point. |
-| **Face** | The default is a small chibi agent. Add your own animated sprites (moods, lip-sync, eyes that follow the mouse) and set `"avatar": "<set>"`. |
+| **Look** | Three main colours (Default blue, Purple, Red) at the top of Settings. |
+| **Face** | For calls and the phone: the default is a small chibi agent. Add your own animated sprites (moods, lip-sync, eyes that follow the mouse) and set `"avatar": "<set>"`. |
 | **Voice** | Add your own short clips (greetings, a ringtone, reactions to words) with a small `voice-pack.json`. Without them it stays silent and rings with a soft tone. |
 
 All of this can be set under **Settings → Assistant** (name, personality, your own avatar images, or "Use the
@@ -77,11 +88,14 @@ you approved. More detail, including the privacy filter step by step: [docs/ARCH
 
 ## Getting started
 
-You need Linux with systemd (KDE Plasma gives the best experience, other desktops work too), Docker, Ollama and
-ideally an NVIDIA GPU with about 12 GB of memory.
+You need Linux with systemd (KDE Plasma gives the best experience, other desktops work too), Python 3.10 or newer,
+Docker, Ollama, GTK 3 with WebKit2GTK 4.1 and PyQt6 for the window and tray, GStreamer for sound, about 15 GB of
+disk (mostly the local model and the memory and privacy-filter images), and ideally an NVIDIA GPU with about 12 GB.
+The exact packages for Arch, Debian/Ubuntu and Fedora are in [docs/INSTALL.md](docs/INSTALL.md#1-what-you-need).
 
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
+cp amadeus.env.example amadeus.env   # set OBSIDIAN_VAULT: the folder for notes, to-dos and work projects
 ./install.sh --check        # what's there and what's missing (changes nothing)
 ./install.sh                # local model, keys, privacy filter, memory, Obsidian folder
 core/deploy/install.sh      # the assistant itself: services, window, tray
@@ -93,11 +107,29 @@ Everything your assistant knows is stored in `~/.local/share/amadeus/` on your P
 
 ## Built with
 
-Python (standard library) · plain JavaScript · GTK/WebKit and PyQt for the desktop window and tray ·
-Kotlin + Jetpack Compose for the phone app · [Ollama](https://ollama.com) (Qwen 3.5) ·
+Python (the core uses only the standard library) · plain JavaScript and WebGL, no build step · GTK/WebKit and PyQt
+for the desktop window and tray · Kotlin + Jetpack Compose for the phone app · [Ollama](https://ollama.com) (Qwen 3.5) ·
 [Hindsight](https://github.com/vectorize-io/hindsight) · [Presidio](https://github.com/microsoft/presidio) ·
 [Whisper](https://github.com/SYSTRAN/faster-whisper) and [Vosk](https://alphacephei.com/vosk/) ·
-[Claude Code](https://claude.com/claude-code) · [Tailscale](https://tailscale.com)
+[Piper](https://github.com/OHF-Voice/piper1-gpl) and [Kokoro](https://github.com/hexgrad/kokoro) for reading aloud ·
+[MCP](https://modelcontextprotocol.io) for your own connectors · [Claude Code](https://claude.com/claude-code) ·
+[Tailscale](https://tailscale.com)
+
+## Why it's built this way
+
+I wanted one place for my day instead of a handful of chat apps from different providers, and a hard wall between
+my private life and cloud models. That led to a few decisions:
+
+- **A local model with approvals, not a cloud agent.** The model can be wrong, so it never acts on its own: anything
+  that changes or sends something waits for you. That makes a 9B local model good enough for daily use.
+- **Anonymise, don't pseudonymise.** Text for Claude Code gets fixed labels like `[PERSON]`, never a mapping that
+  could be reversed, and you see the exact text before it leaves. The filter is best effort; your approval is the gate.
+- **Guarded work runs.** Each Claude Code run is one task in one project folder, with a hook that blocks it from
+  reading or writing anything else in your vault.
+- **It learns without retraining.** Your 👍 / 👎 become short lessons overnight, and a lesson is kept only if a test
+  on your own past requests doesn't get worse.
+
+More, including the limits of the privacy filter: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#limits).
 
 ## Repository
 
@@ -109,6 +141,13 @@ Kotlin + Jetpack Compose for the phone app · [Ollama](https://ollama.com) (Qwen
 | `install.sh` | Sets up the local services |
 | `docs/` | [Install guide](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [features and settings](docs/FEATURES.md) |
 
+## Security
+
+Found a way private data could leave the PC, or another security problem? Please report it privately through
+[GitHub's security advisories](https://github.com/IAbrahamI/Amadeus/security/advisories/new) instead of an issue.
+See [SECURITY.md](SECURITY.md).
+
 ## License
 
-Free for personal, non-commercial use; no credit needed. See [LICENSE](LICENSE).
+Source-available and free for personal, non-commercial use; no credit needed. It isn't an OSI open-source license,
+so GitHub shows it as "Other". See [LICENSE](LICENSE).

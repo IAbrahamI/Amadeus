@@ -18,7 +18,7 @@
 #   OLLAMA_CTX_VARIANT     name of the larger-context variant  (default: qwen3.5-9b-48k, what Amadeus uses)
 #   OLLAMA_NUM_CTX         context length for that variant     (default: 49152)
 #   OLLAMA_URL             Ollama endpoint                     (default: http://127.0.0.1:11434)
-#   HINDSIGHT_IMAGE        container image                     (default: ghcr.io/vectorize-io/hindsight:latest)
+#   HINDSIGHT_IMAGE        container image                     (default: ghcr.io/vectorize-io/hindsight:0.10.2, the tested version)
 #   HINDSIGHT_CONTAINER    container name                      (default: hindsight)
 #   HINDSIGHT_VOLUME       named volume for its data           (default: hindsight-data)
 #   HINDSIGHT_LLM_MODEL    Ollama model Hindsight uses         (default: $OLLAMA_CTX_VARIANT)
@@ -36,7 +36,7 @@ OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
 OLLAMA_CTX_VARIANT="${OLLAMA_CTX_VARIANT:-qwen3.5-9b-48k}"
 OLLAMA_NUM_CTX="${OLLAMA_NUM_CTX:-49152}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
-HINDSIGHT_IMAGE="${HINDSIGHT_IMAGE:-ghcr.io/vectorize-io/hindsight:latest}"
+HINDSIGHT_IMAGE="${HINDSIGHT_IMAGE:-ghcr.io/vectorize-io/hindsight:0.10.2}"
 HINDSIGHT_CONTAINER="${HINDSIGHT_CONTAINER:-hindsight}"
 HINDSIGHT_VOLUME="${HINDSIGHT_VOLUME:-hindsight-data}"
 HINDSIGHT_LLM_MODEL="${HINDSIGHT_LLM_MODEL:-$OLLAMA_CTX_VARIANT}"

@@ -20,7 +20,9 @@ import urllib.request
 from .config import CFG
 
 PATTERNS = [
-    ("PATH", re.compile(r"(?:/home/[^/\s]+|~)/Documents/Obsidian Vault(?:/[^\n\"'`]*?\.\w{1,5}\b|/[^\n\"'`]*)?")),
+    # paths inside your vault, also with spaces in them (the general path rule below stops at a space)
+    ("PATH", re.compile(r"(?:/home/[^/\s]+|~)/" + re.escape(os.path.relpath(os.path.dirname(CFG["vault_dir"]), os.path.expanduser("~")))
+                        + r"(?:/[^\n\"'`]*?\.\w{1,5}\b|/[^\n\"'`]*)?")),
     ("EMAIL", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
     ("KEY", re.compile(r"\b(?:sk|pk|ghp|gho|xox[abp]|AKIA|AIza)[A-Za-z0-9_\-]{12,}\b")),
     ("TOKEN", re.compile(r"\b[A-Za-z0-9_\-]{32,}\b")),
