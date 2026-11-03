@@ -76,7 +76,7 @@
   // ---------- WebGL ----------
   const PROJ = `
     ${COLS}
-    uniform vec2 uC, uRes; uniform float uR, uT, uAmp, uIdle, uBreathe, uRot, uDpr;
+    uniform vec2 uC, uRes; uniform float uR, uT, uAmp, uIdle, uBreathe, uRot, uDpr, uHb;
     vec3 turn(vec3 p) {
       float c = cos(uRot), s = sin(uRot), cx = cos(.38), sx = sin(.38);
       vec3 q = vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
@@ -110,10 +110,10 @@
       void main() {
         vec3 q = turn(drift(aP, aPh)); float d = (q.z + 1.) / 2., small = step(uR / uDpr, 110.);
         gl_Position = place(q, uR * uBreathe);
-        float base = mix(2.1, 1., small) * aSize * (.6 + d * .7), gs = base * (9. + aLit * 7. + uAmp * 3.);
+        float base = mix(2.1, 1., small) * aSize * (.6 + d * .7), gs = base * (9. + aLit * 7. + uAmp * 3.) * (1. + uHb * .45);
         gl_PointSize = gs * uDpr;
         vCol = aKind < -.5 ? uHi : aKind < .5 ? uK0 : aKind < 1.5 ? uK1 : uK2;
-        vLit = aLit; vA = min(1., .25 + d * .55 + aLit * .4);
+        vLit = aLit; vA = min(1., .25 + d * .55 + aLit * .4 + uHb * .25);
         vDot = base * (.55 + aLit * .3) / (gs / 2.); vDA = .35 + d * .6;
       }`, `precision mediump float; ${COLS} varying vec3 vCol; varying float vA, vDot, vDA, vLit;
       void main() {
@@ -144,7 +144,7 @@
         gl.attachShader(p, s);
       }
       gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-      const u = {}; for (const n of ["uC", "uRes", "uR", "uT", "uAmp", "uIdle", "uBreathe", "uRot", "uDpr", ...Object.keys(C.gl)]) u[n] = gl.getUniformLocation(p, n);
+      const u = {}; for (const n of ["uC", "uRes", "uR", "uT", "uAmp", "uIdle", "uBreathe", "uRot", "uDpr", "uHb", ...Object.keys(C.gl)]) u[n] = gl.getUniformLocation(p, n);
       return { p, u, a: (n) => gl.getAttribLocation(p, n) };
     };
     const P = Object.fromEntries(Object.entries(SH).map(([k, [v, f]]) => [k, prog(v, f)]));
@@ -165,7 +165,7 @@
       gl.useProgram(pr.p);
       gl.uniform2f(pr.u.uC, s.cx * s.dpr, s.cy * s.dpr); gl.uniform2f(pr.u.uRes, s.W * s.dpr, s.H * s.dpr);
       gl.uniform1f(pr.u.uR, s.R * s.dpr); gl.uniform1f(pr.u.uT, s.t); gl.uniform1f(pr.u.uAmp, s.amp); gl.uniform1f(pr.u.uIdle, s.idle);
-      gl.uniform1f(pr.u.uBreathe, s.breathe); gl.uniform1f(pr.u.uRot, s.rot); gl.uniform1f(pr.u.uDpr, s.dpr);
+      gl.uniform1f(pr.u.uBreathe, s.breathe); gl.uniform1f(pr.u.uRot, s.rot); gl.uniform1f(pr.u.uDpr, s.dpr); gl.uniform1f(pr.u.uHb, s.hb);
       for (const k in C.gl) gl.uniform3fv(pr.u[k], C.gl[k]);
     };
     return {
@@ -253,8 +253,8 @@
           ctx.drawImage(q.amber ? AMBER : WHITE, a.sx + (b.sx - a.sx) * q.u - z / 2, a.sy + (b.sy - a.sy) * q.u - z / 2, z, z);
         }
         for (const n of nodes) {
-          const d = (n.sz + 1) / 2, base = (small ? 1 : 2.1) * n.size * (.6 + d * .7), gs = base * (9 + n.lit * 7 + amp * 3);
-          ctx.globalAlpha = Math.min(1, .25 + d * .55 + n.lit * .4);
+          const d = (n.sz + 1) / 2, base = (small ? 1 : 2.1) * n.size * (.6 + d * .7), gs = base * (9 + n.lit * 7 + amp * 3) * (1 + s.hb * .45);
+          ctx.globalAlpha = Math.min(1, .25 + d * .55 + n.lit * .4 + s.hb * .25);
           ctx.drawImage(n.lit > .15 ? AMBER : n === nodes[net.core] ? WHITE : GLOW[n.kind], n.sx - gs / 2, n.sy - gs / 2, gs, gs);
           ctx.globalAlpha = 1;
           ctx.fillStyle = n.lit > .15 ? `rgba(${C.rc2},${.7 + n.lit * .3})` : `rgba(${C.hi},${.35 + d * .6})`;
@@ -268,34 +268,43 @@
 
   // ---------- the halo (glow and rings), always 2D, under the network ----------
   function halo(ctx, s, thinkGlow) {
-    const { cx, cy, R, amp, idle, rot, t } = s, small = R < 110;
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.25);
-    g.addColorStop(0, `rgba(${C.a},${.10 + amp * .22 + thinkGlow * .08})`); g.addColorStop(.5, `rgba(${C.a3},${.08 + amp * .08})`); g.addColorStop(1, `rgba(${C.a3},0)`);
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R * 1.25, 0, 6.283); ctx.fill();
+    const { cx, cy, R, amp, idle, rot, t, hb, a1, a2 } = s, small = R < 110;
+    const gR = R * (1.25 + hb * .14);
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, gR);
+    g.addColorStop(0, `rgba(${C.a},${.10 + amp * .22 + thinkGlow * .08 + hb * .32})`); g.addColorStop(.5, `rgba(${C.a3},${.08 + amp * .08 + hb * .1})`); g.addColorStop(1, `rgba(${C.a3},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, gR, 0, 6.283); ctx.fill();
+    if (hb > .01) {  // heartbeat bloom: the heart of the core glows up on each slow beat
+      const hg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * .85);
+      hg.addColorStop(0, `rgba(${C.rc},${hb * .38})`); hg.addColorStop(.35, `rgba(${C.a},${hb * .2})`); hg.addColorStop(1, `rgba(${C.a},0)`);
+      ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(cx, cy, R * .85, 0, 6.283); ctx.fill();
+    }
     ctx.save(); ctx.translate(cx, cy);
-    const ringA = .35 + amp * .4;
+    const ringA = .35 + amp * .4 + hb * .4, hs = 1 + hb * .09;  // the rings swell on each beat
     ctx.rotate(-rot * .4);  // fine tick ring
-    const r1 = R * 1.2, ticks = small ? 48 : 120;
+    const r1 = R * 1.2 * hs, ticks = small ? 48 : 120;
     ctx.strokeStyle = `rgba(${C.a},${ringA * .7})`; ctx.lineWidth = 1; ctx.beginPath();
     for (let i = 0; i < ticks; i++) { const a = i / ticks * 6.283, l = i % 10 === 0 ? 7 : 3; ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1); ctx.lineTo(Math.cos(a) * (r1 + l), Math.sin(a) * (r1 + l)); }
     ctx.stroke();
-    ctx.rotate(rot * .4);  // the voice ring: bars that move with the voice (slowly when idle)
-    const r2 = R * 1.1, bars = small ? 48 : 96;
+    ctx.rotate(rot * .4);  // the voice ring: bars that move with the voice (slowly when idle, a spike on each beat)
+    const r2 = R * 1.1 * hs, bars = small ? 48 : 96;
     ctx.strokeStyle = `rgba(${C.a},${.25 + idle * .35 + amp * .6})`; ctx.lineWidth = small ? 1.4 : 2; ctx.beginPath();
     for (let i = 0; i < bars; i++) {
       const a = i / bars * 6.283;
-      const v = amp * (.5 + .5 * Math.sin(i * .9 + t * 13)) * (.6 + .4 * Math.sin(i * .23 - t * 4)) + idle * (.5 + .5 * Math.sin(i * .37 + t * 2.8)) * (.6 + .4 * Math.sin(i * .13 - t * 1.4)) + .02;
+      const v = amp * (.5 + .5 * Math.sin(i * .9 + t * 13)) * (.6 + .4 * Math.sin(i * .23 - t * 4)) + idle * (.5 + .5 * Math.sin(i * .37 + t * 2.8)) * (.6 + .4 * Math.sin(i * .13 - t * 1.4))
+        + hb * (.9 + .5 * Math.sin(i * .5)) + .02;
       const l = v * R * .16; ctx.moveTo(Math.cos(a) * r2, Math.sin(a) * r2); ctx.lineTo(Math.cos(a) * (r2 + l), Math.sin(a) * (r2 + l));
     }
     ctx.stroke();
-    ctx.lineWidth = small ? 1.5 : 2.5; ctx.lineCap = "butt";  // two arc pairs turning opposite ways (amber while recalling)
-    const r3 = R * 1.34;
-    ctx.rotate(rot * .9);
-    ctx.strokeStyle = thinkGlow > .1 ? `rgba(${C.rc},${.4 + thinkGlow * .5})` : `rgba(${C.a},${ringA})`;
-    ctx.beginPath(); ctx.arc(0, 0, r3, 0, 1.1); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, r3, 3.4, 4.1); ctx.stroke();
-    ctx.rotate(-rot * 1.6);
-    ctx.lineWidth = 1; ctx.strokeStyle = `rgba(${C.a},${ringA * .6})`;
-    ctx.beginPath(); ctx.arc(0, 0, R * 1.42, 1.6, 2.9); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, R * 1.42, 4.6, 5.4); ctx.stroke();
+    // two arc pairs, each arc opposite its twin and all four of different lengths. Idle: a slow drift. Thinking: they
+    // counter-turn like a loader and meet on every beat (see the frame loop).
+    ctx.lineCap = "butt";
+    const pair = (r, a, h1, h2) => { ctx.beginPath(); ctx.arc(0, 0, r, a - h1, a + h1); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, r, a + Math.PI - h2, a + Math.PI + h2); ctx.stroke(); };
+    ctx.strokeStyle = thinkGlow > .1 ? `rgba(${C.rc},${.32 + thinkGlow * .22 + hb * .12})` : `rgba(${C.a},${ringA})`;
+    ctx.lineWidth = (small ? 1.5 : 2.5) * (1 + hb * .8);
+    pair(R * 1.34 * hs, a1, .62, .40);
+    ctx.strokeStyle = thinkGlow > .1 ? `rgba(${C.rc},${.22 + thinkGlow * .16 + hb * .1})` : `rgba(${C.a},${ringA * .6})`;
+    ctx.lineWidth = (small ? 1 : 1.6) * (1 + hb * .8);
+    pair(R * 1.42 * hs, a2, .50, .30);
     ctx.restore();
   }
 
@@ -318,7 +327,7 @@
       if (gl) try { r = glRenderer(gl, net); } catch (e) { console.warn("core: WebGL failed, drawing in 2D:", e.message); gl = null; front.remove(); net = build(false); }
       if (!r) { if (!gl && front.isConnected) front.remove(); r = flatRenderer(bctx, net); }
       window.Core._r = r;
-      const state = { mode: "idle", amp: 0, ampT: 0, thinkGlow: 0, lit: -1, rot: 0, bg: false };
+      const state = { mode: "idle", amp: 0, ampT: 0, thinkGlow: 0, lit: -1, rot: 0, bg: false, hbT: 0, a1: null, a2: null, spin: false, spinS: 0, spinS0: 0 };
       const orb = { x: 0, y: 0, r: 0, tx: 0, ty: 0, tr: 0, slow: false };
       let W = 0, H = 0, DPR = 1, raf = 0, t0 = performance.now(), last = 0;
       const pulses = [];
@@ -340,33 +349,50 @@
         else state.amp *= Math.pow(.01, dt);
         if (state.mode === "listen") state.amp = Math.max(state.amp, .12 + .1 * Math.sin(t * 9) ** 2);
         state.thinkGlow += ((state.mode === "think" ? 1 : 0) - state.thinkGlow) * (1 - Math.pow(.02, dt));
-        state.rot += dt * (reduce ? .03 : .14 + state.thinkGlow * .5 + state.amp * .25);
+        state.rot += dt * (reduce ? .03 : .14 + state.amp * .25);
+        const thinking = state.mode === "think";
+        // thinking is a heartbeat: one long, slow beat ("biiiim"), a quick swell and a long fade. It fires when the
+        // counter-turning arc pairs meet, so the lines and the glow stay in step. The network itself rests.
+        state.hbT = thinking ? state.hbT + dt : (state.thinkGlow < .02 ? 0 : state.hbT + dt);
+        const beat = state.hbT < .2 ? Math.sin(state.hbT / .2 * Math.PI / 2) ** 2 : Math.exp(-(state.hbT - .2) / .55);
+        const hb = reduce ? 0 : (thinking ? 1 : state.thinkGlow) * beat;
+        {  // the outer arc pairs: a slow drift; while thinking they meet halfway, then counter-turn at 1.9 rad/s and
+           // slow down to a quarter on every second meeting, which is the beat; afterwards they ease back
+          const n1 = state.rot * .9, n2 = -state.rot * .7 + 1.57;
+          const wrap = (d) => { d = (d + Math.PI / 2) % Math.PI; if (d < 0) d += Math.PI; return d - Math.PI / 2; };  // a pair repeats every half turn
+          if (state.a1 === null) { state.a1 = n1; state.a2 = n2; }
+          if (thinking && !reduce) {
+            if (!state.spin) { state.spin = true; state.spinS = state.spinS0 = state.a1 + wrap(state.a2 - state.a1) / 2; }
+            const rel = 2 * (state.spinS - state.spinS0), mi = Math.round(rel / Math.PI), on = mi % 2 === 0;
+            const sep = Math.abs(rel - mi * Math.PI), near = on ? Math.min(1, sep / .5) : 1, ease = near * near * (3 - 2 * near);
+            state.spinS += dt * 1.9 * (.25 + .75 * ease);
+            const rel2 = 2 * (state.spinS - state.spinS0), sep2 = Math.abs(rel2 - Math.round(rel2 / Math.PI) * Math.PI);
+            if (on && sep2 < sep && sep2 < .06 && state.hbT > .5) state.hbT = 0;  // they meet again: a beat
+          } else state.spin = false;
+          const ka = 1 - Math.pow(state.spin ? .004 : .06, dt);
+          state.a1 += wrap((state.spin ? state.spinS : n1) - state.a1) * ka;
+          state.a2 += wrap((state.spin ? 2 * state.spinS0 - state.spinS : n2) - state.a2) * ka;  // the outer pair turns the other way
+        }
         const idle = (reduce ? .1 : .55) * (1 - Math.min(1, state.amp * 1.2)) * (.7 + .3 * Math.sin(t * .8));
-        const s = { cx: orb.x, cy: orb.y, R: orb.r, t, amp: state.amp, idle, rot: state.rot, breathe: 1 + Math.sin(t * 1.1) * .012, W, H, dpr: DPR };
-        // signals: only while it really works (listening, recalling, speaking, a background job)
-        const m = net, working = state.mode !== "idle" || state.bg;
+        const s = { cx: orb.x, cy: orb.y, R: orb.r, t, amp: state.amp, idle, rot: state.rot, hb, a1: state.a1, a2: state.a2,
+          breathe: (1 + Math.sin(t * 1.1) * .012) * (1 + hb * .03), W, H, dpr: DPR };
+        // signals: only while it really talks with you (listening, speaking) or a background job runs; not while thinking
+        const m = net, working = (state.mode !== "idle" && !thinking) || state.bg;
         {
-          const rate = !working ? 0 : (reduce ? .5 : 4) + state.amp * 16 + state.thinkGlow * 14;
+          const rate = !working ? 0 : (reduce ? .5 : 4) + state.amp * 16;
           if (Math.random() < rate * dt) {
-            if (state.mode === "think") {
-              if (state.lit < 0 || Math.random() < .12) state.lit = Math.random() * m.clusters.length | 0;
-              pulses.push({ a: m.core, b: m.clusters[state.lit][0], u: 0, spd: 1.1 + Math.random() * 1.2, hops: 2 + (Math.random() * 3 | 0), amber: true });
-            } else {
-              const e = (Math.random() * m.edges.length / 2 | 0) * 2, flip = Math.random() < .5;
-              pulses.push({ a: m.edges[e + (flip ? 1 : 0)], b: m.edges[e + (flip ? 0 : 1)], u: 0, spd: 1.1 + Math.random() * 1.2, hops: 2 + (Math.random() * 3 | 0) });
-            }
+            const e = (Math.random() * m.edges.length / 2 | 0) * 2, flip = Math.random() < .5;
+            pulses.push({ a: m.edges[e + (flip ? 1 : 0)], b: m.edges[e + (flip ? 0 : 1)], u: 0, spd: 1.1 + Math.random() * 1.2, hops: 2 + (Math.random() * 3 | 0) });
           }
           let anyLit = false;
           for (const n of m.nodes) if (n.lit > .002) { n.lit *= Math.pow(.3, dt); anyLit = true; } else n.lit = 0;
           for (let i = pulses.length - 1; i >= 0; i--) {
             const q = pulses[i]; q.u += dt * q.spd * (1 + state.amp);
             if (q.u < 1) continue;
-            const b = m.nodes[q.b]; b.lit = Math.max(b.lit, state.mode === "think" ? 1 : .35); anyLit = true;
+            const b = m.nodes[q.b]; b.lit = Math.max(b.lit, .35); anyLit = true;
             const nx = m.adj[q.b].filter((n) => n !== q.a);
-            if (--q.hops > 0 && working && nx.length && pulses.length < 240) {
-              const n = state.mode === "think" && b.hub && b.cl >= 0 ? m.clusters[b.cl][1 + (Math.random() * (m.PER - 1) | 0)] : nx[Math.random() * nx.length | 0];
-              q.a = q.b; q.b = n; q.u = 0; q.amber = state.mode === "think";
-            } else pulses.splice(i, 1);
+            if (--q.hops > 0 && working && nx.length && pulses.length < 240) { q.a = q.b; q.b = nx[Math.random() * nx.length | 0]; q.u = 0; }
+            else pulses.splice(i, 1);
           }
           if (anyLit) r.lit();
         }
@@ -381,7 +407,7 @@
       return {
         get size() { return { W, H }; },
         gpu: !!gl,
-        mode(m) { state.mode = m; if (m !== "think") state.lit = -1; },
+        mode(m) { if (m === "think" && state.mode !== "think") state.hbT = 0; state.mode = m; },  // the first beat lands at once
         background(on) { state.bg = !!on; },
         // the biggest topics in memory: their hubs grow with how much it knows about them (the point count stays fixed)
         topics(counts) {

@@ -129,8 +129,19 @@ async function today() {
   state.msgs = d.messages;
   const last = [...d.messages].reverse().find((m) => m.role === "assistant" && m.content.trim());
   subtitle(last ? last.content : `Hi, I'm ${NAME()}. Everything stays on this PC, and anything that changes something waits for your OK.`);
+  renderGhost();
   return d;
 }
+// Home: today's conversation as a faint log above the ask box (newest brightest); hover shows all of it
+function renderGhost() {
+  const g = $("#ghost"); if (!g) return;
+  const shown = state.msgs.filter((m) => m.role === "user" || (m.role === "assistant" && m.content.trim()) || m.role === "approval");
+  g.innerHTML = `<div class="gh"><b>CHAT</b><small>Today · ${shown.length} message${shown.length === 1 ? "" : "s"}</small><span class="grow"></span><button data-go-chat>Open ›</button></div>` +
+    `<div class="gin">${shown.length ? `<div class="log">${shown.map(lineHtml).join("")}</div>` : ""}</div>`;
+  const n = g.querySelector(".gin"); n.scrollTop = n.scrollHeight;
+}
+$("#ghost").addEventListener("click", (e) => { if (e.target.closest("[data-go-chat]")) open("chat"); });
+$("#ghost").addEventListener("mouseenter", () => setTimeout(() => { const n = $("#ghost .gin"); if (n) n.scrollTop = n.scrollHeight; }, 360));
 const lineHtml = (m) => {
   if (m.role === "user") return `<div class="ln u"><span class="ts">${hhmm(m.created)}</span><span class="who">YOU</span><div class="m">${esc(m.content)}</div></div>`;
   if (m.role === "assistant" && m.content.trim()) return `<div class="ln a"><span class="ts">${hhmm(m.created)}</span><span class="who">${esc(NAME().toUpperCase())}</span><div class="m">${md(stripMood(m.content))}</div></div>`;
@@ -177,6 +188,7 @@ async function send(text) {
   if (!state.cid) await today();
   const now = Date.now() / 1000;
   state.msgs.push({ role: "user", content: text, created: now });
+  renderGhost();
   liveLine(lineHtml({ role: "user", content: text, created: now }));
   subtitle("…");
   let acc = "", started = false, line = null;
@@ -191,8 +203,10 @@ async function send(text) {
         const ev = chunk.match(/^event: (.*)$/m)?.[1], data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] || "{}");
         if (ev === "token") {
           acc += data; core.talk();
-          if (!started) { started = true; setMode("speak"); line = liveLine(lineHtml({ role: "assistant", content: " ", created: Date.now() / 1000 })); }
+          if (!started) { started = true; setMode("speak"); line = liveLine(lineHtml({ role: "assistant", content: " ", created: Date.now() / 1000 }));
+            state.msgs.push({ role: "assistant", content: "…", created: Date.now() / 1000 }); renderGhost(); }
           subtitle(acc);
+          const gl = $("#ghost .ln:last-child .m"); if (gl) { gl.innerHTML = md(stripMood(acc)); $("#ghost .gin").scrollTop = 1e6; }
           if (line) { line.querySelector(".m").innerHTML = md(stripMood(acc)); liveLine(); }
         }
         if (ev === "tool") setMode("think");
