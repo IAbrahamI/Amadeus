@@ -269,15 +269,12 @@
   // ---------- the halo (glow and rings), always 2D, under the network ----------
   function halo(ctx, s, thinkGlow) {
     const { cx, cy, R, amp, idle, rot, t, hb, a1, a2 } = s, small = R < 110;
-    const gR = R * (1.25 + hb * .14);
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, gR);
-    g.addColorStop(0, `rgba(${C.a},${.10 + amp * .22 + thinkGlow * .08 + hb * .32})`); g.addColorStop(.5, `rgba(${C.a3},${.08 + amp * .08 + hb * .1})`); g.addColorStop(1, `rgba(${C.a3},0)`);
+    // the core's glow, and on each slow heartbeat a bloom in its heart, as one gradient (one fill per frame)
+    const gR = R * (1.25 + hb * .14), g = ctx.createRadialGradient(cx, cy, 0, cx, cy, gR);
+    if (hb > .01) { g.addColorStop(0, `rgba(${C.rc},${.10 + hb * .5})`); g.addColorStop(.24, `rgba(${C.a},${.10 + amp * .2 + hb * .28})`); }
+    else g.addColorStop(0, `rgba(${C.a},${.10 + amp * .22 + thinkGlow * .08})`);
+    g.addColorStop(.5, `rgba(${C.a3},${.08 + amp * .08 + hb * .1})`); g.addColorStop(1, `rgba(${C.a3},0)`);
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, gR, 0, 6.283); ctx.fill();
-    if (hb > .01) {  // heartbeat bloom: the heart of the core glows up on each slow beat
-      const hg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * .85);
-      hg.addColorStop(0, `rgba(${C.rc},${hb * .38})`); hg.addColorStop(.35, `rgba(${C.a},${hb * .2})`); hg.addColorStop(1, `rgba(${C.a},0)`);
-      ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(cx, cy, R * .85, 0, 6.283); ctx.fill();
-    }
     ctx.save(); ctx.translate(cx, cy);
     const ringA = .35 + amp * .4 + hb * .4, hs = 1 + hb * .09;  // the rings swell on each beat
     ctx.rotate(-rot * .4);  // fine tick ring
@@ -331,10 +328,16 @@
       const orb = { x: 0, y: 0, r: 0, tx: 0, ty: 0, tr: 0, slow: false };
       let W = 0, H = 0, DPR = 1, raf = 0, t0 = performance.now(), last = 0;
       const pulses = [];
+      let HDPR = 1, box = null;
       const resize = () => {
-        const b = stage.getBoundingClientRect(); DPR = Math.min(devicePixelRatio || 1, 2); W = b.width; H = b.height;
-        for (const c of [back, front]) { c.width = W * DPR; c.height = H * DPR; }
-        bctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        const b = stage.getBoundingClientRect(); W = b.width; H = b.height;
+        // a big window on a sharp screen means millions of pixels per frame: keep the network to about 4 MP, and draw the
+        // soft halo (glow and rings, a 2D canvas) at one pixel per point, which looks the same and costs a fraction
+        DPR = Math.min(devicePixelRatio || 1, 1.5, Math.sqrt(4.2e6 / Math.max(1, W * H)));
+        HDPR = gl ? Math.min(1, DPR) : DPR;
+        front.width = W * DPR; front.height = H * DPR;
+        back.width = W * HDPR; back.height = H * HDPR;
+        bctx.setTransform(HDPR, 0, 0, HDPR, 0, 0); box = null;
       };
       new ResizeObserver(resize).observe(stage); resize();
       const frame = (now) => {
@@ -396,7 +399,10 @@
           }
           if (anyLit) r.lit();
         }
-        bctx.clearRect(0, 0, W, H);
+        // only the square around the core changes: clear that (and where it was last frame), not the whole stage
+        const e = orb.r * 1.9, nb = [orb.x - e, orb.y - e, orb.x + e, orb.y + e];
+        const cb = box ? [Math.min(box[0], nb[0]), Math.min(box[1], nb[1]), Math.max(box[2], nb[2]), Math.max(box[3], nb[3])] : [0, 0, W, H];
+        bctx.clearRect(cb[0] - 2, cb[1] - 2, cb[2] - cb[0] + 4, cb[3] - cb[1] + 4); box = nb;
         halo(bctx, s, state.thinkGlow);
         r.draw(s, pulses);
       };

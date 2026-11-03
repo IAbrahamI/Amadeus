@@ -22,13 +22,13 @@ PYTHON = os.path.join(VOICE_DIR, "venv-lite", "bin", "python")
 
 CATALOG = [
     ("en_US-lessac-medium", "Lessac", "English (US), clear and neutral"),
-    ("en_GB-alan-medium", "Jarvis-style", "English (UK), calm butler-like male voice"),
+    ("en_GB-alan-medium", "Alan", "English (UK), calm male voice"),
     ("en_US-ryan-high", "Ryan", "English (US), male"),
     ("en_GB-jenny_dioco-medium", "Jenny", "English (UK), female"),
     ("en_GB-alba-medium", "Alba", "English (Scottish), female"),
     ("de_DE-thorsten-medium", "Thorsten", "German, male"),
     ("es_ES-davefx-medium", "Davefx", "Spanish, male"),
-    ("kokoro:bm_george", "George", "English (UK), male, natural (Kokoro; the voice OpenJarvis uses)"),
+    ("kokoro:bm_george", "George", "English (UK), male, natural (Kokoro)"),
     ("kokoro:bm_lewis", "Lewis", "English (UK), male, natural (Kokoro)"),
     ("kokoro:bf_emma", "Emma", "English (UK), female, natural (Kokoro)"),
     ("kokoro:bf_isabella", "Isabella", "English (UK), female, natural (Kokoro)"),

@@ -81,7 +81,7 @@ const PAGES = {
       <h3 style="margin-top:22px">Important people</h3><form class="pform" id="vipForm">${field("Their mail always reaches you (one name or address per line)", `<textarea id="vipText" rows="3">${esc((p.vip || []).join("\n"))}</textarea>`)}
         <div class="acts"><span class="grow"></span><button class="btn go">Save</button></div>${info("vipInfo")}</form>
       <h3 style="margin-top:22px">How you ask for things</h3>${ask.length ? rows(ask.map((a) => `<div class="row"><span class="k">${a.n > 1 ? "×" + a.n : ""}</span><div class="t"><b>“${esc(a.say)}”</b><span>${esc(a.means)}</span></div><button class="btn" data-act="askrm" data-say="${esc(a.say)}">Forget</button></div>`)) : note("Nothing yet. This is learned as you use it.")}
-      <h3 style="margin-top:22px">Lessons from your 👍 / 👎</h3>${(l.lessons || []).length ? rows(l.lessons.map((x) => `<div class="row"><span class="k">+${x.helpful || 0} −${x.harmful || 0}</span><div class="t"><span class="wrap">${esc(x.text)}</span></div><button class="btn" data-act="lessonrm" data-id="${esc(x.id)}">Forget</button></div>`)) : note("No lessons yet. Mistakes you mark with 👎 become lessons overnight.")}
+      <h3 style="margin-top:22px">Lessons from your ratings</h3>${(l.lessons || []).length ? rows(l.lessons.map((x) => `<div class="row"><span class="k">+${x.helpful || 0} −${x.harmful || 0}</span><div class="t"><span class="wrap">${esc(x.text)}</span></div><button class="btn" data-act="lessonrm" data-id="${esc(x.id)}">Forget</button></div>`)) : note("No lessons yet. Answers you rate as not good become lessons overnight.")}
       <div class="acts" style="margin-top:10px"><button class="btn" data-act="learn">Learn now</button><span class="sample" id="learnInfo">${last ? `Last run ${esc(last.day)}: test ${Math.round(last.before * 100)}% → ${Math.round(last.after * 100)}%${last.kept ? "" : " (not kept)"}` : ""}</span></div>
       <h3 style="margin-top:22px">Mail filing rules</h3>${rules.length ? rows(rules.map(([a, f]) => `<div class="row"><span class="k">→</span><div class="t"><b>${esc(a)}</b><span>${esc(f)}</span></div><span></span></div>`)) : note("None yet.")}`;
   },
@@ -93,7 +93,7 @@ const PAGES = {
         <p class="sample">${d.host ? "https://" + esc(d.host) : "Tailscale is not running on this PC."}</p>
         <div class="acts"><button class="btn go" data-act="pair">Pair a phone</button></div><div id="pairCode"></div></div>
         ${d.host ? `<img class="qr" id="phoneQr" src="/api/devices/qr?${Date.now()}" alt="QR code for the phone app">` : ""}</div>
-      <h3 style="margin-top:22px">Paired phones</h3>${d.devices.length ? rows(d.devices.map((x) => `<div class="row"><span class="k">📱</span><div class="t"><b>${esc(x.name)}</b><span>paired ${new Date(x.created * 1000).toLocaleDateString()} · last seen ${ago(x.last_seen)}</span></div><button class="btn" data-act="unpair" data-id="${esc(x.id)}">Remove</button></div>`)) : note("No phone paired yet.")}`;
+      <h3 style="margin-top:22px">Paired phones</h3>${d.devices.length ? rows(d.devices.map((x) => `<div class="row"><span class="k">Phone</span><div class="t"><b>${esc(x.name)}</b><span>paired ${new Date(x.created * 1000).toLocaleDateString()} · last seen ${ago(x.last_seen)}</span></div><button class="btn" data-act="unpair" data-id="${esc(x.id)}">Remove</button></div>`)) : note("No phone paired yet.")}`;
   },
   async reminders() {
     const list = await api("/api/reminders");
@@ -126,7 +126,7 @@ body().addEventListener("click", async (e) => {
     const read = (f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok({ name: f.name, data: r.result }); r.readAsDataURL(f); });
     say("asInfo", "Uploading…");
     const r = await post("/api/assistant/upload", { set: "custom", files: await Promise.all(files.map(read)) });
-    if (r.error) return say("asInfo", "⚠ " + r.error);
+    if (r.error) return say("asInfo", "That didn't work: " + r.error);
     await PAGES.assistant(); set.avatar = "custom"; say("asInfo", `Saved ${r.saved.length} image(s). "custom" is picked: press Save.`);
     body().querySelectorAll(".avt").forEach((x) => x.classList.toggle("on", x.dataset.av === "custom"));
   }
@@ -143,7 +143,7 @@ body().addEventListener("click", async (e) => {
   if (act === "vup") {
     const files = [...$("#voiceFiles").files];
     if (!files.some((f) => f.name.endsWith(".onnx")) || !files.some((f) => f.name.endsWith(".onnx.json"))) return say("voiceInfo", "Pick both files: <name>.onnx and <name>.onnx.json.");
-    for (const f of files) { const r = await fetch(`/api/voice/voices/upload?name=${encodeURIComponent(f.name)}`, { method: "POST", body: f }).then((x) => x.json()); if (r.error) return say("voiceInfo", "⚠ " + r.error); }
+    for (const f of files) { const r = await fetch(`/api/voice/voices/upload?name=${encodeURIComponent(f.name)}`, { method: "POST", body: f }).then((x) => x.json()); if (r.error) return say("voiceInfo", "That didn't work: " + r.error); }
     PAGES.voice();
   }
   if (act === "sktoggle") { await post("/api/skills", { name: d.n, active: d.on !== "1" }); PAGES.skills(); }
@@ -160,7 +160,7 @@ body().addEventListener("click", async (e) => {
   if (act === "unpair") { if (!confirm("Remove this phone? It loses access right away.")) return; await post(`/api/devices/${d.id}/revoke`, {}); PAGES.phone(); }
   if (act === "pair") {
     const r = await post("/api/devices/code", {});
-    if (r.error) return ($("#pairCode").textContent = "⚠ " + r.error);
+    if (r.error) return ($("#pairCode").textContent = "That didn't work: " + r.error);
     $("#pairCode").innerHTML = `<div class="paircode">${esc(r.code)}</div>${note(`Scan the QR code with the app, or type the code. Valid ${r.minutes} minutes, once.`)}`;
     if ($("#phoneQr")) $("#phoneQr").src = `/api/devices/qr?code=${r.code}&${Date.now()}`;
     const before = (await api("/api/devices")).devices.length, until = Date.now() + r.minutes * 60000;
@@ -180,24 +180,24 @@ body().addEventListener("submit", async (e) => {
     async asForm() {
       const own = f.querySelector("[name=pm]:checked").value === "own";
       const r = await post("/api/assistant", { name: $("#asName").value, avatar: set.avatar, ...(own ? { persona_text: $("#asPersonaText").value } : { persona: $("#asPersona").value }) });
-      if (r.error) return say("asInfo", "⚠ " + r.error);
+      if (r.error) return say("asInfo", "That didn't work: " + r.error);
       restarted();
     },
-    async voiceAdd() { const v = $("#voiceName").value.trim(); if (!v) return; const r = await post("/api/voice/voices/download", { id: v }); say("voiceInfo", r.error ? "⚠ " + r.error : "Downloading… it shows in the list when it's ready."); if (!r.error) setTimeout(PAGES.voice, 800); },
+    async voiceAdd() { const v = $("#voiceName").value.trim(); if (!v) return; const r = await post("/api/voice/voices/download", { id: v }); say("voiceInfo", r.error ? "That didn't work: " + r.error : "Downloading… it shows in the list when it's ready."); if (!r.error) setTimeout(PAGES.voice, 800); },
     async skAdd() {
       const file = $("#skFile").files[0];
-      if (file && file.size > 200000) return say("skInfo", "⚠ That file is too large for a skill.");
+      if (file && file.size > 200000) return say("skInfo", "That file is too large for a skill.");
       say("skInfo", "Adding…");
       const r = await post("/api/skills/add", file ? { file: await file.text(), name: $("#skName").value } : { name: $("#skName").value, description: $("#skDesc").value, triggers: $("#skTrig").value, body: $("#skBody").value });
-      if (r.error) return say("skInfo", "⚠ " + r.error); PAGES.skills();
+      if (r.error) return say("skInfo", "That didn't work: " + r.error); PAGES.skills();
     },
     async connAdd() {
       const env = Object.fromEntries($("#connEnv").value.split("\n").map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]));
       say("connInfo", "Starting it to check…");
       const r = await post("/api/connectors/add", { name: $("#connName").value, command: $("#connCmd").value, env });
-      if (r.error) return say("connInfo", "⚠ " + r.error); PAGES.connectors();
+      if (r.error) return say("connInfo", "That didn't work: " + r.error); PAGES.connectors();
     },
-    async pbAdd() { const r = await post("/api/playbooks/add", { title: $("#pbTitle").value, triggers: $("#pbTrig").value, steps: $("#pbSteps").value }); if (r.error) return say("pbInfo", "⚠ " + r.error); PAGES.playbooks(); },
+    async pbAdd() { const r = await post("/api/playbooks/add", { title: $("#pbTitle").value, triggers: $("#pbTrig").value, steps: $("#pbSteps").value }); if (r.error) return say("pbInfo", "That didn't work: " + r.error); PAGES.playbooks(); },
     async profForm() { await post("/api/profile", { profile: $("#profText").value }); say("profInfo", "Saved."); },
     async vipForm() { const r = await post("/api/mail/vip", { vip: $("#vipText").value.split("\n") }); $("#vipText").value = r.vip.join("\n"); say("vipInfo", "Saved."); },
   };

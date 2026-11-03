@@ -7,7 +7,9 @@ const api = async (path, opts = {}) => {
 };
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const stripMood = (t) => (t || "").replace(/\s*\[mood:\s*\w*\]?\s*$/i, "").replace(/\[mood:\s*\w+\]/gi, "");
+// replies are shown clean: no mood tag, no emoji or decorative symbols (the model is asked for none; this is the safety net)
+const noEmoji = (t) => String(t || "").replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\uFE0F\u200D\u20E3]\s?/gu, "");
+const stripMood = (t) => noEmoji((t || "").replace(/\s*\[mood:\s*\w*\]?\s*$/i, "").replace(/\[mood:\s*\w+\]/gi, ""));
 const plain = (t) => stripMood(t).replace(/```[\s\S]*?```/g, " ").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`#>|~]/g, "").replace(/\s+/g, " ").trim();
 const hhmm = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const app = $("#app"), stage = $("#stage");
@@ -121,12 +123,12 @@ async function memStats() {
 }
 
 // ---------- the conversation (one per day) ----------
-const state = { cid: null, msgs: [], busy: false, chatTab: "now", past: null, apprCount: -1, spoken: false };
+const state = { fb: {}, cid: null, msgs: [], busy: false, chatTab: "now", past: null, apprCount: -1, spoken: false };
 const SYSTEM_CHATS = new Set(["reminders", "mail", "day"]);
 async function today() {
   state.cid = (await api("/api/quickchat")).id;
-  const d = await api(`/api/conversations/${state.cid}`);
-  state.msgs = d.messages;
+  const [d, l] = await Promise.all([api(`/api/conversations/${state.cid}`), api("/api/learning").catch(() => ({}))]);
+  state.msgs = d.messages; state.fb = l.feedback || {};
   const last = [...d.messages].reverse().find((m) => m.role === "assistant" && m.content.trim());
   subtitle(last ? last.content : `Hi, I'm ${NAME()}. Everything stays on this PC, and anything that changes something waits for your OK.`);
   renderGhost();
@@ -144,7 +146,8 @@ $("#ghost").addEventListener("click", (e) => { if (e.target.closest("[data-go-ch
 $("#ghost").addEventListener("mouseenter", () => setTimeout(() => { const n = $("#ghost .gin"); if (n) n.scrollTop = n.scrollHeight; }, 360));
 const lineHtml = (m) => {
   if (m.role === "user") return `<div class="ln u"><span class="ts">${hhmm(m.created)}</span><span class="who">YOU</span><div class="m">${esc(m.content)}</div></div>`;
-  if (m.role === "assistant" && m.content.trim()) return `<div class="ln a"><span class="ts">${hhmm(m.created)}</span><span class="who">${esc(NAME().toUpperCase())}</span><div class="m">${md(stripMood(m.content))}</div></div>`;
+  if (m.role === "assistant" && m.content.trim()) return `<div class="ln a"><span class="ts">${hhmm(m.created)}</span><span class="who">${esc(NAME().toUpperCase())}</span><div class="m">${md(stripMood(m.content))}</div>` +
+    (m.id ? `<div class="rate" data-mid="${m.id}"><button data-act="rate" data-s="1" class="${state.fb[m.id] === 1 ? "on" : ""}">Good</button><button data-act="rate" data-s="-1" class="${state.fb[m.id] === -1 ? "on" : ""}">Not good</button></div>` : "") + "</div>";
   if (m.role === "approval") {
     const st = m.meta.status || "pending";
     return `<div class="ln k ${st}"><span class="ts">${hhmm(m.created)}</span><span class="who">${st === "pending" ? "WAITING FOR YOUR OK" : st.toUpperCase()}</span><div class="m">${esc(plain(m.content).slice(0, 240))}${st === "pending" ? ' <button class="linkish" data-act="toappr">Approvals ›</button>' : ""}</div></div>`;
@@ -168,7 +171,7 @@ async function renderChat() {
   if (!state.past) state.past = (await api("/api/conversations")).filter((c) => !SYSTEM_CHATS.has(c.id) && c.id !== state.cid && !c.title.startsWith("🗂️"));
   if (state.chatTab === "history") {
     body().innerHTML = chatTabs() + note("Pick an earlier conversation to read it.") + (state.past.length ? rows(state.past.map((c, i) =>
-      `<button class="row pick" data-act="past" data-i="${i}"><span class="k">${new Date(c.updated * 1000).toLocaleDateString([], { day: "numeric", month: "short" })}</span><div class="t"><b>${esc(c.title)}</b><span>${new Date(c.updated * 1000).toLocaleDateString([], { weekday: "long" })}</span></div><span class="open">Open ›</span></button>`)) : note("No earlier conversations yet."));
+      `<button class="row pick" data-act="past" data-i="${i}"><span class="k">${new Date(c.updated * 1000).toLocaleDateString([], { day: "numeric", month: "short" })}</span><div class="t"><b>${esc(noEmoji(c.title))}</b><span>${new Date(c.updated * 1000).toLocaleDateString([], { weekday: "long" })}</span></div><span class="open">Open ›</span></button>`)) : note("No earlier conversations yet."));
     return;
   }
   const c = state.past[state.chatTab], d = await api(`/api/conversations/${c.id}`);
@@ -211,13 +214,14 @@ async function send(text) {
         }
         if (ev === "tool") setMode("think");
         if (ev === "approval") { acc = ""; started = false; counts(); subtitle(`I need your OK first: ${data.summary}`); if (curView === "approvals") loadApprovals(); }
-        if (ev === "error") subtitle("⚠ " + data.message);
+        if (ev === "error") subtitle("That didn't work: " + data.message);
       }
     }
-  } catch (e) { subtitle("⚠ " + e.message); }
+  } catch (e) { subtitle("That didn't work: " + e.message); }
   finally {
-    state.busy = false; setTimeout(() => setMode("idle"), 500);
-    if (window.Voice) Voice.react(acc);
+    state.busy = false; setTimeout(() => { if (!aloud) setMode("idle"); }, 500);
+    if (acc.trim() && (spkMode === "always" || (spkMode === "voice" && spoken))) sayAloud(acc);
+    else if (window.Voice) Voice.react(acc);
     await today();
     if (curView === "chat" && state.chatTab === "now") renderChat();
     counts();
@@ -240,11 +244,42 @@ $("#ask").onsubmit = (e) => {
   send(q);
 };
 
+// ---------- spoken answers: when you talked (default), always, or off. The chat always keeps the full text. ----------
+const SPK = { voice: ["When I talk", "Answers are spoken when you talked to it (click: always)"], always: ["Always", "Every answer is spoken (click: off)"],
+  off: ["Off", "Answers are never spoken (click: when I talk)"] };
+let spkMode = "voice", aloud = null;
+const paintSpk = () => { const b = $("#spk"); b.dataset.mode = spkMode; $("#spkL").textContent = SPK[spkMode][0]; b.title = SPK[spkMode][1]; };
+api("/api/voice/replies").then((d) => { spkMode = SPK[d.mode] ? d.mode : "voice"; paintSpk(); if (!d.voice) $("#spk").classList.add("novoice"); }).catch(paintSpk);
+$("#spk").onclick = () => {
+  if (aloud) return stopAloud();  // while it speaks, the button stops it
+  spkMode = { voice: "always", always: "off", off: "voice" }[spkMode]; paintSpk();
+  post("/api/voice/replies", { mode: spkMode });
+};
+function stopAloud() { if (aloud) { aloud.pause(); aloud.onended && aloud.onended(); } }
+// read an answer aloud: the server turns it into what a person would say (no Markdown, "2 PM" not "14:00", the gist
+// of a long answer), with the voice from Settings → Voice; the core moves with it
+async function sayAloud(text) {
+  stopAloud();
+  try {
+    const r = await fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, speech: true }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+    const a = aloud = new Audio(URL.createObjectURL(await r.blob()));
+    const talk = setInterval(() => core.talk(), 140);
+    a.onended = () => { clearInterval(talk); if (aloud === a) { aloud = null; $("#spk").classList.remove("speaking"); if (!state.busy) setMode("idle"); } };
+    $("#spk").classList.add("speaking"); setMode("speak"); $("#state").textContent = "Speaking";
+    await a.play();
+  } catch (e) {
+    $("#spk").classList.add("novoice");
+    subtitle(e.message.includes("No text-to-speech") || e.message.includes("voice") ? "I can't speak yet: pick or download a voice under Settings → Voice." : "I couldn't speak that: " + e.message);
+  }
+}
+addEventListener("keydown", (e) => { if (e.key === "Escape" && aloud) stopAloud(); });
+
 // ---------- voice: the mic, Ctrl + Space, the wake word ----------
 if (window.Voice) {
   const mic = $("#mic");
   const listening = (on) => { mic.classList.toggle("on", on); if (on) { setMode("listen"); subtitle("Listening…", "LISTENING"); } else if (!state.busy) setMode("idle"); };
-  mic.onclick = () => { if (Voice.recording) { Voice.release(); listening(false); } else { Voice.listen(); listening(true); } };
+  mic.onclick = () => { stopAloud(); if (Voice.recording) { Voice.release(); listening(false); } else { Voice.listen(); listening(true); } };
   Voice.onBusy = (b) => { if (b) subtitle("Writing down what you said…", "LISTENING"); };
   Voice.onHint = (msg) => { listening(false); subtitle(msg); };
   Voice.onText = (text) => { listening(false); state.spoken = true; send(text); };
@@ -273,7 +308,7 @@ async function loadApprovals() {
   $("#pmeta").textContent = `${list.length} waiting`;
   body().innerHTML = note("Anything that changes something waits here first. Approve it, reject it, or press Adjust and say what should be different.") +
     (list.length ? rows(list.map((a) => `<div class="row ask" data-id="${esc(a.id)}"><span class="chip">${esc(TOOL_KIND(a.tool))}</span>` +
-      `<div class="t"><b>${esc(a.conversation_title || "Chat")}${a.revised ? '<em class="chip amber rev">Revised</em>' : ""}</b><span class="md">${md(a.summary)}</span>${a.feedback ? `<em class="why">Changed: ${esc(a.feedback)}</em>` : ""}</div>` +
+      `<div class="t"><b>${esc(a.conversation_title || "Chat")}${a.revised ? '<em class="chip amber rev">Revised</em>' : ""}</b><span class="md">${md(noEmoji(a.summary))}</span>${a.feedback ? `<em class="why">Changed: ${esc(a.feedback)}</em>` : ""}</div>` +
       `<div class="acts"><button class="btn" data-act="reject">Reject</button><button class="btn adj" data-act="adj">Adjust</button><button class="btn go" data-act="approve">Approve</button></div></div>`))
       : note("Nothing waiting for you."));
 }
@@ -311,6 +346,11 @@ function loadSettings() {
 body().addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target;
+  if (f.classList.contains("ratenote")) {
+    const box = f.closest(".rate"), id = box.dataset.mid;
+    await post(`/api/messages/${id}/feedback`, { score: -1, note: f.querySelector("input").value.trim() }); state.fb[id] = -1;
+    f.remove(); box.querySelectorAll("button[data-act=rate]").forEach((b) => b.classList.toggle("on", b.dataset.s === "-1")); return;
+  }
   if (f.id === "todoAdd") {
     const v = $("#todoNew").value.trim(); if (!v) return;
     await post("/api/todo/add", { items: [v] }); await loadTodo(); counts();
@@ -325,7 +365,7 @@ body().addEventListener("submit", async (e) => {
     setMode("think");
     const r = await post(`/api/approvals/${row.dataset.id}/revise`, { note: noteText });
     setMode("idle");
-    if (r.error) { row.classList.remove("redo"); row.querySelector(".t .md").textContent = "⚠ " + r.error; return; }
+    if (r.error) { row.classList.remove("redo"); row.querySelector(".t .md").textContent = "That didn't work: " + r.error; return; }
     subtitle("I changed it. Have a look.");
     loadApprovals(); counts();
   }
@@ -356,6 +396,15 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "ctab" || act === "past") { state.chatTab = act === "past" ? Number(a.dataset.i) : a.dataset.tab; if (act === "ctab" && a.dataset.tab === "history") state.past = null; renderChat(); }
   if (act === "toappr") open("approvals");
+  if (act === "rate") {  // your rating teaches it (core/amadeus_core/learning.py): "Not good" asks what was wrong, optionally
+    const box = a.closest(".rate"), id = box.dataset.mid, score = Number(a.dataset.s);
+    if (score < 0 && !box.querySelector("form")) {
+      box.insertAdjacentHTML("beforeend", '<form class="ratenote"><input placeholder="What was wrong? (optional)" aria-label="What was wrong"><button class="btn">Send</button></form>');
+      box.querySelector("input").focus(); return;
+    }
+    await post(`/api/messages/${id}/feedback`, { score, note: "" }); state.fb[id] = score;
+    box.querySelectorAll("button[data-act=rate]").forEach((b) => b.classList.toggle("on", Number(b.dataset.s) === score));
+  }
 
 });
 

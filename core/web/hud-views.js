@@ -64,7 +64,7 @@ async function calSave(f) {
     start: allDay ? date : `${date}T${from}`, end: allDay ? "" : `${to > from ? date : ymd(addDays(new Date(date + "T00:00"), 1))}T${to}` };
   if (ev) Object.assign(b, { repeat: ev.repeat || "", repeat_until: ev.repeat_until || "", alert: ev.alert });
   const r = await api(ev ? `/api/calendar/${ev.id}` : "/api/calendar", { method: ev ? "PATCH" : "POST", body: JSON.stringify(b) });
-  if (r.error) { $("#calMsg").textContent = "⚠ " + r.error; return; }
+  if (r.error) { $("#calMsg").textContent = "That didn't work: " + r.error; return; }
   cal.edit = null; cal.week = monday(new Date(date + "T00:00")); loadCalendar(); nextUp();
 }
 
@@ -102,13 +102,13 @@ async function renderMail() {
   } else if (mail.open) {
     const m = mail.open;
     main = `<div class="reader"><div class="phead"><button class="btn" data-act="mailback">‹ Inbox</button><b>${esc(m.subject || "(no subject)")}</b></div>
-      <div class="meta">From ${esc(m.from)}<br>To ${esc((m.to || []).join(", "))}<br>${new Date(m.date).toLocaleString()}${m.attachments && m.attachments.length ? "<br>📎 " + m.attachments.map((a) => esc(a.name)).join(", ") : ""}</div>
+      <div class="meta">From ${esc(m.from)}<br>To ${esc((m.to || []).join(", "))}<br>${new Date(m.date).toLocaleString()}${m.attachments && m.attachments.length ? "<br>Attachments: " + m.attachments.map((a) => esc(a.name)).join(", ") : ""}</div>
       <div class="acts"><button class="btn" data-act="mailsum">Summarize</button><button class="btn go" data-act="mailreply">Reply with ${esc(NAME())}</button><button class="btn" data-act="mailunread">Mark unread</button></div>
       <div class="mailbody">${esc(m.body)}${m.truncated ? "\n[…]" : ""}</div></div>`;
   } else {
     mail.list = await (await fetch(`/api/mail/recent?days=14&account=${encodeURIComponent(mail.acc)}`)).json().catch(() => []);
     main = Array.isArray(mail.list) && mail.list.length ? rows(mail.list.map((m) => `<button class="row pick${m.read ? "" : " unread"}" data-act="mailopen" data-id="${m.id}"><span class="k">${when(m.date)}</span><div class="t"><b>${esc(m.from)}</b><span>${esc(m.subject || "(no subject)")}</span></div><span></span></button>`))
-      : note(Array.isArray(mail.list) ? "No mail in the last two weeks." : "⚠ " + esc(mail.list.error || "Mail didn't load."));
+      : note(Array.isArray(mail.list) ? "No mail in the last two weeks." : "That didn't work: " + esc(mail.list.error || "Mail didn't load."));
   }
   body().innerHTML = `<div class="mailwrap">${mailRail()}<div class="mailmain">${main}</div></div>`;
 }
@@ -160,7 +160,7 @@ async function renderProject() {
   body().innerHTML = `<div class="phead"><button class="btn" data-act="proj" data-p="">‹ Projects</button><b>${esc(d.name)}</b><span class="chip st ${c}">${l}</span><span class="grow"></span>
       <button class="btn" data-act="projdone" data-done="${d.state === "done" ? 0 : 1}">${d.state === "done" ? "Open again" : "Mark done"}</button><button class="btn" data-act="projterm" title="Opens a terminal with Claude Code in this project's folder">Open in Claude Code</button></div>
     <div class="pgrid"><div class="pside"><h3>Overview</h3><div class="ov md">${d.overview ? md(d.overview) : note("No Overview.md yet.")}</div>
-      <h3 style="margin-top:18px">Files</h3><div class="files">${d.files.map((f) => `<div><button class="linkfile" data-act="projfile" data-f="${esc(f.path)}">▤ ${esc(f.path)}</button><small>${Math.max(1, Math.round(f.size / 1024))} KB</small></div>`).join("") || note("No files yet.")}</div><div id="projFile"></div></div>
+      <h3 style="margin-top:18px">Files</h3><div class="files">${d.files.map((f) => `<div><button class="linkfile" data-act="projfile" data-f="${esc(f.path)}">${esc(f.path)}</button><small>${Math.max(1, Math.round(f.size / 1024))} KB</small></div>`).join("") || note("No files yet.")}</div><div id="projFile"></div></div>
     <div class="pmain"><h3>Timeline</h3><div class="tlist">${items.map((i) => i.h).join("") || note(`Nothing here yet. Talk to ${esc(NAME())} about the project, or give Claude Code its first task.`)}${q}</div>
       <form class="pcomp${proj.to === "c" ? " cc" : ""}" id="projSend"><span class="tolabel">Send to</span><div class="to" role="radiogroup" aria-label="Send to">
         <button type="button" class="${proj.to === "a" ? "on" : ""}" role="radio" aria-checked="${proj.to === "a"}" data-act="to" data-who="a">${esc(NAME())}</button>
@@ -176,7 +176,7 @@ async function toClaude(text, info) {
   const name = proj.d.name;
   if (!proj.preview || proj.preview.text !== text) {
     const pv = await post(`/api/projects/${encodeURIComponent(name)}/claude`, { text });
-    if (pv.error) { info.textContent = "⚠ " + pv.error; return; }
+    if (pv.error) { info.textContent = "That didn't work: " + pv.error; return; }
     proj.preview = { text, preview: pv.preview };
     const box = $("#projPreview"); box.hidden = false;
     box.innerHTML = `<b>Exactly this goes to Claude Code${pv.findings.length ? ` (the privacy filter replaced: ${esc(pv.findings.join(", "))})` : ""}:</b><div>${esc(pv.preview)}</div>
@@ -185,7 +185,7 @@ async function toClaude(text, info) {
   }
   const r = await post(`/api/projects/${encodeURIComponent(name)}/claude`, { text, confirm: true, preview: proj.preview.preview });
   proj.preview = null;
-  if (r.error) { info.textContent = "⚠ " + r.error; return; }
+  if (r.error) { info.textContent = "That didn't work: " + r.error; return; }
   subtitle(r.resumed ? "Claude Code continues the project." : "Claude Code started on the project.");
   renderProject();
 }
@@ -206,7 +206,7 @@ async function toAssistant(text) {
         const ev = chunk.match(/^event: (.*)$/m)?.[1], data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] || "{}");
         if (ev === "token") { acc += data; setMode("speak"); core.talk(); out.innerHTML = md(stripMood(acc)); subtitle(acc); }
         if (ev === "approval") { counts(); subtitle(`I need your OK first: ${data.summary}`); }
-        if (ev === "error") out.textContent = "⚠ " + data.message;
+        if (ev === "error") out.textContent = "That didn't work: " + data.message;
       }
     }
   } finally { setTimeout(() => setMode("idle"), 500); if (proj.sel === name && curView === "projects") renderProject(); }
@@ -230,7 +230,7 @@ body().addEventListener("click", async (e) => {
   if (act === "tbopen") { await post("/api/mail/thunderbird", {}); a.textContent = "Opening Thunderbird…"; }
   if (act === "mailopen") {
     const id = Number(a.dataset.id), m = await (await fetch(`/api/mail/message/${id}`)).json();
-    if (m.error) { subtitle("⚠ " + m.error); return; }
+    if (m.error) { subtitle("That didn't work: " + m.error); return; }
     mail.open = m; renderMail();
     if (!m.read) { post("/api/mail/markread", { ids: [id], read: true }); mail.unread[m.accountId] = Math.max(0, (mail.unread[m.accountId] || 1) - 1); mailCount(); }
   }
@@ -245,7 +245,7 @@ body().addEventListener("click", async (e) => {
   if (act === "projfile") {
     const f = await api(`/api/projects/${encodeURIComponent(proj.d.name)}/file?path=${encodeURIComponent(a.dataset.f)}`);
     $("#projFile").innerHTML = `<div class="filebox"><div class="phead"><b>${esc(a.dataset.f)}</b><span class="grow"></span><button class="btn" data-act="projfileclose">Close</button></div>` +
-      (f.error ? note("⚠ " + esc(f.error)) : f.binary ? note("Not a text file: open it in Obsidian or the file manager.") : /\.md$/i.test(a.dataset.f) ? `<div class="md">${md(f.text)}</div>` : `<pre>${esc(f.text)}</pre>`) + "</div>";
+      (f.error ? note("That didn't work: " + esc(f.error)) : f.binary ? note("Not a text file: open it in Obsidian or the file manager.") : /\.md$/i.test(a.dataset.f) ? `<div class="md">${md(f.text)}</div>` : `<pre>${esc(f.text)}</pre>`) + "</div>";
   }
   if (act === "projfileclose") $("#projFile").innerHTML = "";
   if (act === "to") { proj.to = a.dataset.who; proj.preview = null; const keep = $("#projText").value; await renderProject(); $("#projText").value = keep; $("#projText").focus(); }
@@ -261,7 +261,7 @@ body().addEventListener("submit", async (e) => {
     if (move && !confirm(`Move these projects to ${path}?\n\n${fo.projects.join("\n")}\n\nThey are moved, not copied: afterwards they're only in the new folder. Their Claude Code sessions move with them.`)) return;
     $("#pfInfo").textContent = move ? "Moving…" : "Saving…";
     const r = await post("/api/projects/folder", { path, move });
-    if (r.error) { $("#pfInfo").textContent = "⚠ " + r.error; return; }
+    if (r.error) { $("#pfInfo").textContent = "That didn't work: " + r.error; return; }
     subtitle(r.moved && r.moved.length ? `Moved ${r.moved.length} project(s) to ${r.path}.` : `Projects now live in ${r.path}.`);
     renderProjects();
   }

@@ -601,9 +601,9 @@ def mail_codes(days=3):
         when = str(m.get("date") or "")[:16].replace("T", " ")
         lines.append(f"**{sender}**: {m.get('subject') or ''} · {when} · {m.get('folder', '')}")
         if kind == "code":
-            lines.append(f"🔑 Code: **`{code}`**")
+            lines.append(f"Code: **`{code}`**")
         for u in links:
-            lines.append(f"🔗 {u}")
+            lines.append(f"{u}")
         if kind == "confirm" and not links:
             lines.append("_(link not readable here; say \"show me that mail\")_")
         lines.append("")
@@ -622,7 +622,7 @@ def mail_overview(days=60):
         for m in mailbridge.call("recent", folderId=f["id"], days=days, limit=50, unreadOnly=True, timeout=60):
             rows.append((f, m))
     if not rows:
-        return "📭 Nothing open: no unread mail in any folder of the last %d days." % days, {}
+        return "Nothing open: no unread mail in any folder of the last %d days." % days, {}
     snippets = {}
     for _, m in rows[:80]:
         try:
@@ -645,7 +645,7 @@ def mail_overview(days=60):
     for acc_id in dict.fromkeys(f["accountId"] for f, _ in rows):
         acc_rows = [(f, m) for f, m in rows if f["accountId"] == acc_id]
         name = (accounts.get(acc_id) or {}).get("name") or acc_id
-        lines.append(f"### 📧 {name} · {len(acc_rows)} open")
+        lines.append(f"### {name} · {len(acc_rows)} open")
         for fpath in dict.fromkeys(f["path"] for f, _ in acc_rows):
             frows = [m for f, m in acc_rows if f["path"] == fpath]
             lines.append(f"**{fpath.strip('/') or 'Inbox'}** ({len(frows)})")
@@ -806,7 +806,7 @@ def _conflicts(start, end, all_day=False, skip_id=None):
         hits = agenda.overlaps(start, end, all_day, skip_id)
     except ValueError:
         return ""
-    return ("\n\n⚠️ Overlaps with: " + "; ".join(agenda.describe(o) for o in hits)) if hits else ""
+    return ("\n\nOverlaps with: " + "; ".join(agenda.describe(o) for o in hits)) if hits else ""
 
 
 def _allday_end(start, end, all_day):
@@ -866,7 +866,7 @@ def _update_summary(a):
         fields["end"] = agenda.fmt(agenda.parse(fields["start"], ad)[0] + (agenda.parse(old["end"], ad)[0] - s0), ad)
         a["end"] = fields["end"]
     new = agenda._clean(fields, old)
-    warn = "⚠️ **This changes EVERY repeat of the series.**\n\n" if old.get("repeat") else ""
+    warn = "**This changes EVERY repeat of the series.**\n\n" if old.get("repeat") else ""
     return f"{warn}Change calendar event:\n\n- before: {agenda.describe(old)}\n- after: {agenda.describe(new)}" + \
         _conflicts(new["start"], new["end"], new["all_day"], old["id"])
 
@@ -947,7 +947,7 @@ def _delete_summary(a):
                          f"wants EVERY repeat gone, call it with whole_series=true.")
     if old["repeat"] and a.get("date") and not a.get("whole_series"):
         return _once_summary({"event_id": old["id"], "date": a["date"], "cancel": True})
-    return "Delete from calendar: " + agenda.describe(old) + (" (⚠️ the whole series, every repeat)" if old["repeat"] else "")
+    return "Delete from calendar: " + agenda.describe(old) + (" (the whole series, every repeat)" if old["repeat"] else "")
 
 
 # ---------- one entry over whole days, everything else on those days cleared (one approval) ----------
@@ -1373,7 +1373,7 @@ TOOLS = [
       _mail_summary("Save a draft")),
     T("mail_send", "Send an email (only when the user clearly asked to send it). For a reply, give reply_to_id.",
       {"to": S, "subject": S, "body": S, "account": S, "reply_to_id": S}, ["to", "subject", "body"], mail_send, "mail", True,
-      _mail_summary("📤 **SEND** an email")),
+      _mail_summary("**SEND** an email")),
     T("open_app", "Open an installed program on the desktop (e.g. 'Spotify', 'Steam', 'file manager', 'terminal').",
       {"name": S}, ["name"], open_app, "desktop"),
     T("open_page", "Open a web page in the browser. url: the full address (youtube.com, https://...); you may only use "

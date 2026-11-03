@@ -201,6 +201,9 @@ class Handler(BaseHTTPRequestHandler):
                                "voice": voice_pack(), "theme": db.get_setting("theme", "blue")})
         if p == "/api/voice/pack":
             return self._json(voice_pack())
+        if p == "/api/voice/replies":  # read replies aloud: "voice" (when you talked), "always" or "off"
+            from . import voices
+            return self._json({"mode": db.get_setting("speak_replies", "voice"), "voice": voices.selected()})
         if p == "/api/theme":  # the dashboard's main colour (Settings): blue (default), purple or red
             return self._json({"theme": db.get_setting("theme", "blue")})
         if p == "/api/models":
@@ -337,7 +340,7 @@ class Handler(BaseHTTPRequestHandler):
             b = self._body()
             key = devices.pair(str(b.get("code", "")), str(b.get("name", "Phone")), self._tailnet())
             if not key:
-                return self._json({"error": "That code is wrong or expired. Make a new one in the dashboard (📱 Phone)."}, 403)
+                return self._json({"error": "That code is wrong or expired. Make a new one in the dashboard (Settings → Phone)."}, 403)
             data = json.dumps({"ok": True}).encode()
             self.send_response(200)
             self.send_header("set-cookie", f"amadeus_dev={key}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000")
@@ -360,7 +363,12 @@ class Handler(BaseHTTPRequestHandler):
             from . import voices
             n = int(self.headers.get("content-length", 0) or 0)
             body = json.loads(self.rfile.read(n) or b"{}") if n else {}
-            return self._voice("/tts", json.dumps({"text": str(body.get("text", ""))[:4000], "voice": voices.path()}).encode())
+            text = str(body.get("text", ""))[:4000]
+            if body.get("speech"):  # a reply read aloud: what a person would say, not the chat text (speech.py)
+                from .speech import speech_text
+                v = voices.selected()
+                text = speech_text(text, "en" if v.startswith("kokoro:") else v[:2], int(body.get("limit") or 600))
+            return self._voice("/tts", json.dumps({"text": text, "voice": voices.path()}).encode())
         if p == "/api/voice/stt":  # raw audio, passed through to the voice service
             return self._voice(p[len("/api/voice"):])
         b = self._body()
@@ -512,6 +520,10 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/conversations/(\w+)/messages", p)
         if m:
             return self._chat(m.group(1), b)
+        if p == "/api/voice/replies":
+            m = str(b.get("mode", ""))
+            db.set_setting("speak_replies", m if m in ("voice", "always", "off") else "voice")
+            return self._json({"mode": db.get_setting("speak_replies")})
         if p == "/api/theme":
             t = str(b.get("theme", ""))
             db.set_setting("theme", t if t in ("blue", "purple", "red") else "blue")
@@ -725,7 +737,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             agent.run(cid, model, b.get("text", ""), emit, voice=bool(b.get("voice")))
         except Exception as e:
-            db.add_message(cid, "assistant", f"⚠️ Error: {e}")
+            db.add_message(cid, "assistant", f"Error: {e}")
             emit("error", {"message": str(e)})
 
 

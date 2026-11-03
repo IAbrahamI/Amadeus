@@ -37,6 +37,8 @@ Rules:
 - Only use send_to_work when the user wants coding, writing or bigger projects done by the work agents.
 - When asked what you know about the user, use memory_overview and list the facts plainly.
 - Keep answers short and clear. If you don't know, say so.
+- Format: clean Markdown. Lead with the answer in one plain sentence, then short lists or a small table only when they
+  help. No emoji or decorative symbols, no headings for short answers.
 - End every reply with exactly one mood tag on its own line, chosen from:
   [mood:normal] [mood:happy] [mood:thinking] [mood:surprised] [mood:worried] [mood:sad] [mood:annoyed] [mood:blush] [mood:wink]
 Today is {today}."""
@@ -407,7 +409,7 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice):
                     summary = t["summary"](args) if t["summary"] else \
                         (f"Save to long-term memory: **{args.get('fact', '')}**" if name == "remember" else f"{name} {json.dumps(args)}")
                     if name in OUTBOUND and _read_mail_recently(cid):
-                        summary = ("⚠️ **Suggested right after reading emails.** Emails can hide instructions aimed at me; "
+                        summary = ("**Suggested right after reading emails.** Emails can hide instructions aimed at me; "
                                    "check that this is really what you asked for.\n\n" + summary)
                 except Exception as e:
                     db.add_message(cid, "tool", f"Invalid request: {e}", {"name": name})
@@ -483,7 +485,7 @@ def revise(aid, note):
         summary = t["summary"](new) if t["summary"] else f"{a['tool']} {json.dumps(new)}"
     except Exception as e:
         return {"error": f"The redraft isn't valid: {e}"}
-    if a["summary"].startswith("⚠️ **Suggested right after reading emails.**"):
+    if a["summary"].startswith("**Suggested right after reading emails.**"):
         summary = a["summary"].split("\n\n", 1)[0] + "\n\n" + summary
     db.q("UPDATE approvals SET args=?, summary=?, feedback=?, revised=COALESCE(revised,0)+1 WHERE id=?",
          (json.dumps(new), summary, note, aid))
