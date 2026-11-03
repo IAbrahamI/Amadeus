@@ -203,6 +203,8 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--cyan); outl
   border: 1px solid rgba(var(--a),.18); border-bottom: 2px solid rgba(var(--a),.18); color: var(--dim); transition: all .2s; }
 .acc b { display: block; font: 600 12px var(--display); letter-spacing: .22em; text-transform: uppercase; }
 .acc small { font: 400 11px var(--mono); }
+.acc > span { min-width: 0; } .acc b, .acc small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }  /* long addresses stay in the box */
+.acc { min-width: 0; } .acc em { flex: none; }
 .acc em { font: 500 13px var(--mono); font-style: normal; color: #1A1000; background: var(--amber); padding: 0 6px; }
 .acc:hover { color: var(--text); background: rgba(var(--a),.06); }
 .acc.on { color: var(--cyan); background: rgba(var(--a),.1); border-bottom-color: var(--cyan); box-shadow: 0 6px 16px -10px var(--cyan); }
@@ -299,7 +301,9 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--cyan); outl
 .ln p { margin: 2px 0 0; font-size: 13.5px; line-height: 1.5; }
 .ln.u p { color: var(--dim); font-family: var(--mono); font-size: 12.5px; }
 .ln.a p { text-shadow: 0 0 8px rgba(var(--a),.2); }
-.ln:last-child.a p::after { content: "█"; color: var(--cyan); margin-left: 4px; font-size: 11px; animation: blink 1.1s steps(1) infinite; }
+/* one cursor, at the very end of the newest answer */
+.ln:last-child.a .m > :is(p, h3, h4, h5):last-child::after, .ln:last-child.a .m > :is(ul, ol):last-child > li:last-child::after {
+  content: "█"; color: var(--cyan); margin-left: 4px; font-size: 11px; animation: blink 1.1s steps(1) infinite; }
 .sub { cursor: pointer; }
 
 /* settings */
@@ -556,3 +560,4 @@ button.ev:hover { background: rgba(var(--a),.2); }
 .spk.novoice { color: var(--amber); }
 .spk.speaking svg { animation: blink .9s steps(1) infinite; }
 @media (max-width: 760px) { .spk span { display: none; } }
+.ghost:not(:hover):not(:focus-within) .ln .m *::after { content: none; }
