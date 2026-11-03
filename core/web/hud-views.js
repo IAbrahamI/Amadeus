@@ -69,7 +69,7 @@ async function calSave(f) {
 }
 
 // ---------- Mail: one inbox per account, never mixed ----------
-const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: null };
+const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: null, days: 30 };
 async function loadMail() {
   let st;
   try { st = await (await fetch("/api/mail/status")).json(); } catch { st = { connected: false }; }
@@ -106,9 +106,12 @@ async function renderMail() {
       <div class="acts"><button class="btn" data-act="mailsum">Summarize</button><button class="btn go" data-act="mailreply">Reply with ${esc(NAME())}</button><button class="btn" data-act="mailunread">Mark unread</button></div>
       <div class="mailbody">${esc(m.body)}${m.truncated ? "\n[…]" : ""}</div></div>`;
   } else {
-    mail.list = await (await fetch(`/api/mail/recent?days=14&account=${encodeURIComponent(mail.acc)}`)).json().catch(() => []);
-    main = Array.isArray(mail.list) && mail.list.length ? rows(mail.list.map((m) => `<button class="row pick${m.read ? "" : " unread"}" data-act="mailopen" data-id="${m.id}"><span class="k">${when(m.date)}</span><div class="t"><b>${esc(m.from)}</b><span>${esc(m.subject || "(no subject)")}</span></div><span></span></button>`))
-      : note(Array.isArray(mail.list) ? "No mail in the last two weeks." : "That didn't work: " + esc(mail.list.error || "Mail didn't load."));
+    // the inbox, newest first: the last month at first, "Show older" goes further back (a year at most)
+    mail.list = await (await fetch(`/api/mail/recent?days=${mail.days}&limit=300&account=${encodeURIComponent(mail.acc)}`)).json().catch(() => []);
+    const more = mail.days < 365 ? `<div class="acts" style="margin-top:12px"><button class="btn" data-act="mailolder">Show older (${mail.days < 90 ? "3 months" : "a year"})</button></div>` : "";
+    main = Array.isArray(mail.list) && mail.list.length ? `<p class="sample">${mail.list.length} mails in the inbox, last ${mail.days < 365 ? mail.days + " days" : "year"}</p>` +
+        rows(mail.list.map((m) => `<button class="row pick${m.read ? "" : " unread"}" data-act="mailopen" data-id="${m.id}"><span class="k">${when(m.date)}</span><div class="t"><b>${esc(m.from)}</b><span>${esc(m.subject || "(no subject)")}</span></div><span></span></button>`)) + more
+      : Array.isArray(mail.list) ? note(`No mail in the inbox in the last ${mail.days} days.`) + more : note("That didn't work: " + esc(mail.list.error || "Mail didn't load."));
   }
   body().innerHTML = `<div class="mailwrap">${mailRail()}<div class="mailmain">${main}</div></div>`;
 }
@@ -225,7 +228,8 @@ body().addEventListener("click", async (e) => {
     if (!confirm(`Delete "${o ? o.title : "this event"}"${o && o.repeat ? " (the whole series)" : ""}?`)) return;
     await api(`/api/calendar/${cal.edit}`, { method: "DELETE" }); cal.edit = null; loadCalendar(); nextUp();
   }
-  if (act === "acc") { mail.acc = a.dataset.acc; mail.open = null; renderMail(); }
+  if (act === "acc") { mail.acc = a.dataset.acc; mail.open = null; mail.days = 30; renderMail(); }
+  if (act === "mailolder") { mail.days = mail.days < 90 ? 90 : 365; a.textContent = "Loading…"; renderMail(); }
   if (act === "accread") { const r = await post("/api/mail/accounts", { id: a.dataset.acc, read: a.dataset.read === "1" }); mail.off = r.off; renderMail(); mailCount(); }
   if (act === "tbopen") { await post("/api/mail/thunderbird", {}); a.textContent = "Opening Thunderbird…"; }
   if (act === "mailopen") {

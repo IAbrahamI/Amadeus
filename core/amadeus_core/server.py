@@ -696,7 +696,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(mailbridge.status())
             if p == "/api/mail/recent":
                 return self._json(mailbridge.call("recent", accountId=arg("account"), folderId=arg("folder") or None,
-                                                  days=int(arg("days", "7")), limit=80))
+                                                  days=min(365, int(arg("days", "7"))), limit=min(500, int(arg("limit", "80")))))
             if p == "/api/mail/unread":
                 return self._json(mailbridge.call("unread", accountId=arg("account"), limit=100))
             if p == "/api/mail/folders":
