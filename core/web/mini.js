@@ -27,10 +27,15 @@ const onCore = (e) => {
   const r = $("#corewrap").getBoundingClientRect(), R = Math.min(r.width, r.height) / 2 / 1.5 * 1.15;
   return Math.hypot(e.clientX - (r.x + r.width / 2), e.clientY - (r.y + r.height / 2)) <= R;
 };
-$("#glass").addEventListener("mousedown", (e) => {
-  if (e.button !== 0 || e.target.closest(".ctl, .type, .bubble")) return;
-  if (!onCore(e)) { e.preventDefault(); native("drag"); }  // the desktop moves the window; KWin remembers where
-});
+// the window moves itself when you grab the screen outside these (popup.py); tell it where the buttons are
+function zones() {
+  const z = [...document.querySelectorAll(".bubble.show, .mini:hover .ctl, .mini.typing .ctl, .mini.typing .type")].map((e) => {
+    const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); });
+  native("zones:" + JSON.stringify(z));
+}
+$("#mini").addEventListener("mouseenter", () => setTimeout(zones, 30));
+$("#mini").addEventListener("mouseleave", () => setTimeout(zones, 30));
+new MutationObserver(() => setTimeout(zones, 400)).observe($("#bubbles"), { childList: true, subtree: true, attributes: true });
 $("#glass").addEventListener("mousemove", (e) => { if (!e.target.closest(".ctl, .type, .bubble")) $("#glass").style.cursor = onCore(e) ? "pointer" : "move"; });
 $("#corewrap").addEventListener("click", (e) => { if (onCore(e)) native("dash:/#home"); });
 $("#dash").onclick = () => native("dash:/#home");

@@ -206,8 +206,10 @@ class Mini(Gtk.Window):
         self.get_style_context().add_class("amadeus-mini")
         Gtk.StyleContext.add_provider_for_screen(self.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.view = make_view(self.on_msg, transparent=True)
-        self.press = None  # the last mouse press: grabbing the screen around the core moves the window from there
-        self.view.connect("button-press-event", lambda _v, ev: (setattr(self, "press", ev.copy()), False)[1])
+        # grabbing the dark screen around the core moves the window (KWin remembers where); the sphere, the control
+        # strip and the bubbles stay clickable (the page sends where they are)
+        self.zones = []
+        self.view.connect("button-press-event", self.on_press)
         self.add(self.view)
         self.connect("delete-event", lambda *_: (self.app.hide_mini(user=True), True)[1])
         self.call = False
@@ -225,9 +227,19 @@ class Mini(Gtk.Window):
             self.app.hide_mini(user=False)
         elif msg.startswith("shape:"):
             self.set_shape(json.loads(msg[6:]))
-        elif msg == "drag" and self.press:  # you grab the edge: the desktop moves the window (KWin remembers where)
-            ev = self.press
-            self.begin_move_drag(ev.button, int(ev.x_root), int(ev.y_root), ev.time)
+        elif msg.startswith("zones:"):
+            self.zones = json.loads(msg[6:])
+
+    def on_press(self, _view, ev):
+        if ev.button != 1 or ev.type != Gdk.EventType.BUTTON_PRESS:
+            return False
+        cx, cy, r = MW / 2, MH / 2, (MW - 20) / 2 / 1.5 * 1.15  # the sphere (as the page draws it)
+        if (ev.x - cx) ** 2 + (ev.y - cy) ** 2 <= r * r:
+            return False
+        if any(x <= ev.x <= x + w and y <= ev.y <= y + h for x, y, w, h in self.zones):
+            return False
+        self.begin_move_drag(ev.button, int(ev.x_root), int(ev.y_root), ev.time)
+        return True
 
     def set_shape(self, rects):
         """Clicks only where something is drawn (the core, the bubbles); everywhere else they reach the desktop."""
