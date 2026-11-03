@@ -6,12 +6,12 @@ html, body.minibody { background: transparent !important; overflow: hidden; heig
 body.minibody::before, body.minibody::after { display: none; }
 .mini { position: fixed; inset: 0; transition: transform .45s cubic-bezier(.2,1.3,.4,1), opacity .3s; transform-origin: 50% 50%; }
 .mini.closed { transform: scale(.2); opacity: 0; pointer-events: none; }
-/* the core's background: solid behind the sphere, fading softly into the desktop (no hard round edge) */
+/* the core's background: 90% solid behind the sphere, fading to 25% in the corners of the window */
 .disc { position: absolute; left: 10px; top: 0; width: 280px; height: 280px; cursor: move; }
-.disc::before { content: ""; position: absolute; left: -10px; right: -10px; top: -10px; bottom: -40px; pointer-events: none;
-  background: radial-gradient(circle at 50% 46%, rgba(var(--vd),.97) 0 34%, rgba(var(--vd),.9) 42%, rgba(var(--vd),.55) 55%, rgba(var(--vd),.18) 66%, rgba(var(--vd),0) 74%); }
-.mini.ringing .disc::before { background: radial-gradient(circle at 50% 46%, rgba(var(--vd),.97) 0 34%, rgba(var(--vd),.9) 42%, rgba(var(--w),.10) 58%, rgba(var(--vd),0) 74%); }
-.mini.holding .disc::before { background: radial-gradient(circle at 50% 46%, rgba(var(--vd),.97) 0 34%, rgba(var(--vd),.9) 42%, rgba(var(--a),.14) 58%, rgba(var(--vd),0) 74%); }
+.disc::before { content: ""; position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(farthest-corner at 50% 140px, rgba(var(--vd),.9) 0 38%, rgba(var(--vd),.6) 60%, rgba(var(--vd),.25) 100%); }
+.mini.ringing .disc::before { background: radial-gradient(farthest-corner at 50% 140px, rgba(var(--vd),.9) 0 38%, rgba(var(--w),.16) 62%, rgba(var(--vd),.25) 100%); }
+.mini.holding .disc::before { background: radial-gradient(farthest-corner at 50% 140px, rgba(var(--vd),.9) 0 38%, rgba(var(--a),.2) 62%, rgba(var(--vd),.25) 100%); }
 .corewrap { position: absolute; inset: 0; }
 .corewrap .core-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* the two buttons, only on hover, below the disc (never over the core) */
