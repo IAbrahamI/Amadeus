@@ -107,8 +107,7 @@ const Aloud = makeAloud({  // speak.js
 // ---------- talking with her: the answer types into a bubble, spoken sentence by sentence ----------
 async function ask(text, spoken) {
   if (!text || busy) return;
-  busy = true; setMode("think");
-  bubble("user", "", esc(text));
+  busy = true; setMode("think");  // what you said isn't shown here (the dashboard's Chat has it)
   const aloud = hasVoice && (speakMode === "always" || (speakMode === "voice" && spoken));
   if (aloud) Aloud.start(); else Aloud.stop();
   let acc = "", b = null;
@@ -225,7 +224,6 @@ function endCall(reply) {
 let adjusting = null;
 async function adjustWith(note) {  // Adjust: what should be different, then the same redraft as on the dashboard
   const e = adjusting; adjusting = null;
-  bubble("user", "", esc(note));
   setMode("think");
   const r = await post(`/api/approvals/${e.ref}/revise`, { note }).catch((x) => ({ error: x.message }));
   setMode("idle");
