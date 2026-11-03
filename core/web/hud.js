@@ -274,91 +274,16 @@ $("#vTag").onclick = () => {
 // one is prepared while the current one plays, so you hear it within a few seconds. The server turns each piece into
 // what a person would say ("2 PM", no links, ids or Markdown). Code, tables and long lists stay in the chat, and after
 // about 600 characters it says the rest is in the chat. The voice is the one from Settings → Voice.
-const Aloud = {
-  active: false, gen: 0, queue: [], playing: null, taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false,
-  shown: 0, reveal: null, done: null,
-  start() {
-    stopAloud();
-    Object.assign(this, { active: true, gen: this.gen + 1, queue: [], taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false, shown: 0, reveal: null, done: null });
-  },
-  // the reply so far; done = it's complete (the last piece needs no full stop)
-  feed(text, done) {
-    if (!this.active || this.cut) return;
-    const t = stripMood(text);
-    for (;;) {
-      const rest = t.slice(this.taken), nl = rest.indexOf("\n");
-      if (nl < 0 && !done) {  // an unfinished line: speak its finished sentences already
-        const m = !this.inCode && !/^\s*(?:[-*+]|\d+[.)]|\||#)/.test(rest) && rest.match(/^.*?[.!?](?=\s)/);
-        if (m) { this.taken += m[0].length; this.say(m[0], 380); continue; }
-        return;
-      }
-      const line = nl < 0 ? rest : rest.slice(0, nl);
-      this.taken += nl < 0 ? rest.length : nl + 1;
-      this.line(line);
-      if (nl < 0 || this.cut) return;
-    }
-  },
-  line(l) {
-    if (/^\s*```/.test(l)) { this.inCode = !this.inCode; if (!this.saidCode) { this.saidCode = true; this.say("The code is in the chat.", 450); } return; }
-    if (this.inCode || /^\s*\|/.test(l) || !l.trim()) return;
-    if (/^\s*(?:[-*+•]|\d+[.)])\s+/.test(l)) {  // a list: the first four items, then a pointer to the chat
-      if (++this.items === 5) return this.say("And more, see the chat.", 450);
-      if (this.items > 5) return;
-    } else this.items = 0;
-    this.say(l, 550);
-  },
-  // one piece to speak; it shows in the chat up to here while it plays, then a short pause (gap, ms) before the next
-  say(piece, gap) {
-    if (!piece.trim() || this.cut) return;
-    this.spoken += piece.length;
-    if (this.spoken > 650) { this.cut = true; piece = "The rest is in the chat."; }
-    const upto = this.cut ? Infinity : this.taken;
-    const audio = fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: piece, speech: true, limit: 2000 }) })
-      .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText); return URL.createObjectURL(await r.blob()); });
-    audio.catch(() => {});
-    this.queue.push({ audio, upto, gap });
-    if (!this.playing) this.next(this.gen);
-  },
-  async next(gen) {
-    if (gen !== this.gen) return;
-    const it = this.queue.shift();
-    if (!it) { this.playing = null; if (!state.busy) this.end(); return; }
-    this.playing = true;
-    let url;
-    try { url = await it.audio; } catch (e) { this.fail(e); return; }
-    if (gen !== this.gen) return;
-    const a = this.playing = new Audio(url), from = this.shown;
-    clearInterval(this.talk); clearInterval(this.type);
-    this.talk = setInterval(() => core.talk(), 140);  // the core moves with the voice
-    // the text types in while it is said, so what you read is what you hear
-    this.type = setInterval(() => {
-      if (!a.duration || !isFinite(a.duration) || !this.reveal) return;
-      const end = Math.min(it.upto, 1e9), f = Math.min(1, a.currentTime / a.duration);
-      this.show(isFinite(it.upto) ? from + Math.round((end - from) * f) : from);
-    }, 50);
-    $("#vTag").classList.add("speaking"); setMode("speak"); $("#state").textContent = "Speaking";
-    a.onended = a.onerror = () => {
-      clearInterval(this.talk); clearInterval(this.type); URL.revokeObjectURL(url);
-      this.show(it.upto);
-      setTimeout(() => this.next(gen), it.gap || 350);  // a breath between sentences
-    };
-    a.play().catch(() => a.onended());
-  },
-  show(n) { if (n > this.shown) { this.shown = n; if (this.reveal) this.reveal(n); } },
-  end() {
-    clearInterval(this.talk); clearInterval(this.type);
-    const was = this.active; this.active = false; this.playing = null; this.queue = [];
-    $("#vTag").classList.remove("speaking");
-    if (this.reveal) this.reveal(Infinity);
-    if (!state.busy) setMode("idle");
-    const d = this.done; this.done = null; if (was && d) d();
-  },
-  fail(e) {
-    this.end(); if (/text-to-speech|voice/i.test(e.message)) { hasVoice = false; setVoiceTag(); }
+const Aloud = makeAloud({  // speak.js
+  busy: () => state.busy, talk: () => core.talk(), strip: stripMood,
+  speaking: (on) => { $("#vTag").classList.toggle("speaking", on); if (on) { setMode("speak"); $("#state").textContent = "Speaking"; } },
+  idle: () => { if (!state.busy) setMode("idle"); },
+  failed: (e) => {
+    if (/text-to-speech|voice/i.test(e.message)) { hasVoice = false; setVoiceTag(); }
     subtitle(/text-to-speech|voice/i.test(e.message) ? "I can't speak yet: pick or download a voice under Settings → Voice." : "I couldn't speak that: " + e.message);
   },
-};
-function stopAloud() { Aloud.gen++; if (Aloud.playing && Aloud.playing.pause) Aloud.playing.pause(); if (Aloud.active) Aloud.end(); }
+});
+function stopAloud() { Aloud.stop(); }
 addEventListener("keydown", (e) => { if (e.key === "Escape" && Aloud.active) stopAloud(); });
 
 // ---------- voice: the mic, Ctrl + Space, the wake word ----------

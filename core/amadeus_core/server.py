@@ -125,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if u.path in ("/", "/m"):
                 return self._static("/call.html")
-        elif not self._desktop() and (u.path in ("/", "/index.html", "/call.html") or "token" in qs):
+        elif not self._desktop() and (u.path in ("/", "/index.html", "/call.html", "/mini.html") or "token" in qs):
             return self._json({"error": "Amadeus only opens in its desktop window: use the tray icon or the Amadeus app."}, 403)
         if qs.get("token", [""])[0] == CFG["token"]:
             self.send_response(302)
@@ -201,9 +201,10 @@ class Handler(BaseHTTPRequestHandler):
                                "voice": voice_pack(), "theme": db.get_setting("theme", "blue")})
         if p == "/api/voice/pack":
             return self._json(voice_pack())
-        if p == "/api/voice/replies":  # read replies aloud: "voice" (when you talked), "always" or "off"
+        if p == "/api/voice/replies":  # read replies aloud: "voice" (when you talked), "always" or "off"; the mini core has its own
             from . import voices
-            return self._json({"mode": db.get_setting("speak_replies", "voice"), "voice": voices.selected()})
+            mini = qs.get("for", [""])[0] == "mini"
+            return self._json({"mode": db.get_setting("speak_mini" if mini else "speak_replies", "always" if mini else "voice"), "voice": voices.selected()})
         if p == "/api/theme":  # the dashboard's main colour (Settings): blue (default), purple or red
             return self._json({"theme": db.get_setting("theme", "blue")})
         if p == "/api/models":
@@ -277,6 +278,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(playbooks.listing())
         if p == "/api/events":
             return self._json(events.unseen())
+        if p == "/api/ringable":  # the mini core: may it ring now (quiet hours, you're on the phone), and what always rings
+            return self._json({"quiet": events.quiet(), "phone": phoneapp.in_use(), "urgent": list(events.URGENT)})
         if p == "/api/app/home":  # the Android app's home screen
             return self._json(phoneapp.home())
         if p == "/api/projects":  # the Projects page: one folder each in your projects folder
@@ -530,9 +533,9 @@ class Handler(BaseHTTPRequestHandler):
             db.q("UPDATE conversations SET model=? WHERE id=?", (m, quickchat.current()))
             return self._json({"chat": m})
         if p == "/api/voice/replies":
-            m = str(b.get("mode", ""))
-            db.set_setting("speak_replies", m if m in ("voice", "always", "off") else "voice")
-            return self._json({"mode": db.get_setting("speak_replies")})
+            m, key = str(b.get("mode", "")), "speak_mini" if b.get("for") == "mini" else "speak_replies"
+            db.set_setting(key, m if m in ("voice", "always", "off") else "voice")
+            return self._json({"mode": db.get_setting(key)})
         if p == "/api/theme":
             t = str(b.get("theme", ""))
             db.set_setting("theme", t if t in ("blue", "purple", "red") else "blue")

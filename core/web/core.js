@@ -16,11 +16,12 @@
     C.gl = { uA: f(T.a), uA2: f(T.a2), uK0: f(T.k[0]), uK1: f(T.k[1]), uK2: f(T.k[2]), uRc: f(T.rc), uRc2: f(T.rc2), uHi: f(T.hi) };
   };
   recolor();
-  const COLS = "uniform vec3 uA, uA2, uK0, uK1, uK2, uRc, uRc2, uHi;";
+  const COLS = "uniform highp vec3 uA, uA2, uK0, uK1, uK2, uRc, uRc2, uHi;";  // highp in both shaders, or WebGL refuses to link them
 
   // ---------- the network (model space: the outer shell has radius 1) ----------
-  function build(big) {
-    const NC = big ? 28 : 18, PER = big ? 36 : 24, FREE = big ? 990 : 500, DUST = big ? 1100 : 900;  // about 2,000 glowing points
+  const SIZES = { big: [28, 36, 990, 1100], small: [18, 24, 500, 900], mini: [20, 30, 560, 700] };  // topics, per topic, loose, dust
+  function build(size) {
+    const [NC, PER, FREE, DUST] = SIZES[size] || SIZES.big;  // big: about 2,000 glowing points
     const rnd = () => Math.random() * 2 - 1, nodes = [], clusters = [];
     const add = (x, y, z, kind, cl, size, hub) => { nodes.push({ x, y, z, kind, cl, size, hub, ph: Math.random() * 6.28, lit: 0 }); return nodes.length - 1; };
     const core = add(0, 0, 0, 0, -1, 1.9, true);
@@ -308,7 +309,7 @@
   // ---------- public: Core.start(stage), then mode / target / talk ----------
   window.Core = {
     recolor() { recolor(); if (window.Core._r && window.Core._r.recolor) window.Core._r.recolor(); },  // a new theme
-    start(stage) {
+    start(stage, opts = {}) {  // opts.points: "mini" for the small window
       const back = document.createElement("canvas"), front = document.createElement("canvas");
       back.className = front.className = "core-layer"; stage.prepend(back, front);
       let gl = null, cheap = false;
@@ -320,8 +321,8 @@
         if (cheap) { gl = null; front.remove(); }
       }
       const bctx = back.getContext("2d");
-      let net = build(!!gl), r = null;
-      if (gl) try { r = glRenderer(gl, net); } catch (e) { console.warn("core: WebGL failed, drawing in 2D:", e.message); gl = null; front.remove(); net = build(false); }
+      let net = build(opts.points || (gl ? "big" : "small")), r = null;
+      if (gl) try { r = glRenderer(gl, net); } catch (e) { console.warn("core: WebGL failed, drawing in 2D:", e.message); gl = null; front.remove(); net = build(opts.points || "small"); }
       if (!r) { if (!gl && front.isConnected) front.remove(); r = flatRenderer(bctx, net); }
       window.Core._r = r;
       const state = { mode: "idle", amp: 0, ampT: 0, thinkGlow: 0, lit: -1, rot: 0, bg: false, hbT: 0, a1: null, a2: null, spin: false, spinS: 0, spinS0: 0 };
@@ -370,7 +371,7 @@
             const sep = Math.abs(rel - mi * Math.PI), near = on ? Math.min(1, sep / .5) : 1, ease = near * near * (3 - 2 * near);
             state.spinS += dt * 1.9 * (.25 + .75 * ease);
             const rel2 = 2 * (state.spinS - state.spinS0), sep2 = Math.abs(rel2 - Math.round(rel2 / Math.PI) * Math.PI);
-            if (on && sep2 < sep && sep2 < .06 && state.hbT > .5) state.hbT = 0;  // they meet again: a beat
+            if (on && sep2 < sep && sep2 < .06 && state.hbT > .5) { state.hbT = 0; if (api.onBeat) api.onBeat(); }  // they meet again: a beat
           } else state.spin = false;
           const ka = 1 - Math.pow(state.spin ? .004 : .06, dt);
           state.a1 += wrap((state.spin ? state.spinS : n1) - state.a1) * ka;
@@ -410,10 +411,10 @@
       const stop = () => { cancelAnimationFrame(raf); raf = 0; };
       document.addEventListener("visibilitychange", () => (document.hidden ? stop() : run()));  // hidden: uses nothing
       run();
-      return {
+      const api = {
         get size() { return { W, H }; },
         gpu: !!gl,
-        mode(m) { if (m === "think" && state.mode !== "think") state.hbT = 0; state.mode = m; },  // the first beat lands at once
+        mode(m) { if (m === "think" && state.mode !== "think") { state.hbT = 0; if (api.onBeat) setTimeout(api.onBeat); } state.mode = m; },  // the first beat lands at once
         background(on) { state.bg = !!on; },
         // the biggest topics in memory: their hubs grow with how much it knows about them (the point count stays fixed)
         topics(counts) {
@@ -424,6 +425,7 @@
         talk() { state.amp = Math.max(state.amp, .5 + Math.random() * .4); },  // a piece of the reply arrived
         target(x, y, rr, slow) { const first = !orb.r; Object.assign(orb, { tx: x, ty: y, tr: rr, slow: !!slow }); if (first) Object.assign(orb, { x, y, r: rr }); },
       };
+      return api;
     },
   };
 })();
