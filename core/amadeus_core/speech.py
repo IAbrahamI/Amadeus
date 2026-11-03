@@ -39,6 +39,21 @@ def _date(y, mo, d, lang):
     return f"{x.day}. {name}{year}" if lang == "de" else f"{x.day} de {name}{year}" if lang == "es" else f"{name} {x.day}{year}"
 
 
+def _normalize(t, lang):
+    """Numbers, money, units and abbreviations in words, through the NeMo normalizer (core/voice/normalize_server.py).
+    Off or slow: the text as our rules left it."""
+    import json
+    import urllib.request
+    from .config import CFG
+    try:
+        req = urllib.request.Request("http://127.0.0.1:8897/normalize", json.dumps({"text": t, "lang": lang}).encode(),
+                                     {"content-type": "application/json", "authorization": f"Bearer {CFG['token']}"})
+        with urllib.request.urlopen(req, timeout=3) as r:
+            return json.load(r).get("text") or t
+    except Exception:
+        return t
+
+
 def _ord(n, lang):
     n = int(n)
     if lang == "de":
@@ -97,6 +112,7 @@ def speech_text(text, lang="en", limit=600):
     t = t.replace("→", f" {s['to']} ").replace("&", f" {s['and']} ").replace("…", ".").replace(" · ", ", ")
     t = re.sub(r"\s+([.,;:!?])", r"\1", re.sub(r"\s+", " ", t)).strip()
     t = re.sub(r"([.!?])\.+", r"\1", t)
+    t = _normalize(t, lang)  # NeMo, when its service runs: money, units, ordinals and the rest in words
     if len(t) > limit:  # a long answer: the first sentences, then a pointer to the chat
         cut = t[:limit]
         end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))

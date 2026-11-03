@@ -471,6 +471,16 @@ phase_voice() {
     run python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$VOICE/models/$VOSK_MODEL.zip" "$VOICE/models"
     run rm -f "$VOICE/models/$VOSK_MODEL.zip"
   fi
+  # speech normalization (NeMo): numbers, money, units and dates said as words. It needs pynini, which needs Python 3.12,
+  # so it gets its own environment through uv (uv downloads that Python once). About 900 MB; optional.
+  if [[ -x "$VOICE/venv-tn/bin/python" ]] && "$VOICE/venv-tn/bin/python" -c "import nemo_text_processing" 2>/dev/null; then
+    ok "speech normalization (NeMo) installed"
+  elif have uv; then
+    run uv venv -q --python 3.12 "$VOICE/venv-tn"
+    run uv pip install -q --python "$VOICE/venv-tn/bin/python" nemo_text_processing
+  else
+    info "speech normalization skipped: install uv to have numbers and units said as words (Amadeus' own rules cover times and dates)"
+  fi
   info "Whisper downloads its model on first use. Voices for reading aloud: Settings → Voice."
 }
 

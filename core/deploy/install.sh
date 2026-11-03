@@ -16,9 +16,9 @@ put() {  # put <template> <target>: fill in the paths and write the file
   echo "wrote $2"
 }
 if [ "$DRY" = "--uninstall" ]; then
-  units="amadeus-core amadeus-tray amadeus-voice amadeus-wake amadeus-leak-scan.timer amadeus-vault-snapshot.timer"
+  units="amadeus-core amadeus-tray amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan.timer amadeus-vault-snapshot.timer"
   systemctl --user disable --now $units 2>/dev/null || true
-  for f in amadeus-core.service amadeus-tray.service amadeus-voice.service amadeus-wake.service amadeus-leak-scan.service \
+  for f in amadeus-core.service amadeus-tray.service amadeus-voice.service amadeus-wake.service amadeus-tn.service amadeus-leak-scan.service \
            amadeus-leak-scan.timer amadeus-vault-snapshot.service amadeus-vault-snapshot.timer; do rm -fv "$HOME/.config/systemd/user/$f"; done
   systemctl --user daemon-reload
   rm -fv "$BIN/amadeus" "$BIN/amadeus-mail-start" "$BIN/amadeus-leak-scan" "$BIN/amadeus-vault-snapshot" \
@@ -37,7 +37,7 @@ if [ "$DRY" = "--uninstall" ]; then
   echo "Removed. Your data in ~/.local/share/amadeus/ and the containers are still there (see docs/INSTALL.md, Uninstall)."
   exit 0
 fi
-for u in amadeus-core amadeus-tray amadeus-voice amadeus-wake amadeus-leak-scan; do put "$HERE/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"; done
+for u in amadeus-core amadeus-tray amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan; do put "$HERE/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"; done
 put "$HERE/systemd/amadeus-leak-scan.timer" "$HOME/.config/systemd/user/amadeus-leak-scan.timer"
 put "$HERE/bin/amadeus" "$BIN/amadeus"
 put "$HERE/bin/amadeus-mail-start" "$BIN/amadeus-mail-start"
@@ -52,6 +52,7 @@ systemctl --user enable --now amadeus-core amadeus-tray amadeus-leak-scan.timer
 if [ -x "$HOME/.local/share/amadeus/voice/venv-lite/bin/python" ]; then
   systemctl --user enable --now amadeus-voice
   [ -d "$HOME/.local/share/amadeus/voice/models/vosk-model-small-en-us-0.15" ] && systemctl --user enable --now amadeus-wake
+  [ -x "$HOME/.local/share/amadeus/voice/venv-tn/bin/python" ] && systemctl --user enable --now amadeus-tn
 else
   echo "voice: not set up (see docs/INSTALL.md, optional: voice); amadeus-voice not started"
 fi

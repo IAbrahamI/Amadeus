@@ -1,0 +1,13 @@
+[Unit]
+Description=Amadeus speech normalization (numbers, dates, units in words before reading aloud; NeMo, CPU)
+After=network.target
+
+[Service]
+ExecStart=%h/.local/share/amadeus/voice/venv-tn/bin/python -W ignore @REPO@/core/voice/normalize_server.py
+Restart=on-failure
+RestartSec=5
+Nice=5
+Environment=OMP_NUM_THREADS=2
+
+[Install]
+WantedBy=default.target
