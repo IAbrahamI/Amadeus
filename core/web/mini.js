@@ -13,7 +13,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const noEmoji = (t) => String(t || "").replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}️‍⃣]\s?/gu, "");
 const stripMood = (t) => noEmoji((t || "").replace(/\s*\[mood:\s*\w*\]?\s*$/i, "").replace(/\[mood:\s*\w+\]/gi, ""));
 const plain = (t) => stripMood(t).replace(/```[\s\S]*?```/g, " ").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`#>|~]/g, "").replace(/\s+/g, " ").trim();
-const native = (msg) => { try { window.webkit.messageHandlers.amadeus.postMessage(msg); } catch {} };
+const native = (msg) => { try { (window.amadeusBridge || window.webkit.messageHandlers.amadeus).postMessage(msg); } catch {} };
 const CALL = new URLSearchParams(location.search).has("call");  // opened for a call: it closes again afterwards
 
 // ---------- the core ----------

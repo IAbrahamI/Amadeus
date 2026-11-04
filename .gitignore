@@ -11,3 +11,6 @@ __pycache__/
 # Android build tools (SDK, Gradle caches), installed locally for building the phone app
 .android-build/
 
+
+# Rust toolchain and build output for the desktop app test, installed locally
+.tauri-build/

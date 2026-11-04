@@ -497,10 +497,10 @@ addEventListener("click", (e) => { if (!e.target.closest("#pop, #cModel")) close
 addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#pop").hidden) closePop(); });
 
 // ---------- the desktop window (popup.py): the logo goes back to the mini core, the X closes Amadeus ----------
-const desktop = (msg) => { try { window.webkit.messageHandlers.amadeus.postMessage(msg); return true; } catch { return false; } };
+const desktop = (msg) => { try { (window.amadeusBridge || window.webkit.messageHandlers.amadeus).postMessage(msg); return true; } catch { return false; } };
 $("#toMini").onclick = () => desktop("mini");
 $("#quitApp").onclick = () => desktop("quit");
-if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.amadeus)) $("#quitApp").hidden = true;
+if (!window.amadeusBridge && !(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.amadeus)) $("#quitApp").hidden = true;
 
 // ---------- start ----------
 (async () => {

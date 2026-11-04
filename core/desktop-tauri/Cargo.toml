@@ -1,0 +1,16 @@
+[package]
+name = "amadeus-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "Test: the Amadeus mini core and tray in Tauri"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+webkit2gtk = { version = "2", features = ["v2_40"] }
