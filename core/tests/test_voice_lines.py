@@ -36,7 +36,7 @@ class ReminderApproval(unittest.TestCase):
     """Approving a removal says what's being removed, not an id."""
 
     def test_says_the_reminder(self):
-        out = tools.create_reminder("Call the dentist", "tomorrow 09:00")
+        out = tools.create_reminder("Call the dentist", "daily 09:00")
         rid = out.rsplit("[id ", 1)[1].rstrip("].")
         text = tools._delete_reminder_summary({"reminder_id": rid})
         self.assertIn("Call the dentist", text)
