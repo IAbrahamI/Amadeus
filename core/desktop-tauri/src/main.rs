@@ -230,11 +230,13 @@ function place() {{
   if (isLow !== low) {{ low = isLow; callDBus("com.amadeus.Desktop", "/", "com.amadeus.Desktop", "PillOnTop", isLow); }}
   if (!b) return;
   b.keepAbove = true; b.skipTaskbar = true; b.skipPager = true; b.skipSwitcher = true;
-  b.frameGeometry = {{ x: g.x, y: up ? g.y - {BUBBLE_H} : g.y + g.height, width: g.width, height: up ? {BUBBLE_H} : {BUBBLE_H} + 6 }};
+  const y = up ? g.y - {BUBBLE_H} : g.y + g.height, h = up ? {BUBBLE_H} : {BUBBLE_H} + 6, f = b.frameGeometry;
+  if (Math.abs(f.x - g.x) > 1 || Math.abs(f.y - y) > 1 || Math.abs(f.height - h) > 1) b.frameGeometry = {{ x: g.x, y: y, width: g.width, height: h }};
 }}
 function watch(w) {{
   if (w.resourceClass != "amadeus-call") return;
-  if (w.caption == "{MINI_TITLE}") w.frameGeometryChanged.connect(place);
+  w.frameGeometryChanged.connect(place); // (a new window has no title yet, so all of ours)
+  w.captionChanged.connect(place);
   place();
 }}
 workspace.windowAdded.connect(watch);
@@ -246,7 +248,7 @@ workspace.windowList().forEach(watch);"#
     // KWin doesn't run a new script under a name it has just unloaded, so each start of the app has its own name
     let names = data_dir().join("place-bubble.name");
     let cmd = format!(
-        "old=$(cat '{0}' 2>/dev/null); [ -n \"$old\" ] && qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \"$old\" >/dev/null 2>&1; \
+        "old=$(cat '{0}' 2>/dev/null); [ -n \"$old\" ] && qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \"$old\" >/dev/null 2>&1; sleep 1; \
          n=amadeus-bubble-$$; echo $n > '{0}'; \
          id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{1}' $n) && \
          qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null",
