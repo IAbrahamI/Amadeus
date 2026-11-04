@@ -167,6 +167,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"cmds": desktop.wait()})
         if p == "/api/identity":  # the assistant's name and look, for the window and the phone app
             return self._json({"name": CFG["assistant_name"], "avatar": os.path.basename(CFG.get("avatar") or ""), "theme": db.get_setting("theme", "blue")})
+        m = re.fullmatch(r"/api/voice/line/(\w+)", p)
+        if m:  # a short line she says (voices.py); nothing while the mini core's voice is off
+            from . import voices
+            data = voices.line(m.group(1)) if m.group(1) in voices.LINES and db.get_setting("speak_mini", "always") != "off" else None
+            self.send_response(200 if data else 204)
+            self.send_header("content-type", "audio/wav")
+            self.send_header("content-length", str(len(data or b"")))
+            self.end_headers()
+            self.wfile.write(data or b"")
+            return
         if p == "/api/voice/replies":  # read replies aloud: "voice" (when you talked), "always" or "off"; the mini core has its own
             from . import voices
             mini = qs.get("for", [""])[0] == "mini"
@@ -523,13 +533,6 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/profile":
             profile.put(b.get("profile", ""))
             return self._json({"ok": True})
-        if p == "/api/vip":  # add or remove one important person (Messages page star)
-            from . import mailwatch
-            name, vip = str(b.get("name", "")).strip()[:120], mailwatch.vip_list()
-            if name:
-                vip = [v for v in vip if v.lower() != name.lower()] + ([name] if b.get("on", True) else [])
-                db.set_setting("mail_vip", vip)
-            return self._json({"vip": vip})
         if p == "/api/asking/remove":  # forget one learned "how you ask" pattern (Memory page)
             pats = [x for x in db.get_setting("ask_patterns", []) if x.get("say") != b.get("say")]
             db.set_setting("ask_patterns", pats)
@@ -710,7 +713,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    from . import voices
     background.start()
+    voices.prepare_lines()
     srv = ThreadingHTTPServer((CFG["host"], CFG["port"]), Handler)
     print(f"Amadeus Core on http://{CFG['host']}:{CFG['port']}", flush=True)
     srv.serve_forever()

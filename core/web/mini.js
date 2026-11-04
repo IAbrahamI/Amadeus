@@ -213,6 +213,15 @@ function ring(e) {
   clearTimeout(ringTimer);
   ringTimer = setTimeout(() => { if (ringing === e) { endCall(null); say("It's waiting for you on the dashboard."); } }, 30000);  // nobody answered
 }
+// a short word in her voice when you answer a call, nothing more (voices.py makes these once)
+let linePlaying = false;
+function quick(kind) {
+  if (!hasVoice || speakMode === "off") return;
+  linePlaying = true;
+  const done = () => { linePlaying = false; maybeHide(); }, a = new Audio(`/api/voice/line/${kind}`);
+  a.onended = a.onerror = done;
+  a.play().catch(done);
+}
 function stopRing() { clearTimeout(ringTimer); }
 function endCall(reply) {
   stopRing();
@@ -239,7 +248,9 @@ $("#bubbles").addEventListener("click", async (ev) => {
   if (a === "approve" || a === "reject") {
     const r = await post(`/api/approvals/${e.ref}/${a}`).catch((x) => ({ status: "failed", error: x.message }));
     await post(`/api/events/${e.id}/seen`).catch(() => {});
-    return endCall(a === "approve" ? (r.status === "failed" || r.error ? "I tried, but it didn't work. It's in the chat." : "Done.") : "Okay, I won't do that.");
+    if (a === "approve" && (r.status === "failed" || r.error)) return endCall("I tried, but it didn't work. It's in the chat.");
+    endCall(null);
+    return quick(a === "approve" ? "done" : "okay");
   }
   if (a === "adjust") {
     endCall(null); handled.add(e.id); adjusting = e;
@@ -254,7 +265,8 @@ $("#bubbles").addEventListener("click", async (ev) => {
   if (a === "copy") { try { await navigator.clipboard.writeText(e.ref); } catch {} }
   await post(`/api/events/${e.id}/seen`).catch(() => {});
   if (a === "open") native("dash:" + (e.conversation_id ? `/#chat=${e.conversation_id}` : e.kind === "mail" || e.kind === "mail_code" ? "/#mail=unread" : e.ref === "day" ? "/#day" : "/#home"));
-  endCall(a === "copy" ? "Copied." : a === "open" ? null : "Okay.");
+  endCall(a === "copy" ? "Copied." : null);
+  if (a === "ok") quick("okay");
 });
 // picked up on the phone: stop ringing here
 setInterval(async () => {
@@ -268,7 +280,7 @@ let hideT = 0;
 function maybeHide() {
   if (!CALL) return;
   clearTimeout(hideT);
-  hideT = setTimeout(() => { if (!ringing && !queue.length && !busy && !Aloud.active && !listenB && !adjusting && !document.querySelector(".bubble")) native("hide"); }, 1500);
+  hideT = setTimeout(() => { if (!ringing && !queue.length && !busy && !Aloud.active && !linePlaying && !listenB && !adjusting && !document.querySelector(".bubble")) native("hide"); }, 1500);
 }
 function stopAll() { Aloud.stop(); stopRing(); ringing = null; $("#mini").classList.remove("ringing"); setMode("idle"); }
 window.amadeusShown = (reason) => { if (reason === "call") refresh(); };  // the window was shown (again)

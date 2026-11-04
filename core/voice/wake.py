@@ -2,7 +2,7 @@
 """Wake word: "Amadeus, what's on my calendar today?" in one go (the assistant's name, or your own wake words).
 The listener hears the name at the start of what you say, keeps recording until you are really done (1.5 s of quiet;
 pauses between words are fine), turns it into text with the local Whisper service and hands it to the small window,
-which answers. Saying only the name makes it greet you (if you added voice lines) and listen for the request.
+which answers. Saying only the name makes it greet you and listen for the request.
 
 Light by design: the microphone is only checked for loudness; the word spotter (Vosk, small English model, limited
 to the wake words) runs only while someone speaks, Whisper only for a request. Audio is never stored or sent anywhere.
@@ -158,7 +158,8 @@ def handle(mic, word, phrase_audio):
         print(f"wake: false alarm (Whisper's first word: {(heard.split() or ['-'])[0][:20]!r})", flush=True)
         return
     if len(re.sub(r"\W", "", text)) < 2:  # only the name: greet, then listen for the request
-        tell_window(stage="listening", word=word)  # the mini core shows that it listens (no sound)
+        tell_window(stage="listening", word=word)  # the mini core shows that it listens
+        greet(mic)
         pcm = record_request(mic, [])
         heard = transcribe(pcm) if pcm else ""
         text = strip_name(heard) if strip_name(heard) is not None else heard
@@ -167,6 +168,25 @@ def handle(mic, word, phrase_audio):
         return
     print(f"wake request: {len(text.split())} words", flush=True)
     tell_window(stage="text", word=word, text=text)
+
+
+def greet(mic):
+    """A short "Yes?" in her voice. The microphone keeps being read meanwhile, so her own words aren't taken as your
+    request and nothing old is left waiting in it."""
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{_cfg().get('port', 8095)}/api/voice/line/greet", headers={"authorization": f"Bearer {_token()}"})
+        data = urllib.request.urlopen(req, timeout=10).read()
+        if not data:
+            return
+        p = subprocess.Popen(["paplay"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        p.stdin.write(data)
+        p.stdin.close()
+        while p.poll() is None:
+            mic.read()
+        for _ in range(2):  # the room's echo
+            mic.read()
+    except Exception as e:
+        print("greeting failed:", e, flush=True)
 
 
 def listen():

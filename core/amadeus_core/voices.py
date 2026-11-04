@@ -4,8 +4,11 @@
 Settings → Voice lists a few good ones to download, and "+ Add a voice" adds any other Piper voice by name or your own
 voice files. Everything is downloaded once into ~/.local/share/amadeus/voice/models/ and then works offline."""
 import glob
+import json
 import os
+import random
 import re
+import time
 import urllib.request
 import subprocess
 import threading
@@ -63,6 +66,51 @@ def path(voice_id=None):
     return v if v.startswith("kokoro:") else (os.path.join(PIPER_DIR, v + ".onnx") if v else "")
 
 
+# Short things she says, made once in the voice you picked, so they play right away: a greeting when you only say her
+# name, a word when you answer a call on the mini core.
+LINES = {"greet": ["Yes?", "How can I help you?", "Hello?", "Hi?"], "okay": ["Okay."], "done": ["Done."]}
+LINES_DIR = os.path.join(VOICE_DIR, "lines")
+
+
+def _line_file(text, voice_id):
+    return os.path.join(LINES_DIR, re.sub(r"\W+", "_", voice_id), re.sub(r"\W+", "_", text).strip("_").lower() + ".wav")
+
+
+def _make_line(text, voice_id):
+    """The line's audio, from the voice service the first time."""
+    f = _line_file(text, voice_id)
+    if not os.path.exists(f):
+        req = urllib.request.Request("http://127.0.0.1:8896/tts", json.dumps({"text": text, "voice": path(voice_id)}).encode(),
+                                     {"authorization": f"Bearer {CFG['token']}", "content-type": "application/json"})
+        data = urllib.request.urlopen(req, timeout=120).read()
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        with open(f + ".tmp", "wb") as out:
+            out.write(data)
+        os.replace(f + ".tmp", f)
+    return open(f, "rb").read()
+
+
+def line(kind):
+    """One of the lines of a kind (a random one), or None with no voice installed."""
+    v = selected()
+    return _make_line(random.choice(LINES[kind]), v) if v else None
+
+
+def prepare_lines():
+    """In the background, so the first one plays right away too (the voice service may still be starting)."""
+    def run():
+        for _ in range(10):
+            try:
+                v = selected()
+                for texts in LINES.values():
+                    for text in texts:
+                        v and _make_line(text, v)
+                return
+            except OSError:
+                time.sleep(20)
+    threading.Thread(target=run, daemon=True).start()
+
+
 def listing():
     have = set(installed())
     known = {c[0] for c in CATALOG}
@@ -76,6 +124,7 @@ def select(voice_id):
     if voice_id not in installed():
         raise ValueError("That voice isn't downloaded yet.")
     db.set_setting("tts_voice", voice_id)
+    prepare_lines()
     return listing()
 
 
