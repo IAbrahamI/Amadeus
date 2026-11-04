@@ -253,7 +253,10 @@ def start_work_project(name, spec):
 # ---------- private / visible mode (phone access over Tailscale on or off) ----------
 def _ts(*args):
     import subprocess
-    p = subprocess.run(["tailscale", *args], capture_output=True, text=True, timeout=60)
+    try:
+        p = subprocess.run(["tailscale", *args], capture_output=True, text=True, timeout=60)
+    except OSError:  # Tailscale is only for the phone: not installed is fine
+        return 127, "Tailscale isn't installed."
     return p.returncode, (p.stdout + p.stderr).strip()
 
 

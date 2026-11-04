@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Start Thunderbird minimized (for Amadeus' mail bridge). Does nothing if it is already running.
+[ -f ~/.thunderbird/native-messaging-hosts/amadeus_bridge.json ] || exit 0  # mail is optional and not set up
 pgrep -x thunderbird >/dev/null && exit 0
 JS=~/.local/share/amadeus/kwin/minimize-thunderbird.js
 qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript amadeus-min-tb >/dev/null 2>&1

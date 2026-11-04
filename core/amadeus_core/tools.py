@@ -5,6 +5,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 import urllib.parse
@@ -1457,6 +1458,16 @@ def get_tool(name):
     return BY_NAME.get(name) or next((t for t in _mcp_tools() if t["name"] == name), None)
 
 
+def missing(connector):
+    """What an optional connector still needs on this PC ("" = nothing). Its tools stay away from the model until then."""
+    if connector == "mail":
+        from . import mailbridge
+        return "" if mailbridge.configured() else "Not set up. Run ./install.sh --setup and say yes to mail."
+    if connector == "work" and not shutil.which("claude"):
+        return "Needs Claude Code: install it and log in once by running claude."
+    return ""
+
+
 def schemas():
     on = enabled_connectors()
-    return [t["schema"] for t in TOOLS if on.get(t["connector"], True)] + [t["schema"] for t in _mcp_tools()]
+    return [t["schema"] for t in TOOLS if on.get(t["connector"], True) and not missing(t["connector"])] + [t["schema"] for t in _mcp_tools()]

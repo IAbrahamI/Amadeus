@@ -137,6 +137,8 @@ def check(force=False):
 
 def _check(force=False):
     mode = CFG.get("mail_notify", "important")  # important | all | off
+    if not mailbridge.configured():
+        return
     if mode == "off" or (not force and time.time() - _last[0] < CFG.get("mail_check_minutes", 10) * 60):
         return
     _last[0] = time.time()

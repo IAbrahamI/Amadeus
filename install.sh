@@ -454,6 +454,7 @@ phase_voice() {
   head_ "Voice: speech recognition and the wake word"
   if [[ "$AMADEUS_VOICE" != 1 ]]; then info "off (AMADEUS_VOICE=1 in amadeus.env, or ./install.sh --setup)"; return; fi
   have python3 || { err "python3 is missing"; return; }
+  have parec || warn "parec (pulseaudio-utils) is missing: everything works except the wake word, which stays off"
   if [[ -x "$VOICE/venv-lite/bin/python" ]] && "$VOICE/venv-lite/bin/python" -c "import faster_whisper, vosk, soundfile" 2>/dev/null; then
     ok "speech recognition installed"
   else

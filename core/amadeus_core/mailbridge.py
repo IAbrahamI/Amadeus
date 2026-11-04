@@ -22,8 +22,15 @@ def _connect(timeout):
     return s
 
 
+def configured():
+    """Mail is optional: only with the bridge set up (./install.sh --setup) does anything here touch Thunderbird."""
+    return os.path.exists(os.path.expanduser("~/.thunderbird/native-messaging-hosts/amadeus_bridge.json"))
+
+
 def _start_thunderbird():
     """Thunderbird was closed: start it minimized and wait for the bridge (up to ~60 s)."""
+    if not configured():
+        return False
     if subprocess.run(["pgrep", "-x", "thunderbird"], capture_output=True).returncode == 0:
         # it runs: maybe it is still starting (the add-on connects a few seconds after the window); wait a bit
         for _ in range(30):

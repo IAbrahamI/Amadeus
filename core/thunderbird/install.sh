@@ -19,4 +19,10 @@ done
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
 (cd "$HERE/addon" && python3 -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED); [z.write(f) for f in ('manifest.json','background.js')]; z.close()" "$OUT")
+# Thunderbird starts minimized at login, so mail is there when Amadeus needs it
+DEPLOY="$HERE/../deploy"; BIN="$HOME/.local/bin"
+mkdir -p "$BIN" "$HOME/.config/autostart" "$HOME/.local/share/amadeus/kwin"
+sed -e "s|@BIN@|$BIN|g" "$DEPLOY/bin/amadeus-mail-start" > "$BIN/amadeus-mail-start"; chmod +x "$BIN/amadeus-mail-start"
+cp "$DEPLOY/kwin/minimize-thunderbird.js" "$HOME/.local/share/amadeus/kwin/minimize-thunderbird.js"
+sed -e "s|@BIN@|$BIN|g" "$DEPLOY/autostart/amadeus-thunderbird.desktop" > "$HOME/.config/autostart/amadeus-thunderbird.desktop"
 echo "Native host registered. Add-on file: $OUT"

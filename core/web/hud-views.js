@@ -73,6 +73,10 @@ const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: nul
 async function loadMail() {
   let st;
   try { st = await (await fetch("/api/mail/status")).json(); } catch { st = { connected: false }; }
+  if (st.setup === false) {
+    body().innerHTML = note("<b>Mail isn't set up.</b> It's optional. To read mail through Thunderbird, run <code>./install.sh --setup</code> and say yes to mail.");
+    return;
+  }
   if (!st.connected) {
     body().innerHTML = note("<b>Thunderbird isn't connected.</b> Open Thunderbird (with the Amadeus Bridge add-on installed) and the mail shows up here.") +
       '<div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>';

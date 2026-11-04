@@ -90,6 +90,9 @@ def keep_apps():
     """Thunderbird must run for Amadeus to see mail: if it was closed, start it again hidden after a minute (so a quick restart by you isn't interrupted). After Thunderbird comes back,
     check the mail that came in meanwhile."""
     import shutil
+    from . import mailbridge
+    if not mailbridge.configured():
+        return
     now = time.time()
     for name in CFG.get("keep_running", ["thunderbird"]):
         if name not in KEEP_APPS or not shutil.which(name if name != "thunderbird" else "thunderbird"):

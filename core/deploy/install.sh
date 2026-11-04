@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs Amadeus Core for the current user (best on KDE Plasma; other Linux desktops work with small limits):
 # systemd user services (core, tray icon, voice, wake word, nightly leak scan), the `amadeus` launcher, the app-menu entry,
-# Thunderbird autostart (minimized) and the KWin rule for the small window.
+# and the KWin rule for the small window. (Thunderbird's autostart comes with the mail setup: core/thunderbird/install.sh.)
 # Run it again after moving the repository. Use --dry-run to only print what would be written, and --uninstall to remove
 # everything it (and the main install.sh) put on the system, except your data in ~/.local/share/amadeus/.
 set -euo pipefail
@@ -42,13 +42,10 @@ fi
 for u in amadeus-core amadeus-desktop amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan; do put "$HERE/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"; done
 put "$HERE/systemd/amadeus-leak-scan.timer" "$HOME/.config/systemd/user/amadeus-leak-scan.timer"
 put "$HERE/bin/amadeus" "$BIN/amadeus"
-put "$HERE/bin/amadeus-mail-start" "$BIN/amadeus-mail-start"
 put "$HERE/bin/amadeus-leak-scan" "$BIN/amadeus-leak-scan"
-put "$HERE/kwin/minimize-thunderbird.js" "$HOME/.local/share/amadeus/kwin/minimize-thunderbird.js"
 put "$HERE/autostart/amadeus.desktop" "$HOME/.local/share/applications/amadeus.desktop"
-put "$HERE/autostart/amadeus-thunderbird.desktop" "$HOME/.config/autostart/amadeus-thunderbird.desktop"
 [ "$DRY" = "--dry-run" ] && exit 0
-chmod +x "$BIN/amadeus" "$BIN/amadeus-mail-start" "$BIN/amadeus-leak-scan"
+chmod +x "$BIN/amadeus" "$BIN/amadeus-leak-scan"
 "$REPO/core/desktop-tauri/build.sh"
 systemctl --user disable --now amadeus-tray 2>/dev/null || true  # the older tray icon: now part of the desktop app
 rm -f "$HOME/.config/systemd/user/amadeus-tray.service"
@@ -56,7 +53,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now amadeus-core amadeus-desktop amadeus-leak-scan.timer
 if [ -x "$HOME/.local/share/amadeus/voice/venv-lite/bin/python" ]; then
   systemctl --user enable --now amadeus-voice
-  [ -d "$HOME/.local/share/amadeus/voice/models/vosk-model-small-en-us-0.15" ] && systemctl --user enable --now amadeus-wake
+  [ -d "$HOME/.local/share/amadeus/voice/models/vosk-model-small-en-us-0.15" ] && command -v parec >/dev/null && systemctl --user enable --now amadeus-wake
   [ -x "$HOME/.local/share/amadeus/voice/venv-tn/bin/python" ] && systemctl --user enable --now amadeus-tn
 else
   echo "voice: not set up (see docs/INSTALL.md, optional: voice); amadeus-voice not started"

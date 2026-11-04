@@ -12,6 +12,7 @@ session (continue_project). Every run is a normal Claude Code session, so you ca
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -85,6 +86,8 @@ def running():
 
 def start(project, task, cid="", resume=None):
     """Start one run in the background. Returns at once; the result arrives as a notification and in the chat."""
+    if not shutil.which("claude"):
+        return "Claude Code isn't installed on this PC. Install it and log in once by running claude, then ask again."
     name, folder = _folder(project)
     if any(j["project"].lower() == name.lower() for j in running()):
         return f"**{name}** is still working on the last step. I'll tell you when it's done."

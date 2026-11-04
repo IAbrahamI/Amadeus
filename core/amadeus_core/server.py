@@ -213,7 +213,7 @@ class Handler(BaseHTTPRequestHandler):
             on = tools.enabled_connectors()
             own = [{"id": c["id"], "description": f"Your connector (MCP): {c['command']}", "enabled": on.get(c["id"], True),
                     "tools": c["tools"], "approval_tools": c["tools"], "own": True, "name": c["name"]} for c in mcp.listing()]
-            return self._json([{"id": k, "description": v, "enabled": on.get(k, True),
+            return self._json([{"id": k, "description": v, "enabled": on.get(k, True), "missing": tools.missing(k),
                                 "tools": [t["name"] for t in tools.TOOLS if t["connector"] == k],
                                 "approval_tools": [t["name"] for t in tools.TOOLS if t["connector"] == k and t["approval"]]}
                                for k, v in tools.CONNECTORS.items()] + own)
@@ -675,7 +675,7 @@ class Handler(BaseHTTPRequestHandler):
         arg = lambda k, d="": qs.get(k, [d])[0]
         try:
             if p == "/api/mail/status":
-                return self._json(mailbridge.status())
+                return self._json({**mailbridge.status(), "setup": mailbridge.configured()})
             if p == "/api/mail/recent":
                 return self._json(mailbridge.call("recent", accountId=arg("account"), folderId=arg("folder") or None,
                                                   days=min(365, int(arg("days", "7"))), limit=min(500, int(arg("limit", "80")))))

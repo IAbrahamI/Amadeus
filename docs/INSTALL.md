@@ -38,6 +38,11 @@ Tested on CachyOS (Arch) with KDE Plasma 6 on Wayland and an RTX 3080 Ti (12 GB)
 opens as a normal window instead of sitting in the corner (on X11 it is still placed there), and GNOME needs the
 *AppIndicator* extension to show the tray icon.
 
+**Needed:** Ollama (the local model), Docker (memory and the privacy filter) and the packages below. **Everything else
+is optional and can be added later:** Thunderbird (mail), Obsidian (notes in your vault), Claude Code (work runs),
+Tailscale (the phone app), KDE Plasma (window placement) and an NVIDIA GPU (speed). Without one of them, only that part
+stays off, and Settings → Connectors says what it needs.
+
 | For | Arch | Debian / Ubuntu | Fedora |
 |---|---|---|---|
 | the local model | `ollama` or `ollama-cuda` | [ollama.com/download](https://ollama.com/download) | [ollama.com/download](https://ollama.com/download) |
