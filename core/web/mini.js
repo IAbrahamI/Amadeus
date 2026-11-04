@@ -1,4 +1,4 @@
-// The mini core (mini.html, shown by desktop/popup.py): a transparent window with only the core. It speaks in
+// The mini core (mini.html, shown by the desktop app): a transparent window with only the core. It speaks in
 // comic-style bubbles that fade a few seconds later (the history is in the dashboard's Chat), and it "calls" you for
 // reminders, urgent mail and approvals: the core beats like a heart, the ring plays on every beat, and the actions
 // are right in an amber bubble. Clicking the core opens the dashboard.
@@ -157,7 +157,7 @@ if (window.Voice) {
   Voice.onHint = (msg) => { listening(false); bubble("amadeus", NAME_UP(), esc(msg)); };
   Voice.onText = (text) => { listening(false); if (adjusting) return adjustWith(text); ask(text, true); };
   new MutationObserver(() => listening(document.body.classList.contains("listening"))).observe(document.body, { attributes: true, attributeFilter: ["class"] });
-  window.amadeusWake = (d) => {  // the wake word (popup.py)
+  window.amadeusWake = (d) => {  // the wake word
     const on = d.stage === "listening";
     document.body.classList.toggle("listening", on);
     if (on) return;

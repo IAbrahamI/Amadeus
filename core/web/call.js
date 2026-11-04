@@ -1,4 +1,4 @@
-// Desktop "incoming call" (shown by desktop/popup.py). Lists what needs you: approvals, reminders, work results, jobs.
+// Desktop "incoming call" (the phone page). Lists what needs you: approvals, reminders, work results, jobs.
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const api = async (path, opts = {}) => {

@@ -51,6 +51,7 @@ put "$HERE/autostart/amadeus-thunderbird.desktop" "$HOME/.config/autostart/amade
 chmod +x "$BIN/amadeus" "$BIN/amadeus-mail-start" "$BIN/amadeus-leak-scan"
 "$REPO/core/desktop-tauri/build.sh"
 systemctl --user disable --now amadeus-tray 2>/dev/null || true  # the older tray icon: now part of the desktop app
+rm -f "$HOME/.config/systemd/user/amadeus-tray.service"
 systemctl --user daemon-reload
 systemctl --user enable --now amadeus-core amadeus-desktop amadeus-leak-scan.timer
 if [ -x "$HOME/.local/share/amadeus/voice/venv-lite/bin/python" ]; then

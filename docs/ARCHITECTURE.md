@@ -13,7 +13,7 @@ Amadeus has two sides with one narrow door between them:
 flowchart TB
     subgraph clients ["Where you talk to it"]
       win["Desktop window<br/>small call window + dashboard<br/>(GTK + WebKit)"]
-      tray["Tray icon<br/>(PyQt)"]
+      tray["Tray icon<br/>(Tauri)"]
       phone["Android app<br/>(over Tailscale)"]
       voice["Voice<br/>wake word (Vosk) + Whisper"]
     end

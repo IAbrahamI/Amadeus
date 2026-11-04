@@ -295,7 +295,7 @@ if (window.Voice) {
   Voice.onHint = (msg) => { listening(false); subtitle(msg); };
   Voice.onText = (text) => { listening(false); state.spoken = true; send(text); };
   new MutationObserver(() => listening(document.body.classList.contains("listening"))).observe(document.body, { attributes: true, attributeFilter: ["class"] });
-  window.amadeusWake = (d) => {  // the wake word while the window is open (popup.py)
+  window.amadeusWake = (d) => {  // the wake word while the window is open
     const on = d.stage === "listening";
     document.body.classList.toggle("listening", on);
     if (on) return;
@@ -496,7 +496,7 @@ $("#pop").onclick = async (e) => {
 addEventListener("click", (e) => { if (!e.target.closest("#pop, #cModel")) closePop(); });
 addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#pop").hidden) closePop(); });
 
-// ---------- the desktop window (popup.py): the logo goes back to the mini core, the X closes Amadeus ----------
+// ---------- the desktop window: the logo goes back to the mini core, the X closes Amadeus ----------
 const desktop = (msg) => { try { (window.amadeusBridge || window.webkit.messageHandlers.amadeus).postMessage(msg); return true; } catch { return false; } };
 $("#toMini").onclick = () => desktop("mini");
 $("#quitApp").onclick = () => desktop("quit");
