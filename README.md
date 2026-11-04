@@ -89,8 +89,8 @@ you approved. More detail, including the privacy filter step by step: [docs/ARCH
 ## Getting started
 
 You need Linux with systemd (KDE Plasma gives the best experience, other desktops work too), Python 3.10 or newer,
-Docker, Ollama, GTK 3 with WebKit2GTK 4.1 and AppIndicator for the window and tray, GStreamer for sound, about 15 GB of
-disk (mostly the local model and the memory and privacy-filter images), and ideally an NVIDIA GPU with about 12 GB.
+Docker, Ollama, GTK 3 with WebKit2GTK 4.1 and AppIndicator for the window and tray, GStreamer for sound, about 17 GB of
+disk (mostly the local model, the memory and privacy-filter images, and the desktop app's build tools), and ideally an NVIDIA GPU with about 12 GB.
 The exact packages for Arch, Debian/Ubuntu and Fedora are in [docs/INSTALL.md](docs/INSTALL.md#1-what-you-need).
 
 ```bash

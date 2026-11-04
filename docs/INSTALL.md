@@ -79,7 +79,7 @@ Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|ob
 
 ## 3. The assistant itself
 
-`install.sh` runs `core/deploy/install.sh` for you (`--dry-run` shows what it would write). It installs the user services (`amadeus-core`, `amadeus-desktop`, voice and the nightly leak scan), the
+`install.sh` runs `core/deploy/install.sh` for you (`--dry-run` shows what it would write). It also builds the desktop app (mini core, dashboard, tray) with `core/desktop-tauri/build.sh`: the first time it downloads Rust into `.tauri-build/` inside the repo (about 2 GB with the build files) and takes a few minutes. `amadeus update` rebuilds it. It installs the user services (`amadeus-core`, `amadeus-desktop`, voice and the nightly leak scan), the
 `amadeus` command, the app-menu entry and a KWin rule for the small window. Run it again after moving the
 repository folder.
 
@@ -249,5 +249,5 @@ core/deploy/install.sh --uninstall            # services, the amadeus command, m
 docker rm -f hindsight presidio-analyzer presidio-anonymizer
 ```
 
-Then remove the Amadeus Bridge add-on in Thunderbird (Add-ons and Themes). That removes the programs and keeps your data. Deleting the data (`~/.local/share/amadeus/`, the
+Then remove the Amadeus Bridge add-on in Thunderbird (Add-ons and Themes). That removes the programs and keeps your data. The desktop app and Rust stay in `.tauri-build/` until you delete the repo folder. Deleting the data (`~/.local/share/amadeus/`, the
 `hindsight-data` volume and the vault's `Amadeus/` folder) is permanent, so back it up first.
