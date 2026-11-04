@@ -244,7 +244,7 @@ workspace.windowList().forEach(watch);"#
         return;
     }
     let cmd = format!(
-        "qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript amadeus-bubble >/dev/null 2>&1; \
+        "qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript amadeus-bubble >/dev/null 2>&1; sleep 0.5; \
          id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{}' amadeus-bubble) && \
          qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null",
         file.display()
