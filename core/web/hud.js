@@ -196,7 +196,7 @@ async function send(text) {
   renderGhost();
   liveLine(lineHtml({ role: "user", content: text, created: now }));
   subtitle("…");
-  let acc = "", started = false, line = null;
+  let acc = "", started = false, line = null, own = false;
   const render = (n) => {  // show the reply (with speech: only as far as it has been spoken)
     const t = stripMood(acc).slice(0, n);
     subtitle(t || "…");
@@ -205,7 +205,7 @@ async function send(text) {
   };
   if (aloud) Aloud.reveal = render;
   try {
-    const r = await fetch(`/api/conversations/${state.cid}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: spoken }) });
+    const r = await fetch(`/api/conversations/${state.cid}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: spoken, speak: aloud }) });
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
     for (;;) {
       const { value, done } = await reader.read(); if (done) break;
@@ -213,11 +213,12 @@ async function send(text) {
       while ((i = buf.indexOf("\n\n")) >= 0) {
         const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
         const ev = chunk.match(/^event: (.*)$/m)?.[1], data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] || "{}");
+        if (ev === "say" && aloud && Aloud.active) { own = true; Aloud.reveal = null; Aloud.own(data); }  // she says this; the screen shows the full answer
         if (ev === "token") {
           acc += data;
           if (!started) { started = true; if (!aloud) setMode("speak"); line = liveLine(lineHtml({ role: "assistant", content: " ", created: Date.now() / 1000 }));
             state.msgs.push({ role: "assistant", content: "…", created: Date.now() / 1000 }); renderGhost(); if (aloud) render(0); }
-          if (aloud && Aloud.active) Aloud.feed(acc, false); else { core.talk(); render(Infinity); }
+          if (aloud && Aloud.active && !own) Aloud.feed(acc, false); else { core.talk(); render(Infinity); }
         }
         if (ev === "tool") setMode("think");
         if (ev === "approval") { if (Aloud.active) { stopAloud(); render(Infinity); } acc = ""; started = false; counts(); subtitle(`I need your OK first: ${data.summary}`); if (curView === "approvals") loadApprovals(); }

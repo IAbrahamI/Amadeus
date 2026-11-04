@@ -706,7 +706,7 @@ class Handler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
         try:
-            agent.run(cid, model, b.get("text", ""), emit, voice=bool(b.get("voice")))
+            agent.run(cid, model, b.get("text", ""), emit, voice=bool(b.get("voice")), speak=bool(b.get("speak")))
         except Exception as e:
             db.add_message(cid, "assistant", f"Error: {e}")
             emit("error", {"message": str(e)})

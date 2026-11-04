@@ -10,6 +10,7 @@ import time
 
 from . import db, events, learning, llm, profile, tools
 from .config import CFG, NAME
+from .speech import SAY_RE, SayFilter
 
 SKILLS_DIRS = [os.path.join(os.path.dirname(os.path.dirname(__file__)), "skills"),
                os.path.join(CFG["data_dir"], "skills")]
@@ -254,9 +255,26 @@ It went through speech recognition and may contain sound-alike mistakes: "male" 
 ("mark this male as red" = mark this mail as read), "male box" = mailbox, "in box" = inbox, "holder"/"fold her" = folder,
 "remind" vs "remain", German "Male" = Mail. Work out what they most likely meant from the context and act on that.
 If you reinterpreted a word for an action, say it in a few words ("Marking the mail as read"). If a name, number,
-date or time is unclear, ask instead of guessing.
-Your answer will be read aloud: one or two short sentences with only what matters, no details they didn't ask for, no
-lists. They can ask for more."""
+date or time is unclear, ask instead of guessing."""
+
+SAY_NOTE = """
+
+## Your answer will be read aloud
+Start your final reply with one line in <say></say>: what you would say out loud to a friend. Below it write the full
+answer for the screen as you normally would, with all the details. (Before you call a tool, don't write this line.)
+- The line covers the whole answer in one or two short sentences: the overall picture and what matters most. Never just
+  the first items of a list.
+- At most 30 words, plain speech in the user's language: no lists, Markdown, links or ids.
+- For a schedule or a list, say how many things there are, when it starts and ends, and anything unusual. Don't read
+  them all out.
+- If the answer is already one short sentence, the line is just that sentence.
+Example: <say>Three things tomorrow: work from seven to four, then the dentist at five, and your mum's birthday.</say>"""
+
+
+# A long system prompt alone isn't enough for a small model on long answers: this comes right before it answers.
+SAY_REMINDER = {"role": "system", "content": "If you answer now (no tool call), your reply must begin with <say>the actual answer "
+                "in one or two short spoken sentences: the overall picture and what matters most, no intro, no disclaimers, "
+                "not just the first items</say>, then the full answer."}
 
 
 def _system(cid, user_text):
@@ -306,6 +324,8 @@ def _system(cid, user_text):
     last_user = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None)
     if last_user and last_user["meta"].get("voice"):
         text += VOICE_NOTE
+    if last_user and last_user["meta"].get("speak"):
+        text += SAY_NOTE
     for s in matching_skills(cid):
         text += f"\n\n## Skill: {s['name']} (follow it for this request)\n{s['body']}"
         if s["name"] == "calendar":  # small models are bad at date math: give them the dates
@@ -338,11 +358,11 @@ def eval_system(user_text, lessons):
 RUNNING = set()  # conversations Amadeus is working on right now (the UI shows "working…")
 
 
-def run(cid, model, user_text=None, emit=lambda *a: None, max_rounds=6, curate=True, voice=False):
+def run(cid, model, user_text=None, emit=lambda *a: None, max_rounds=6, curate=True, voice=False, speak=False):
     """Runs the loop until the model answers or an approval is needed. emit(kind, data) streams to the UI."""
     RUNNING.add(cid)
     try:
-        _run(cid, model, user_text, emit, max_rounds, curate, voice)
+        _run(cid, model, user_text, emit, max_rounds, curate, voice, speak)
     finally:
         RUNNING.discard(cid)
 
@@ -366,20 +386,37 @@ def _playbook(cid, user_text, emit):
     return True
 
 
-def _run(cid, model, user_text, emit, max_rounds, curate, voice):
+def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
+    last = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None) if user_text is None else None
+    speak = speak or bool(last and last["meta"].get("speak"))  # picking up again after an approval
     if user_text is not None:
-        db.add_message(cid, "user", user_text, {"voice": True} if voice else None)
+        meta = {**({"voice": True} if voice else {}), **({"speak": True} if speak else {})}
+        db.add_message(cid, "user", user_text, meta or None)
     if user_text and _playbook(cid, user_text, emit):
         return
     sysmsg = _system(cid, user_text or "")
     tools.CURRENT_CID = cid
     for _ in range(max_rounds):
-        content, calls = "", []
-        for kind, data in llm.chat_stream(model, [sysmsg] + _history(cid), tools.schemas()):
+        content, calls, said = "", [], None
+        spoken = SayFilter()
+
+        def show(line, text):  # the spoken line goes to the voice, everything else to the screen
+            nonlocal said
+            if line:
+                said = line
+                emit("say", line)
+            if text:
+                emit("token", text)
+        messages = [sysmsg] + _history(cid) + ([SAY_REMINDER] if speak else [])
+        for kind, data in llm.chat_stream(model, messages, tools.schemas()):
             if kind == "token":
-                emit("token", data)
+                show(*spoken.feed(data))
             else:
                 content, calls = data["content"], data["tool_calls"]
+        show(*spoken.flush())
+        content = SAY_RE.sub("", content, count=1).strip() or said or ""  # the chat keeps the full answer
+        if said and content == said:  # only the line came: that's the answer on screen too
+            emit("token", said)
         if not calls:
             if curate and tools.enabled_connectors().get("memory", True):
                 threading.Thread(target=profile.learn_asking, args=(cid,), daemon=True).start()
@@ -435,6 +472,9 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice):
                 db.add_message(cid, "tool", tools._data(shown), {"name": name})
                 db.add_message(cid, "assistant", shown, {"mood": "normal"})
                 threading.Thread(target=profile.learn_asking, args=(cid,), daemon=True).start()
+                last = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None)
+                if last and last["meta"].get("speak"):
+                    emit("say", "Here's what I found.")  # what came back is shown as it is: nothing to read out
                 emit("token", shown)
                 emit("done", {})
                 return

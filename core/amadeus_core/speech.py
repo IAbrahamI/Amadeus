@@ -118,3 +118,38 @@ def speech_text(text, lang="en", limit=600):
         end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
         t = (cut[:end + 1] if end > limit // 3 else cut.rsplit(" ", 1)[0] + ".") + " " + s["rest"]
     return t
+
+
+# ---------- the spoken line: when an answer will be read aloud the model opens with what it would actually say ----------
+SAY_RE = re.compile(r"<say>(.*?)(?:</say>\s*|$)", re.S)
+
+
+class SayFilter:
+    """Takes the <say>…</say> line off the start of a streamed reply. feed(token) returns (the line if it just ended,
+    text for the screen). flush() does the same for whatever is left at the end."""
+    def __init__(self):
+        self.buf, self.state = "", "start"
+
+    def feed(self, token):
+        if self.state == "pass":
+            return None, token
+        self.buf += token
+        if self.state == "start":
+            s = re.sub(r"^\s*\[mood:\s*\w*\]\s*", "", self.buf).lstrip()  # (the mood tag may come first)
+            if (len(s) < 5 and "<say>".startswith(s)) or (s.startswith("[") and "]" not in s and len(s) < 20 and "[mood:".startswith(s[:6])):
+                return None, ""
+            if not s.startswith("<say>"):
+                self.state, out, self.buf = "pass", self.buf, ""
+                return None, out
+            self.state, self.buf = "inside", s[5:]
+        i = self.buf.find("</say>")
+        if i < 0:
+            return None, ""
+        said, rest = self.buf[:i].strip(), self.buf[i + 6:].lstrip()
+        self.state, self.buf = "pass", ""
+        return said, rest
+
+    def flush(self):
+        inside, rest = self.state == "inside", self.buf
+        self.state, self.buf = "pass", ""
+        return (rest.strip(), "") if inside else (None, rest)

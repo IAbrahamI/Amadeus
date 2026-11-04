@@ -128,12 +128,12 @@ async function ask(text, spoken) {
   busy = true; setMode("think");  // what you said isn't shown here (the dashboard's Chat has it)
   const aloud = hasVoice && (speakMode === "always" || (speakMode === "voice" && spoken));
   if (aloud) Aloud.start(); else Aloud.stop();
-  let acc = "", b = null;
+  let acc = "", b = null, own = false;
   const render = (n) => { if (!b) b = bubble("amadeus", NAME_UP(), "", true); const tx = b.querySelector(".tx"); tx.textContent = plain(acc).slice(0, n === Infinity ? undefined : n) || "…"; tx.scrollTop = tx.scrollHeight; shape(); };  // the newest words stay in view
   if (aloud) Aloud.reveal = (n) => render(n);
   try {
     const cid = (await api("/api/quickchat")).id;  // today's chat: the dashboard shows the whole conversation
-    const r = await fetch(`/api/conversations/${cid}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: !!spoken }) });
+    const r = await fetch(`/api/conversations/${cid}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: !!spoken, speak: aloud }) });
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
     for (;;) {
       const { value, done } = await reader.read(); if (done) break;
@@ -141,7 +141,8 @@ async function ask(text, spoken) {
       while ((i = buf.indexOf("\n\n")) >= 0) {
         const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
         const ev = chunk.match(/^event: (.*)$/m)?.[1], data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] || "{}");
-        if (ev === "token") { acc += data; if (aloud && Aloud.active) Aloud.feed(acc, false); else { setMode("speak"); core.talk(); render(Infinity); } }
+        if (ev === "say" && aloud && Aloud.active) { own = true; acc = data; Aloud.own(data); }  // the bubble shows what she says
+        if (ev === "token" && !own) { acc += data; if (aloud && Aloud.active) Aloud.feed(acc, false); else { setMode("speak"); core.talk(); render(Infinity); } }
         if (ev === "tool") setMode("think");
         if (ev === "approval") { if (Aloud.active) Aloud.stop(); acc = ""; refresh(); }
         if (ev === "error") acc += "\nThat didn't work: " + data.message;

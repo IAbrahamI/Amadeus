@@ -1,7 +1,8 @@
 // Reading answers aloud while they are written (the dashboard and the mini core): every finished sentence goes to
 // the voice right away and the next one is prepared while the current one plays, with a short breath in between.
 // The server turns each piece into what a person would say (speech.py). Code, tables and long lists stay in the chat,
-// and after a couple of short sentences (about 250 characters) it says the rest is in the chat. The text can type in, in step with the voice.
+// and after a couple of short sentences (about 250 characters) it says the rest is in the chat. Normally the
+// model opens with its own spoken line (speech.py): then only that is said, and the screen has the full answer. The text can type in, in step with the voice.
 // Hooks: busy() (the answer is still coming), talk() (a voice pulse), speaking(on), idle(), failed(error), strip(text).
 window.makeAloud = (h) => {
   const A = {
@@ -10,6 +11,12 @@ window.makeAloud = (h) => {
     start() {
       A.stop();
       Object.assign(this, { active: true, gen: this.gen + 1, queue: [], taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false, shown: 0, reveal: null, done: null });
+    },
+    // the model's own spoken line: only this is said, whatever else the answer holds
+    own(text) {
+      this.taken = text.length;
+      this.say(text, 350);
+      this.cut = true;
     },
     // the reply so far; done = it's complete (the last piece needs no full stop)
     feed(text, done) {
