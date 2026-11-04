@@ -1,6 +1,8 @@
 """Local model access through Ollama (chat with tool calling, streamed)."""
 import json
 import os
+import subprocess
+import time
 import urllib.request
 
 from .config import CFG
@@ -10,6 +12,37 @@ from .config import CFG
 # fit there). Using every core made the window and the desktop stutter while it wrote; half the cores is as fast.
 THREADS = CFG.get("llm_threads") or max(2, (os.cpu_count() or 8) // 4)
 KEEP = CFG.get("llm_keep_alive", "30m")  # stays loaded between questions, so it doesn't reload every few minutes
+# An idle model gives the graphics card's memory back when less than this is free (MiB), so a video or a game doesn't
+# stutter next to it. 0 turns it off.
+GPU_FREE = CFG.get("llm_gpu_free_mib", 1024)
+IDLE = 60  # seconds since the last answer before the model counts as idle
+_used = 0.0
+
+
+def gpu_free():
+    """Free memory on the graphics card in MiB, or None when that can't be read (only NVIDIA for now)."""
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                             capture_output=True, text=True, timeout=10).stdout
+        return min(int(l) for l in out.split())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def free_gpu():
+    """Background job: unload the idle models while the card's memory is nearly full. The next question reloads them.
+    Ollama lets an answer still being written finish first."""
+    if not GPU_FREE or time.time() - _used < IDLE:
+        return
+    free = gpu_free()
+    if free is None or free >= GPU_FREE:
+        return
+    loaded = json.load(urllib.request.urlopen(CFG["ollama_url"] + "/api/ps", timeout=10)).get("models", [])
+    for m in loaded:
+        req = urllib.request.Request(CFG["ollama_url"] + "/api/generate", json.dumps({"model": m["name"], "keep_alive": 0}).encode(),
+                                     {"content-type": "application/json"})
+        urllib.request.urlopen(req, timeout=30).read()
+        print(f"graphics memory nearly full ({free} MiB free): unloaded {m['name']}", flush=True)
 
 
 def list_models():
@@ -37,6 +70,8 @@ def model_info():
 
 def chat_stream(model, messages, tools=None):
     """Yields ("token", text) and finally ("done", {"content": str, "tool_calls": [...]})."""
+    global _used
+    _used = time.time()
     body = {"model": model, "messages": messages, "stream": True, "think": False, "keep_alive": KEEP,
             "options": {"temperature": 0.3, "num_thread": THREADS}}
     if tools:
@@ -46,6 +81,7 @@ def chat_stream(model, messages, tools=None):
     content, calls = [], []
     with urllib.request.urlopen(req, timeout=600) as r:
         for line in r:
+            _used = time.time()
             if not line.strip():
                 continue
             ev = json.loads(line)
@@ -62,9 +98,13 @@ def chat_stream(model, messages, tools=None):
 
 def complete(model, messages, as_json=False):
     """One non-streamed answer (used by background jobs). as_json asks Ollama for valid JSON."""
+    global _used
+    _used = time.time()
     body = {"model": model, "messages": messages, "stream": False, "think": False, "keep_alive": KEEP,
             "options": {"temperature": 0.1, "num_thread": THREADS}}
     if as_json:
         body["format"] = "json"
     req = urllib.request.Request(CFG["ollama_url"] + "/api/chat", json.dumps(body).encode(), {"content-type": "application/json"})
-    return json.load(urllib.request.urlopen(req, timeout=600))["message"]["content"]
+    answer = json.load(urllib.request.urlopen(req, timeout=600))["message"]["content"]
+    _used = time.time()
+    return answer

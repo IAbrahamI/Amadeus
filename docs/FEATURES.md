@@ -64,6 +64,7 @@ Put any of these into `~/.config/amadeus-core/config.json`, then run `systemctl 
 | `tts_voice` | empty | A Piper voice (`.onnx`) for reading the briefs aloud; empty = the first one installed |
 | `llm_threads` | a quarter of the CPU threads | CPU threads for the local model (it runs on the GPU; more threads make the desktop stutter). `2` is enough when the whole model fits on the GPU |
 | `llm_keep_alive` | `30m` | How long the model stays loaded between questions |
+| `llm_gpu_free_mib` | `1024` | An idle model unloads when the graphics card has less free memory than this, so videos and games don't stutter (NVIDIA only; `0` turns it off) |
 | `gpu_rendering` | `true` | Draw the window on the GPU (smooth). `false` only if the window stays blank or crashes with your graphics driver |
 | `serve_apk` | `false` | Offer the phone app for download over Tailscale while you install it |
 
