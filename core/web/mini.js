@@ -23,7 +23,7 @@ new ResizeObserver(placeCore).observe($("#corewrap")); placeCore();
 let mode = "idle";
 const setMode = (m) => { mode = m; core.mode(m); };
 // the sphere: a click opens the dashboard, holding it talks to her (she listens while you hold, it sends when you let
-// go). The outer edge of the disc moves the window (popup.py starts that before the page sees the press).
+// go). The outer edge of the disc moves the window (the app starts that before the page sees the press).
 const HOLD = 350;
 let hold = null;
 const onCore = (e) => {
@@ -55,6 +55,9 @@ function zones() {
 $("#mini").addEventListener("mouseenter", () => setTimeout(zones, 30));
 $("#mini").addEventListener("mouseleave", () => setTimeout(zones, 30));
 new MutationObserver(() => setTimeout(zones, 400)).observe($("#bubbles"), { childList: true, subtree: true, attributes: true });
+// the window only has room for a bubble while there is one, so the core can go right up to the edge of the screen
+new MutationObserver(() => native($("#bubbles").children.length ? "tall" : "compact")).observe($("#bubbles"), { childList: true });
+addEventListener("resize", () => { shape(); zones(); });
 $("#cls").onclick = () => { stopAll(); native("close"); };
 
 // ---------- bubbles: only what is being said right now ----------
@@ -196,7 +199,7 @@ async function refresh() {
   }
   for (let i = queue.length - 1; i >= 0; i--) if (!fresh.some((f) => f.id === queue[i].id)) queue.splice(i, 1);  // handled elsewhere
   if (ringing && !fresh.some((f) => f.id === ringing.id)) endCall(null);  // answered on the dashboard or the phone
-  if (!ringing && queue.length && !busy && !listenB) ring(queue.shift());
+  if (!ringing && queue.length && !busy && !listenB) ring(queue.pop());  // the newest first: what just came in beats what's been waiting
 }
 function ring(e) {
   ringing = e; $("#mini").classList.add("ringing"); Aloud.stop(); setMode("think");  // the heartbeat; the ring plays on each beat
@@ -268,7 +271,7 @@ function maybeHide() {
   hideT = setTimeout(() => { if (!ringing && !queue.length && !busy && !Aloud.active && !listenB && !adjusting && !document.querySelector(".bubble")) native("hide"); }, 1500);
 }
 function stopAll() { Aloud.stop(); stopRing(); ringing = null; $("#mini").classList.remove("ringing"); setMode("idle"); }
-window.amadeusShown = (reason) => { if (reason === "call") refresh(); };  // popup.py: the window was shown (again)
+window.amadeusShown = (reason) => { if (reason === "call") refresh(); };  // the window was shown (again)
 
 (async () => {
   await window.IDENTITY;

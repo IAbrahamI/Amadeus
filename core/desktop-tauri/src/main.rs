@@ -9,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -19,8 +20,11 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) AmadeusDesktop/1";
-const MW: f64 = 300.0; // the mini core: her speech bubble on top (150), the core (280), the small pill of buttons
-const MH: f64 = 480.0;
+// The mini core: the core and the small pill of buttons, so it can go right up to the edge of the screen. While there's
+// a speech bubble it's taller, upward (or downward near the top of the screen, told apart by one pixel: web/mini.css).
+const MW: f64 = 300.0;
+const MH: f64 = 340.0;
+const MH_TALL: f64 = 480.0;
 const MINI_TITLE: &str = "Amadeus core";
 const DASH_TITLE: &str = "Amadeus";
 // The pages talk to their window through window.amadeusBridge (web/mini.js, web/hud.js).
@@ -64,6 +68,7 @@ fn is_local(url: &tauri::Url) -> bool {
 
 #[derive(Default)]
 struct Shared {
+    tall: Mutex<bool>,
     zones: Arc<Mutex<Vec<[f64; 4]>>>, // the mini core's buttons and bubbles: clicks there aren't a drag
     crashes: Mutex<Vec<Instant>>,
 }
@@ -107,10 +112,10 @@ fn show_mini(app: &AppHandle, call: bool) -> tauri::Result<()> {
         }
         return w.show();
     }
+    *app.state::<Shared>().tall.lock().unwrap() = false;
     let path = if call { "/mini.html?call=1" } else { "/mini.html" };
     let w = window(app, "mini", MINI_TITLE, path)
-        .inner_size(MW, MH)
-        .resizable(false)
+        .inner_size(MW, if kde() { MH } else { MH_TALL })
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
@@ -126,18 +131,52 @@ fn close_mini(app: &AppHandle, by_you: bool) {
     if by_you {
         let _ = fs::write(hidden_flag(), "");
     }
-    if let Some(w) = app.get_webview_window("mini") {
+    destroy_mini(app);
+}
+
+/// KWin remembers where the window closed, so it goes back to its small size first.
+fn destroy_mini(app: &AppHandle) {
+    let Some(w) = app.get_webview_window("mini") else { return };
+    if !*app.state::<Shared>().tall.lock().unwrap() {
         let _ = w.destroy();
+        return;
     }
+    set_tall(app, false);
+    let a = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        let _ = a.run_on_main_thread(move || drop(w.destroy()));
+    });
+}
+
+/// Room for a speech bubble: upward, or downward when there isn't room above.
+fn set_tall(app: &AppHandle, tall: bool) {
+    let shared = app.state::<Shared>();
+    let mut now = shared.tall.lock().unwrap();
+    if *now == tall || !kde() {
+        return;
+    }
+    *now = tall;
+    let grow = MH_TALL - MH;
+    let change = if tall {
+        format!("if (g.height < {MH_TALL} - 10) {{ const up = g.y - a.y >= {grow}; w.frameGeometry = {{ x: g.x, y: up ? g.y - {grow} : g.y, width: g.width, height: up ? {MH_TALL} : {MH_TALL} + 1 }}; }}")
+    } else {
+        format!("if (g.height >= {MH_TALL}) w.frameGeometry = {{ x: g.x, y: g.height == {MH_TALL} ? g.y + {grow} : g.y, width: g.width, height: {MH} }};")
+    };
+    kwin(&format!(
+        "for (const w of workspace.windowList()) if (w.resourceClass == \"amadeus-call\" && w.caption == \"{MINI_TITLE}\") {{
+           const g = w.frameGeometry, a = workspace.clientArea(KWin.MaximizeArea, w.output, workspace.currentDesktop);
+           {change}
+         }}"
+    ), 0.0);
 }
 
 fn show_dash(app: &AppHandle, path: &str) -> tauri::Result<()> {
-    if let Some(m) = app.get_webview_window("mini") {
-        m.destroy()?; // the mini core steps aside while the dashboard is open
-    }
+    destroy_mini(app); // the mini core steps aside while the dashboard is open
     if let Some(w) = app.get_webview_window("dash") {
         w.navigate(format!("{}{path}", base()).parse().expect("a valid address"))?;
         w.show()?;
+        bring_dash_forward(None);
         return w.set_focus();
     }
     let (mut width, mut height) = (1200.0, 800.0);
@@ -148,7 +187,7 @@ fn show_dash(app: &AppHandle, path: &str) -> tauri::Result<()> {
     let w = window(app, "dash", DASH_TITLE, path).inner_size(width, height).center().build()?;
     prepare(&w)?;
     tell_core_open(true);
-    center_on_kde(width, height);
+    bring_dash_forward(Some((width, height)));
     w.set_focus()
 }
 
@@ -161,30 +200,43 @@ fn close_dash(app: &AppHandle) {
     }
 }
 
-/// Wayland apps can't place themselves: on KDE a short KWin script centres the dashboard. (The mini core has the rule
-/// from desktop/install-kwin-rule.sh, which keeps it on top and remembers where you dragged it.)
-fn center_on_kde(width: f64, height: f64) {
-    if !std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_uppercase().contains("KDE") {
-        return;
-    }
-    let file = data_dir().join("place-window.js");
-    let script = format!(
-        "for (const w of workspace.windowList()) if (w.resourceClass == \"amadeus-call\" && w.caption == \"{DASH_TITLE}\") {{
-           const a = workspace.clientArea(KWin.MaximizeArea, workspace.activeScreen, workspace.currentDesktop);
-           w.frameGeometry = {{ x: Math.round(a.x + (a.width - {width}) / 2), y: Math.round(a.y + (a.height - {height}) / 2), width: {width}, height: {height} }};
-         }}"
-    );
+fn kde() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_uppercase().contains("KDE")
+}
+
+/// Wayland apps can't place themselves or come to the front: on KDE a short KWin script does. (The mini core also has
+/// the rule from desktop/install-kwin-rule.sh, which keeps it on top and remembers where you dragged it.)
+fn kwin(script: &str, wait: f64) {
+    static RUNS: AtomicU32 = AtomicU32::new(0); // each run has its own file: they can overlap
+    let file = data_dir().join(format!("place-window-{}.js", RUNS.fetch_add(1, Ordering::Relaxed)));
     if fs::write(&file, script).is_err() {
         return;
     }
     let cmd = format!(
-        "sleep 0.3; n=amadeus-place; qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript $n >/dev/null 2>&1; \
-         id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{}' $n) && \
+        "sleep {wait}; n=amadeus-place-$$; \
+         id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{0}' $n) && \
          qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null; sleep 1; \
-         qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript $n >/dev/null 2>&1",
+         qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript $n >/dev/null 2>&1; rm -f '{0}'",
         file.display()
     );
     let _ = std::process::Command::new("sh").arg("-c").arg(cmd).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+}
+
+/// To the front; a new dashboard also in the middle of the screen.
+fn bring_dash_forward(center: Option<(f64, f64)>) {
+    if !kde() {
+        return;
+    }
+    let place = center.map_or(String::new(), |(width, height)| {
+        format!("const a = workspace.clientArea(KWin.MaximizeArea, workspace.activeScreen, workspace.currentDesktop);
+           w.frameGeometry = {{ x: Math.round(a.x + (a.width - {width}) / 2), y: Math.round(a.y + (a.height - {height}) / 2), width: {width}, height: {height} }};")
+    });
+    kwin(&format!(
+        "for (const w of workspace.windowList()) if (w.resourceClass == \"amadeus-call\" && w.caption == \"{DASH_TITLE}\") {{
+           {place}
+           workspace.activeWindow = w;
+         }}"
+    ), 0.3);
 }
 
 /// What only this system can do: the microphone and speaking without a click first, reloading a crashed page, moving
@@ -224,9 +276,11 @@ fn prepare(w: &WebviewWindow) -> tauri::Result<()> {
         let Ok(gw) = win.gtk_window() else { return };
         if win.label() == "mini" {
             let zones = win.state::<Shared>().zones.clone();
+            let gw2 = gw.clone();
             view.connect_button_press_event(move |_, ev| {
                 let (x, y) = ev.position();
-                let (cx, cy, r) = (MW / 2.0, 150.0 + 140.0, 280.0 / 2.0 / 1.5 * 1.15); // the sphere: click and hold
+                let top = if gw2.allocated_height() as f64 == MH_TALL { 150.0 } else { 10.0 }; // web/mini.css
+                let (cx, cy, r) = (MW / 2.0, top + 140.0, 280.0 / 2.0 / 1.5 * 1.15); // the sphere: click and hold
                 let on_sphere = (x - cx).powi(2) + (y - cy).powi(2) <= r * r;
                 let on_zone = zones.lock().unwrap().iter().any(|z| x >= z[0] && x <= z[0] + z[2] && y >= z[1] && y <= z[1] + z[3]);
                 if ev.button() != 1 || ev.event_type() != EventType::ButtonPress || on_sphere || on_zone {
@@ -322,6 +376,9 @@ fn native(app: AppHandle, window: WebviewWindow, msg: String) {
             for w in a.webview_windows().values() {
                 let _ = w.destroy();
             }
+            Ok(())
+        } else if m == "tall" || m == "compact" {
+            set_tall(&a, m == "tall");
             Ok(())
         } else if let Some(path) = m.strip_prefix("dash:") {
             show_dash(&a, if path.is_empty() { "/#home" } else { path })
