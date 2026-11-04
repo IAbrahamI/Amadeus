@@ -161,5 +161,4 @@ class AmadeusApi(private val store: DeviceStore) {
     // ---------- settings ----------
     fun devices() = JSONObject(get("/api/devices", 30))
     fun goPrivate() = JSONObject(post("/api/phone/private", timeoutSec = 90))
-    fun voiceClips() = JSONObject(get("/api/voice/clips"))
 }

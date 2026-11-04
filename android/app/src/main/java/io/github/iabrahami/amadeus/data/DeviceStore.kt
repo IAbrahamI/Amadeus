@@ -26,16 +26,13 @@ class DeviceStore(context: Context) {
 
     val paired: Boolean get() = !host.isNullOrBlank() && !deviceKey.isNullOrBlank()
 
-    /** The assistant's name, avatar sprite set ("" = the default icon) and ringtone clip, from the PC's settings. */
+    /** The assistant's name, avatar sprite set ("" = the default icon), from the PC's settings. */
     var assistantName: String
         get() = prefs.getString("name", null) ?: "Amadeus"
         set(v) = prefs.edit().putString("name", v).apply()
     var avatarSet: String
         get() = prefs.getString("avatar", "") ?: ""
         set(v) = prefs.edit().putString("avatar", v).apply()
-    var ringtone: String
-        get() = prefs.getString("ringtone", "") ?: ""
-        set(v) = prefs.edit().putString("ringtone", v).apply()
 
     /** "Calls on this phone": keep the live link to the PC open and ring for its calls. */
     var calls: Boolean

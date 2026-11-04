@@ -24,7 +24,7 @@ class AmadeusApp : Application() {
     val updates = _updates.asSharedFlow()
     fun update() { _updates.tryEmit(Unit) }
 
-    /** The assistant's name, avatar and ringtone as set on the PC (kept, so the app shows them even offline). */
+    /** The assistant's name and avatar as set on the PC (kept, so the app shows them even offline). */
     fun refreshIdentity() {
         if (!store.paired) return
         Thread {
@@ -32,7 +32,6 @@ class AmadeusApp : Application() {
                 val id = api.identity()
                 store.assistantName = id.optString("name", "Amadeus").ifBlank { "Amadeus" }
                 store.avatarSet = id.optString("avatar", "")
-                store.ringtone = id.optJSONObject("voice")?.optString("ringtone", "") ?: ""
                 update()
             }
         }.start()
