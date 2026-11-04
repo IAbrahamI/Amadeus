@@ -609,6 +609,11 @@ phase_mail() {
 printf '%sAmadeus installer%s  (mode: %s%s)\n' "$C_HEAD" "$C_OFF" "$MODE" "${ONLY:+, only: $ONLY}"
 PASSTHRU=(); [[ -n "$ONLY" ]] && PASSTHRU=(--only "$ONLY")
 [[ "$UPDATE" == 1 ]] && phase_update
+# the setup questions and most steps below need Python, so it comes first
+if ! have python3 && [[ "$MODE" != check && -n "$PKG" ]]; then
+  case "$PKG" in pacman) py=python ;; *) py=python3 ;; esac
+  if offer "$py" "the $PKG package"; then pkg_install "$py"; fi
+fi
 phase_setup
 phase_deps
 phase_prereqs
