@@ -52,8 +52,13 @@ const PAGES = {
         <div class="acts"><input type="file" id="skFile" accept=".md"><span class="grow"></span><button class="btn go">Add skill</button></div>${info("skInfo")}</form>`;
   },
   async connectors() {
-    const list = await api("/api/connectors");
+    const [list, ob] = await Promise.all([api("/api/connectors"), api("/api/obsidian")]);
     body().innerHTML = head("Connectors", "What it may use. Anything that changes something always asks you first.") +
+      `<h3>Obsidian</h3>` + (ob.connected
+        ? `${note(`Your to-dos and notes live in the Amadeus folder of your vault: ${esc(ob.vault)}. Every hour a snapshot is saved, so any change can be undone.`)}<div class="acts"><span class="grow"></span><button class="btn" data-act="obsoff">Disconnect</button></div>${info("obsInfo")}`
+        : `${note("Optional. Keeps your to-dos and notes in an Amadeus folder of your Obsidian vault, with an hourly snapshot so any change can be undone. Right now they live in Amadeus' own folder.")}
+           <form class="pform" id="obsForm">${field("Your vault folder", `<input id="obsVault" value="${esc(ob.suggestion)}" placeholder="~/Documents/My Vault" autocomplete="off">`)}<div class="acts"><span class="grow"></span><button class="btn go">Connect</button></div>${info("obsInfo")}</form>`) +
+      `<h3 style="margin-top:22px">What it may use</h3>` +
       rows(list.map((c) => `<div class="row"><span class="k">${c.own ? "yours" : ""}</span><div class="t"><b>${esc(c.own ? c.name : c.id)}</b><span class="wrap">${esc(c.description)}${c.tools.length ? " · " + c.tools.map((t) => esc(t) + (c.approval_tools.includes(t) ? " (asks)" : "")).join(", ") : ""}</span></div>
         <div class="acts">${c.own ? `<button class="btn" data-act="connrm" data-n="${esc(c.name)}">Remove</button>` : ""}${onoff(c.enabled, `data-act="conntoggle" data-id="${esc(c.id)}" data-on="${c.enabled ? 1 : 0}"`)}</div></div>`)) +
       `<h3 style="margin-top:22px">+ Add your own connector</h3>${note('Any <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a> server that runs on this PC. Its tools always ask you first, and what comes back is treated as data.')}
@@ -144,6 +149,12 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "sktoggle") { await post("/api/skills", { name: d.n, active: d.on !== "1" }); PAGES.skills(); }
   if (act === "skrm") { if (!confirm(`Remove your skill "${d.n}"?`)) return; await post("/api/skills/remove", { name: d.n }); PAGES.skills(); }
+  if (act === "obsoff") {
+    if (!confirm("Disconnect Obsidian? Your files stay in the vault. New to-dos and notes go to Amadeus' own folder.")) return;
+    const r = await post("/api/obsidian/disconnect", {});
+    say("obsInfo", r.error ? "That didn't work: " + r.error : "Disconnected. Restarting…");
+    if (!r.error) setTimeout(() => PAGES.connectors(), 5000);
+  }
   if (act === "conntoggle") { await post("/api/connectors", { id: d.id, enabled: d.on !== "1" }); PAGES.connectors(); }
   if (act === "connrm") { if (!confirm(`Remove the connector "${d.n}"?`)) return; await post("/api/connectors/remove", { name: d.n }); PAGES.connectors(); }
   if (act === "pbrm") { if (!confirm("Remove this playbook?")) return; await post("/api/playbooks/remove", { id: d.id }); PAGES.playbooks(); }
@@ -178,6 +189,13 @@ body().addEventListener("submit", async (e) => {
       const r = await post("/api/assistant", { name: $("#asName").value, avatar: set.avatar, ...(own ? { persona_text: $("#asPersonaText").value } : { persona: $("#asPersona").value }) });
       if (r.error) return say("asInfo", "That didn't work: " + r.error);
       restarted();
+    },
+    async obsForm() {
+      say("obsInfo", "Connecting…");
+      const r = await post("/api/obsidian/connect", { vault: $("#obsVault").value });
+      if (r.error) return say("obsInfo", "That didn't work: " + r.error);
+      say("obsInfo", (r.kept.length ? `Connected. These were already in your vault, so yours stayed and the ones in Amadeus' folder weren't copied: ${r.kept.join(", ")}. ` : "Connected. ") + "Restarting…");
+      setTimeout(() => PAGES.connectors(), 5000);
     },
     async voiceAdd() { const v = $("#voiceName").value.trim(); if (!v) return; const r = await post("/api/voice/voices/download", { id: v }); say("voiceInfo", r.error ? "That didn't work: " + r.error : "Downloading… it shows in the list when it's ready."); if (!r.error) setTimeout(PAGES.voice, 800); },
     async skAdd() {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Amadeus installer: everything in one go. The first run asks a few questions (your vault, mail, voice) and keeps the
+# Amadeus installer: everything in one go. The first run asks a few questions (projects, mail, voice) and keeps the
 # answers in ./amadeus.env. Then it sets up Ollama (local LLM), private keys, Presidio (privacy filter), Hindsight
-# (memory), the Obsidian vault, the projects folder with the guard for work runs, voice, the assistant itself (core/deploy/install.sh:
+# (memory), the projects folder with the guard for work runs, voice, the assistant itself (core/deploy/install.sh:
 # services, window, tray) and the Thunderbird bridge.
 #
 # Idempotent: every step checks the current state first and skips what is already done.
@@ -26,7 +26,7 @@
 #   HINDSIGHT_VOLUME       named volume for its data           (default: hindsight-data)
 #   HINDSIGHT_LLM_MODEL    Ollama model Hindsight uses         (default: $OLLAMA_CTX_VARIANT)
 #   HINDSIGHT_WORKER_ID    stable worker id                    (default: amadeus-hindsight)
-#   OBSIDIAN_VAULT         absolute path of your Obsidian vault (unset: Obsidian step is skipped)
+#   OBSIDIAN_VAULT         absolute path of your Obsidian vault (optional; normally connected later under Settings → Connectors)
 #   AMADEUS_PROJECTS       folder for Claude Code projects, outside the vault (default asked: ~/Amadeus/Projects)
 #   AMADEUS_MAIL=1         set up the Thunderbird bridge (mail)
 #   AMADEUS_VOICE=1        set up voice: speech recognition and the wake word (about 1 GB, runs on the CPU)
@@ -56,8 +56,8 @@ AMADEUS_VOICE="${AMADEUS_VOICE:-}"
 VOICE="$HOME/.local/share/amadeus/voice"
 VOSK_MODEL=vosk-model-small-en-us-0.15
 # not set: keep what an earlier install already set up (the vault in Amadeus' config, voice, the mail bridge)
-if [[ -z "$OBSIDIAN_VAULT" ]]; then  # (Amadeus' own default is ~/Documents/Obsidian Vault/Amadeus)
-  OBSIDIAN_VAULT="$(python3 -c 'import json,os,sys; v=json.load(open(sys.argv[1])).get("vault_dir","") if os.path.exists(sys.argv[1]) else ""; v=v or os.path.expanduser("~/Documents/Obsidian Vault/Amadeus"); print(os.path.dirname(v.rstrip("/")) if os.path.isdir(v) else "")' "$HOME/.config/amadeus-core/config.json" 2>/dev/null || true)"
+if [[ -z "$OBSIDIAN_VAULT" ]]; then  # (connected in its config, or an older install's ~/Documents/Obsidian Vault/Amadeus)
+  OBSIDIAN_VAULT="$(python3 -c 'import json,os,sys; v=json.load(open(sys.argv[1])).get("vault_dir","") if os.path.exists(sys.argv[1]) else ""; v=v or os.path.expanduser("~/Documents/Obsidian Vault/Amadeus"); p=os.path.dirname(v.rstrip("/")); print(p if os.path.isdir(os.path.join(p,".obsidian")) else "")' "$HOME/.config/amadeus-core/config.json" 2>/dev/null || true)"
 fi
 [[ -z "$AMADEUS_VOICE" && -x "$VOICE/venv-lite/bin/python" ]] && AMADEUS_VOICE=1
 [[ -z "$AMADEUS_MAIL" && -f "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" ]] && AMADEUS_MAIL=1
@@ -321,11 +321,8 @@ put_file() {
 }
 
 phase_obsidian() {
+  [[ -n "$OBSIDIAN_VAULT" ]] || return 0  # optional: connected under Settings → Connectors
   head_ "Obsidian vault"
-  if [[ -z "$OBSIDIAN_VAULT" ]]; then
-    info "OBSIDIAN_VAULT is not set; skipping. Set it in amadeus.env to enable this step."
-    return
-  fi
   local vault="${OBSIDIAN_VAULT%/}"
   [[ -d "$vault" ]] || { err "vault not found: $vault"; return; }
   [[ -d "$vault/.obsidian" ]] || warn "$vault has no .obsidian folder; is it really an Obsidian vault?"
@@ -387,23 +384,17 @@ phase_setup() {
   [[ "$MODE" == install && -t 0 && "$ASSUME_YES" != 1 ]] || return 0
   [[ "$SETUP" == 1 || ! -f "$SCRIPT_DIR/amadeus.env" ]] || return 0
   head_ "Setup (Enter keeps the suggestion; the answers go into amadeus.env)"
-  # 1. the vault: Obsidian's own list of vaults gives a good suggestion
-  local guess="$OBSIDIAN_VAULT"
-  [[ -z "$guess" && -f "$HOME/.config/obsidian/obsidian.json" ]] && guess="$(python3 -c 'import json,os,sys; v=json.load(open(sys.argv[1])).get("vaults",{}); print(next((x["path"] for x in v.values() if os.path.isdir(x.get("path",""))),""))' "$HOME/.config/obsidian/obsidian.json" 2>/dev/null || true)"
-  info "Your Obsidian vault holds your to-dos, notes and work projects (Amadeus uses its own Amadeus/ folder in it)."
-  local v; v="$(ask "Vault folder (or 'none')" "${guess:-none}")"
-  if [[ "$v" != none && -n "$v" ]]; then v="${v/#\~/$HOME}"; OBSIDIAN_VAULT="$v"; env_set OBSIDIAN_VAULT "$v"; ok "vault: $v"
-  else info "no vault for now: to-dos, notes and work runs stay off until you set one (./install.sh --setup)"; fi
-  # 2. where Claude Code projects live: its own folder, never in the vault
+  # (Obsidian is optional and connected later, under Settings → Connectors)
+  # 1. where Claude Code projects live: its own folder, never in the vault
   local cur; cur="$(python3 -c 'import json,os,sys; print(json.load(open(sys.argv[1])).get("projects_dir","") if os.path.exists(sys.argv[1]) else "")' "$HOME/.config/amadeus-core/config.json" 2>/dev/null || true)"
-  info "Claude Code projects get their own folder, outside your vault, so a work run never sees your notes."
+  info "Claude Code projects get their own folder, so a work run never sees your notes."
   local pr; pr="$(ask "Folder for projects" "${AMADEUS_PROJECTS:-${cur:-$HOME/Amadeus/Projects}}")"
   pr="${pr/#\~/$HOME}"; AMADEUS_PROJECTS="$pr"; env_set AMADEUS_PROJECTS "$pr"; ok "projects: $pr"
-  # 3. mail through Thunderbird
+  # 2. mail through Thunderbird
   local m="n"; have thunderbird && m="y"
   m="$(ask "Read mail through Thunderbird? (y/n)" "$m")"
   [[ "$m" =~ ^[Yy] ]] && AMADEUS_MAIL=1 || AMADEUS_MAIL=0; env_set AMADEUS_MAIL "$AMADEUS_MAIL"
-  # 4. voice
+  # 3. voice
   local s; s="$(ask "Talk to it: speech recognition and wake word, about 1 GB? (y/n)" "y")"
   [[ "$s" =~ ^[Yy] ]] && AMADEUS_VOICE=1 || AMADEUS_VOICE=0; env_set AMADEUS_VOICE "$AMADEUS_VOICE"
 }
@@ -428,7 +419,8 @@ PYC
   mapfile -t out < <(python3 - "$cfg" "$AMADEUS_PROJECTS" <<'PYW'
 import json, os, sys
 c = json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else {}
-v = c.get("vault_dir", os.path.expanduser("~/Documents/Obsidian Vault/Amadeus"))
+older = os.path.expanduser("~/Documents/Obsidian Vault/Amadeus")  # older installs have it there without saying so
+v = c.get("vault_dir") or (older if os.path.isdir(older) else os.path.expanduser("~/.local/share/amadeus/notes"))
 print(os.path.realpath(os.path.expanduser(sys.argv[2] or c.get("projects_dir") or os.path.join(v, "Projects"))))
 print(os.path.dirname(v.rstrip("/")) if os.path.isdir(v) else "")
 PYW

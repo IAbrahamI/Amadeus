@@ -57,7 +57,7 @@ const VIEWS = {
   approvals: { side: 1, title: "Approvals", meta: "", load: () => { apprTab = "pending"; loadApprovals(); } },
   calendar: { title: "Calendar", meta: "", load: () => loadCalendar() },
   mail: { title: "Mail", meta: "Thunderbird", load: () => loadMail() },
-  projects: { title: "Projects", meta: "Vault · Projects/", load: () => loadProjects() },  // Calendar, Mail, Projects: hud-views.js
+  projects: { title: "Projects", meta: "Your projects folder", load: () => loadProjects() },  // Calendar, Mail, Projects: hud-views.js
   memory: { title: "Memory", meta: "Hindsight · local", load: loadMemory },
   settings: { title: "Settings", meta: "", load: loadSettings },
 };

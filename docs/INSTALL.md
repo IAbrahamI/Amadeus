@@ -1,7 +1,7 @@
 # Installing Amadeus
 
 Amadeus runs as a few user services on your own Linux PC. Everything it knows is stored on that PC
-(`~/.local/share/amadeus/`, `~/.config/amadeus-core/` and your Obsidian vault) and never in this repository.
+(`~/.local/share/amadeus/`, `~/.config/amadeus-core/`, and your Obsidian vault if you connect one) and never in this repository.
 
 ## Quick install
 
@@ -14,14 +14,12 @@ git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 amadeus                  # opens it
 ```
 
-The first run asks four things:
+The first run asks three things:
 
-1. **Your Obsidian vault folder.** It suggests the one Obsidian knows about. Amadeus works in its own `Amadeus/`
-   folder there: your to-dos and notes. Say `none` to skip it for now.
-2. **A folder for Claude Code projects,** outside your vault (suggested: `~/Amadeus/Projects`), so a work run never
-   sees your notes. You can change it later on the Projects page.
-3. **Mail through Thunderbird?** Yes if you use Thunderbird; your logins stay there.
-4. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
+1. **A folder for Claude Code projects** (suggested: `~/Amadeus/Projects`), so a work run never sees your notes. You
+   can change it later on the Projects page.
+2. **Mail through Thunderbird?** Yes if you use Thunderbird; your logins stay there.
+3. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
 
 The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
 downloading the local model (about 6.6 GB). Afterwards it lists what's left to do by hand: installing the
@@ -46,7 +44,7 @@ opens as a normal window instead of sitting in the corner (on X11 it is still pl
 | memory and the privacy filter | `docker` | `docker.io` | `moby-engine` |
 | the assistant, its window and tray (the installer builds the app, and fetches Rust for that into the repo folder) | `base-devel gtk3 webkit2gtk-4.1 libappindicator-gtk3 pkgconf` | `build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev pkg-config` | `gcc gtk3-devel webkit2gtk4.1-devel libappindicator-gtk3-devel pkgconf` |
 | sound and voice | `gst-plugins-good ffmpeg` | `gstreamer1.0-plugins-good ffmpeg` | `gstreamer1-plugins-good ffmpeg-free` |
-| the installer, vault snapshots | `curl zstd` | `curl zstd` | `curl zstd` |
+| the installer, snapshots if you connect Obsidian | `curl zstd` | `curl zstd` | `curl zstd` |
 
 Enable Ollama and Docker (`sudo systemctl enable --now ollama docker`) and add yourself to the `docker` group.
 An NVIDIA GPU with ~12 GB is recommended; without one the model runs slowly on the CPU.
@@ -67,8 +65,9 @@ It sets up, in this order:
    on an internal Docker network without internet access. Amadeus starts them when it needs them.
 4. **Memory.** A Hindsight container that only answers requests carrying your key, with its data in the Docker
    volume `hindsight-data`. The first start downloads embedding models and can take a few minutes.
-5. **The Obsidian folder** (only with `OBSIDIAN_VAULT` set). Creates `Amadeus/` in your vault (`ToDo.md` and
-   `Notes.md` are yours) and an hourly snapshot of the vault.
+5. **Obsidian is not part of the install.** Your to-dos and notes start in `~/.local/share/amadeus/notes/`. To keep
+   them in a vault, use **Settings → Connectors → Obsidian**: it copies them into an `Amadeus/` folder there (nothing
+   of yours is overwritten) and sets up an hourly snapshot of the vault. Scripted installs can set `OBSIDIAN_VAULT`.
 6. **The projects folder and the guard for work runs:** writes the guard for the folder you chose (see
    [work runs](#7-optional-work-runs-with-claude-code)).
 7. **Voice** (if you said yes): speech recognition and the wake word, see [Optional: voice](#5-optional-voice).
@@ -250,4 +249,4 @@ docker rm -f hindsight presidio-analyzer presidio-anonymizer
 ```
 
 Then remove the Amadeus Bridge add-on in Thunderbird (Add-ons and Themes). That removes the programs and keeps your data. The desktop app and Rust stay in `.tauri-build/` until you delete the repo folder. Deleting the data (`~/.local/share/amadeus/`, the
-`hindsight-data` volume and the vault's `Amadeus/` folder) is permanent, so back it up first.
+`hindsight-data` volume and, if you connected one, the vault's `Amadeus/` folder) is permanent, so back it up first.

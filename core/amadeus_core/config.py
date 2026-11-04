@@ -12,7 +12,7 @@ DEFAULTS = {
     "data_dir": os.path.join(HOME, ".local", "share", "amadeus", "core"),
     "ollama_url": "http://127.0.0.1:11434",
     "default_model": "qwen3.5-9b-48k",
-    "vault_dir": os.path.join(HOME, "Documents", "Obsidian Vault", "Amadeus"),
+    "vault_dir": os.path.join(HOME, ".local", "share", "amadeus", "notes"),  # your to-dos and notes; connecting Obsidian (Settings) moves them to its vault
     "projects_dir": "",           # where Claude Code projects live (you choose it); "" = the vault's Projects/ (older installs)
     "hindsight_url": "http://127.0.0.1:8888",
     "hindsight_bank": "amadeus-private",
@@ -38,9 +38,12 @@ def projects_dir(cfg):
 
 
 def load():
-    cfg = dict(DEFAULTS)
-    if os.path.exists(CONFIG_PATH):
-        cfg.update(json.load(open(CONFIG_PATH)))
+    cfg, own = dict(DEFAULTS), json.load(open(CONFIG_PATH)) if os.path.exists(CONFIG_PATH) else {}
+    cfg.update(own)
+    older = os.path.join(HOME, "Documents", "Obsidian Vault", "Amadeus")  # where older installs have them without saying so
+    if "vault_dir" not in own and os.path.isdir(older):
+        cfg["vault_dir"] = older
+    os.makedirs(cfg["vault_dir"], exist_ok=True)
     os.makedirs(cfg["data_dir"], exist_ok=True)
     os.chmod(cfg["data_dir"], 0o700)
     token_path = os.path.join(cfg["data_dir"], "token")

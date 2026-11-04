@@ -205,6 +205,9 @@ class Handler(BaseHTTPRequestHandler):
                         "ON c.id=a.conversation_id " + ("" if status == "all" else "WHERE a.status=? ") +
                         "ORDER BY a.created DESC LIMIT 200", () if status == "all" else (status,))
             return self._json(rows)
+        if p == "/api/obsidian":  # Settings → Connectors: is a vault connected, and which one Obsidian knows about
+            from . import obsidian
+            return self._json(obsidian.status())
         if p == "/api/connectors":
             from . import mcp
             on = tools.enabled_connectors()
@@ -563,6 +566,14 @@ class Handler(BaseHTTPRequestHandler):
             db.q("UPDATE events SET seen=1 WHERE id=?" if m.group(1) != "all" else "UPDATE events SET seen=1 WHERE seen=0",
                  (m.group(1),) if m.group(1) != "all" else ())
             return self._json({"ok": True})
+        if p in ("/api/obsidian/connect", "/api/obsidian/disconnect"):
+            from . import obsidian
+            if self._tailnet():
+                return self._json({"error": "Only on the PC."}, 403)
+            try:
+                return self._json(obsidian.connect(b.get("vault", "")) if p.endswith("/connect") else obsidian.disconnect())
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
         if p == "/api/connectors/add":  # your own connector: an MCP server (a local command)
             from . import mcp
             try:

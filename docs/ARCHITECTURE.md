@@ -30,7 +30,7 @@ flowchart TB
       hindsight["Hindsight<br/>long-term memory"]
       presidio["Presidio<br/>privacy filter<br/>(Docker, no internet)"]
       tb["Thunderbird<br/>+ Amadeus Bridge add-on"]
-      vault["Obsidian vault<br/>Amadeus/ folder"]
+      vault["To-dos and notes<br/>(optional: Obsidian vault)"]
     end
 
     cc["Claude Code<br/>one run per approved task"]
@@ -160,7 +160,7 @@ write only in that folder and keeps it out of your vault, Amadeus's data and you
 | Memory | Docker volume `hindsight-data` | never |
 | Keys, canary markers, deny-list | `~/.local/share/amadeus/secrets/` (mode 700) | never |
 | Your settings | `~/.config/amadeus-core/config.json` | never |
-| Notes, to-dos | your Obsidian vault, `Amadeus/` folder | never |
+| Notes, to-dos | `~/.local/share/amadeus/notes/`, or your Obsidian vault's `Amadeus/` folder once connected | never |
 | Work projects | the projects folder you chose (e.g. `~/Amadeus/Projects`) | only the approved text of each run |
 | Your own skills, playbooks and connectors | `~/.local/share/amadeus/core/skills/`, the database | never |
 | Your persona, avatar sprites | `~/.local/share/amadeus/core/personas/`, `…/core/avatar/` | never |

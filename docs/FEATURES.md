@@ -12,7 +12,7 @@
 | **Your day** | Click the clock on the dashboard: the 07:00 morning brief (to-dos, today's calendar, work runs) and the 21:00 evening summary of your mail. "Summarize so far" makes one on the spot. |
 | **Calendar** | Month view and day agenda, repeats, alerts that call you before an event. One step to block whole days ("from the 14th to the 17th X, nothing else") that clears everything else on those days, with repeating events skipped only there. Deleting a single day of a weekly event never deletes the series. |
 | **Mail** | Through Thunderbird: overviews of everything open, a whole mail with its links, verification codes, search, mark read, flag, move and file, folders, trash and junk, forward, attachments, contacts, drafts in your style, sending. New mail is checked the moment it arrives. Only urgent mail and mail from people you marked as important call you right away. |
-| **To-dos and notes** | Your `ToDo.md` and `Notes.md` in the vault's `Amadeus/` folder. It changes them only when you ask, with your approval. |
+| **To-dos and notes** | Your `ToDo.md` and `Notes.md`, in Amadeus' own folder or, once you connect Obsidian (Settings → Connectors), in your vault's `Amadeus/` folder. It changes them only when you ask, with your approval. |
 | **Reminders** | One-off and repeating (`daily`, `weekdays`, `weekly mon`, …). |
 | **Learning** | 👍 / 👎 under every answer (with an optional note), plus approved and rejected actions, are the signal. Every night (03:00) the local model turns the day's mistakes into at most a few short lessons; each lesson counts how often it helped or hurt, and lessons that hurt more than they help are dropped. New lessons are kept only if a test on your own past requests (and a few basics) doesn't get worse. See and remove them under Settings → Memory, or "Learn from today now". |
 | **Memory** | Long-term memory in Hindsight, a profile of you (including how you communicate), and what it learned about how you phrase requests. You can read and edit all of it under Settings → Memory. |
@@ -45,7 +45,7 @@ Put any of these into `~/.config/amadeus-core/config.json`, then run `systemctl 
 | Key | Default | What |
 |---|---|---|
 | `default_model` | `qwen3.5-9b-48k` | Any Ollama model |
-| `vault_dir` | `~/Documents/Obsidian Vault/Amadeus` | Set by `install.sh` from `OBSIDIAN_VAULT` |
+| `vault_dir` | `~/.local/share/amadeus/notes` | Where your to-dos and notes live. Connecting Obsidian sets it to the `Amadeus/` folder of your vault |
 | `assistant_name` | `Amadeus` | Its name, everywhere (also the default wake word) |
 | `persona` | `default` | A persona file (see [Make it yours](INSTALL.md#make-it-yours)), or `""` for none |
 | `avatar` | empty | An animated sprite set; empty = the default chibi agent |

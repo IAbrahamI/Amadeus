@@ -239,7 +239,7 @@ def project_file(name, rel):
     if not full.startswith(path + os.sep) or not os.path.isfile(full):
         raise ValueError("File not found")
     if os.path.getsize(full) > 2_000_000:
-        raise ValueError("Too large to show here; open it in Obsidian.")
+        raise ValueError("Too large to show here; open it in an editor.")
     data = open(full, "rb").read()
     try:
         return {"path": rel, "text": data.decode("utf-8")}

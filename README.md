@@ -29,7 +29,7 @@ You decide who your assistant is: its name, its personality, and whether it has 
   calls you; the rest goes into a short evening summary.
 - **Memory.** A long-term memory (Hindsight) and a profile of how you work and communicate, which it adapts to.
 - **Work runs.** "Send this to work": the text is anonymised, you approve exactly what leaves, and one
-  Claude Code run works on it in a project folder of your Obsidian vault. The result comes back into the chat.
+  Claude Code run works on it in a project folder of its own. The result comes back into the chat.
 - **Phone.** An Android app reaches it over your private Tailscale network, rings for its calls and syncs with the PC.
 - **Approvals for everything.** Every action that changes something becomes a card you approve, reject, or adjust
   ("make it 16:00 instead", and it redrafts the same action for your OK).
@@ -63,7 +63,7 @@ flowchart LR
     core --> llm["Ollama<br/>local model"]
     core --> mem["Hindsight<br/>memory"]
     core --> tb["Thunderbird<br/>mail"]
-    core --> vault["Obsidian vault<br/>notes · to-dos"]
+    core --> vault["Notes · to-dos<br/>(optional: Obsidian)"]
     core -- "send to work" --> filter["Privacy filter<br/>Presidio"]
     filter --> ok{"your<br/>approval"}
     ok --> cc["Claude Code<br/>one run per task"]
@@ -96,7 +96,7 @@ The exact packages for Arch, Debian/Ubuntu and Fedora are in [docs/INSTALL.md](d
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 ./install.sh --check        # what's there and what's missing (changes nothing)
-./install.sh                # asks for your vault, a projects folder, mail and voice, then sets everything up
+./install.sh                # asks for a projects folder, mail and voice, then sets everything up
 amadeus                     # open it; later, amadeus update gets the newest version
 ```
 
@@ -135,7 +135,7 @@ More, including the limits of the privacy filter: [docs/ARCHITECTURE.md](docs/AR
 |---|---|
 | `core/` | The assistant: server, web UI, desktop window and tray, voice, Thunderbird bridge, privacy filter, skills, personas |
 | `android/` | The phone app |
-| `obsidian/` | The hourly vault snapshots and the README for Amadeus's folder in your vault |
+| `obsidian/` | The optional Obsidian connector: hourly vault snapshots and the README for Amadeus's folder in your vault |
 | `install.sh` | Sets up the local services |
 | `docs/` | [Install guide](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [features and settings](docs/FEATURES.md) |
 

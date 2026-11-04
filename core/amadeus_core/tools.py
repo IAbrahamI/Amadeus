@@ -1429,7 +1429,7 @@ TOOLS = [
 BY_NAME = {t["name"]: t for t in TOOLS}
 CONNECTORS = {
     "memory": "Long-term private memory (Hindsight)",
-    "notes": "Notes in your vault's Amadeus folder",
+    "notes": "Your to-dos and notes (in Amadeus' own folder, or your Obsidian vault once connected)",
     "reminders": "Reminders and schedules",
     "calendar": "Your calendar (shared with the assistant; it asks before changing it)",
     "mail": "Mail through Thunderbird: read, search, organize, drafts; every change and every send only after your approval",
