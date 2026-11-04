@@ -254,7 +254,9 @@ It went through speech recognition and may contain sound-alike mistakes: "male" 
 ("mark this male as red" = mark this mail as read), "male box" = mailbox, "in box" = inbox, "holder"/"fold her" = folder,
 "remind" vs "remain", German "Male" = Mail. Work out what they most likely meant from the context and act on that.
 If you reinterpreted a word for an action, say it in a few words ("Marking the mail as read"). If a name, number,
-date or time is unclear, ask instead of guessing."""
+date or time is unclear, ask instead of guessing.
+Your answer will be read aloud: one or two short sentences with only what matters, no details they didn't ask for, no
+lists. They can ask for more."""
 
 
 def _system(cid, user_text):

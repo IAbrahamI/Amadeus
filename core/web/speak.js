@@ -1,7 +1,7 @@
 // Reading answers aloud while they are written (the dashboard and the mini core): every finished sentence goes to
 // the voice right away and the next one is prepared while the current one plays, with a short breath in between.
 // The server turns each piece into what a person would say (speech.py). Code, tables and long lists stay in the chat,
-// and after about 600 characters it says the rest is in the chat. The text can type in, in step with the voice.
+// and after a couple of short sentences (about 250 characters) it says the rest is in the chat. The text can type in, in step with the voice.
 // Hooks: busy() (the answer is still coming), talk() (a voice pulse), speaking(on), idle(), failed(error), strip(text).
 window.makeAloud = (h) => {
   const A = {
@@ -31,17 +31,17 @@ window.makeAloud = (h) => {
     line(l) {
       if (/^\s*```/.test(l)) { this.inCode = !this.inCode; if (!this.saidCode) { this.saidCode = true; this.say("The code is in the chat.", 450); } return; }
       if (this.inCode || /^\s*\|/.test(l) || !l.trim()) return;
-      if (/^\s*(?:[-*+•]|\d+[.)])\s+/.test(l)) {  // a list: the first four items, then a pointer to the chat
-        if (++this.items === 5) return this.say("And more, see the chat.", 450);
-        if (this.items > 5) return;
+      if (/^\s*(?:[-*+•]|\d+[.)])\s+/.test(l)) {  // a list: the first three items, then a pointer to the chat
+        if (++this.items === 4) return this.say("And more, see the chat.", 450);
+        if (this.items > 4) return;
       } else this.items = 0;
       this.say(l, 550);
     },
     // one piece to speak; it shows in the chat up to here while it plays, then a short pause (gap, ms) before the next
     say(piece, gap) {
       if (!piece.trim() || this.cut) return;
+      if (this.spoken && this.spoken + piece.length > 250) { this.cut = true; piece = "The rest is in the chat."; }  // the first piece always goes
       this.spoken += piece.length;
-      if (this.spoken > 650) { this.cut = true; piece = "The rest is in the chat."; }
       const upto = this.cut ? Infinity : this.taken;
       const audio = fetch("/api/voice/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: piece, speech: true, limit: 2000 }) })
         .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText); return URL.createObjectURL(await r.blob()); });

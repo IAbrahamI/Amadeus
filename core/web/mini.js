@@ -55,9 +55,24 @@ function zones() {
 $("#mini").addEventListener("mouseenter", () => setTimeout(zones, 30));
 $("#mini").addEventListener("mouseleave", () => setTimeout(zones, 30));
 new MutationObserver(() => setTimeout(zones, 400)).observe($("#bubbles"), { childList: true, subtree: true, attributes: true });
-// the window only has room for a bubble while there is one, so the core can go right up to the edge of the screen
-new MutationObserver(() => native($("#bubbles").children.length ? "tall" : "compact")).observe($("#bubbles"), { childList: true });
-addEventListener("resize", () => { shape(); zones(); });
+// The window only has room for a bubble around a conversation, so the core can go right up to the edge of the screen.
+// It stays tall from listening until her answer has faded, so nothing changes size while she talks.
+let tall = false, tallOff = 0, swapT = 0;
+const canResize = innerHeight < 470;  // (without KDE's window scripts the window just stays tall)
+const endSwap = () => { clearTimeout(swapT); requestAnimationFrame(() => requestAnimationFrame(() => $("#mini").classList.remove("swap"))); };
+function setTall(on) {
+  tall = on; tallOff = 0;
+  $("#mini").classList.add("swap");
+  setTimeout(() => native(on ? "tall" : "compact"), 90);
+  swapT = setTimeout(endSwap, 600);
+}
+setInterval(() => {
+  if (!canResize) return;
+  const want = $("#bubbles").children.length || busy || ringing || listenB;
+  if (want) { tallOff = 0; if (!tall) setTall(true); }
+  else if (tall) { tallOff = tallOff || Date.now(); if (Date.now() - tallOff > 1500) setTall(false); }
+}, 150);
+addEventListener("resize", () => { shape(); zones(); endSwap(); });
 $("#cls").onclick = () => { stopAll(); native("close"); };
 
 // ---------- bubbles: only what is being said right now ----------

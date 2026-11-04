@@ -4,7 +4,7 @@ import unittest
 from unittest import mock
 
 from . import HOME  # noqa: F401
-from amadeus_core import voices
+from amadeus_core import db, tools, voices
 
 
 class Reply:
@@ -30,3 +30,18 @@ class VoiceLines(unittest.TestCase):
     def test_no_voice_no_line(self):
         with mock.patch.object(voices, "selected", return_value=""):
             self.assertIsNone(voices.line("greet"))
+
+
+class ReminderApproval(unittest.TestCase):
+    """Approving a removal says what's being removed, not an id."""
+
+    def test_says_the_reminder(self):
+        out = tools.create_reminder("Call the dentist", "tomorrow 09:00")
+        rid = out.rsplit("[id ", 1)[1].rstrip("].")
+        text = tools._delete_reminder_summary({"reminder_id": rid})
+        self.assertIn("Call the dentist", text)
+        self.assertNotIn(rid, text)
+        db.q("DELETE FROM reminders WHERE id=?", (rid,))
+
+    def test_gone(self):
+        self.assertIn("already gone", tools._delete_reminder_summary({"reminder_id": "nope"}))

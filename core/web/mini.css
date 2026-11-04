@@ -18,6 +18,8 @@ body.minibody::before, body.minibody::after { display: none; }
   background: radial-gradient(circle closest-side at 50% 150px, rgba(var(--vd),1) 0 128px, rgba(var(--vd),0) 100%); }
 .mini.ringing .disc::before { background: radial-gradient(circle closest-side at 50% 150px, rgba(var(--vd),1) 0 128px, rgba(var(--w),.25) 92%, rgba(var(--w),0) 100%); }
 .mini.holding .disc::before { background: radial-gradient(circle closest-side at 50% 150px, rgba(var(--vd),1) 0 128px, rgba(var(--a),.28) 92%, rgba(var(--a),0) 100%); }
+/* the window changes size for a bubble: the core fades for that moment, so it doesn't jump */
+.disc, .ctl { transition: opacity .09s; } .mini.swap .disc { opacity: 0; }
 .corewrap { position: absolute; inset: 0; }
 .corewrap .core-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* the two buttons, only on hover, below the disc (never over the core) */

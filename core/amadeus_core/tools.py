@@ -221,6 +221,15 @@ def create_reminder(text, when):
     return f"Reminder set: '{text}' ({norm}). [id {rid}]"
 
 
+def _delete_reminder_summary(a):
+    """What the reminder says and when, so you know what you're removing (not its id)."""
+    r = db.q("SELECT text,schedule,next_run FROM reminders WHERE id=?", (a.get("reminder_id"),), one=True)
+    if not r:
+        return "Remove a reminder (it's already gone)"
+    when = f"{datetime.datetime.fromtimestamp(r['next_run']):%a %d %b %H:%M}" if r["next_run"] else r["schedule"]
+    return f"Remove reminder: **{r['text']}** ({when})"
+
+
 def delete_reminder(reminder_id):
     db.q("UPDATE reminders SET active=0 WHERE id=?", (reminder_id,))
     return "Reminder removed."
@@ -1270,7 +1279,7 @@ TOOLS = [
       "'weekly mon HH:MM'.", {"text": S, "when": S}, ["text", "when"], create_reminder, "reminders", True,
       lambda a: f"Remind you: **{a.get('text')}** — {parse_schedule(a.get('when', ''))[0]}"),
     T("delete_reminder", "Remove a reminder by id.", {"reminder_id": S}, ["reminder_id"], delete_reminder, "reminders",
-      True, lambda a: f"Remove reminder {a.get('reminder_id')}"),
+      True, _delete_reminder_summary),
     T("calendar_list", "List calendar events between two dates ('YYYY-MM-DD'; end_date optional = same day). Use it before "
       "planning anything and to check for conflicts.", {"start_date": S, "end_date": S}, ["start_date"], calendar_list, "calendar"),
     T("calendar_add", "Add ONE event to the user's calendar. start/end: 'YYYY-MM-DD HH:MM'. All-day or several days "
