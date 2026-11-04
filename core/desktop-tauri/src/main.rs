@@ -243,10 +243,14 @@ workspace.windowList().forEach(watch);"#
     if fs::write(&file, script).is_err() {
         return;
     }
+    // KWin doesn't run a new script under a name it has just unloaded, so each start of the app has its own name
+    let names = data_dir().join("place-bubble.name");
     let cmd = format!(
-        "qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript amadeus-bubble >/dev/null 2>&1; sleep 0.5; \
-         id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{}' amadeus-bubble) && \
+        "old=$(cat '{0}' 2>/dev/null); [ -n \"$old\" ] && qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \"$old\" >/dev/null 2>&1; \
+         n=amadeus-bubble-$$; echo $n > '{0}'; \
+         id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{1}' $n) && \
          qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null",
+        names.display(),
         file.display()
     );
     let _ = std::process::Command::new("sh").arg("-c").arg(cmd).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
