@@ -233,25 +233,41 @@ function place() {{
   const y = up ? g.y - {BUBBLE_H} : g.y + g.height, h = up ? {BUBBLE_H} : {BUBBLE_H} + 6, f = b.frameGeometry;
   if (Math.abs(f.x - g.x) > 1 || Math.abs(f.y - y) > 1 || Math.abs(f.height - h) > 1) b.frameGeometry = {{ x: g.x, y: y, width: g.width, height: h }};
 }}
-function watch(w) {{
-  if (w.resourceClass != "amadeus-call") return;
-  w.frameGeometryChanged.connect(place); // (a new window has no title yet, so all of ours)
-  w.captionChanged.connect(place);
-  place();
+// a new window has no class or title yet when KWin announces it, so ours are looked for a few times a second
+const seen = {{}};
+function scan() {{
+  for (const w of workspace.windowList()) if (w.resourceClass == "amadeus-call" && !seen[w.internalId]) {{
+    seen[w.internalId] = true;
+    low = null; // a new window: tell the app again where it is
+    w.frameGeometryChanged.connect(place);
+    w.captionChanged.connect(place);
+    place();
+  }}
 }}
-workspace.windowAdded.connect(watch);
-workspace.windowList().forEach(watch);"#
+const timer = new QTimer();
+timer.interval = 400;
+timer.timeout.connect(scan);
+timer.start();
+scan();"#
     );
     if fs::write(&file, script).is_err() {
         return;
     }
-    // KWin doesn't run a new script under a name it has just unloaded, so each start of the app has its own name
+    // It stays loaded in KWin across restarts of the app (KWin doesn't reliably run a script loaded right after unloading
+    // one), and its name changes only when the script itself does, after an update.
     let names = data_dir().join("place-bubble.name");
+    let n = format!("amadeus-bubble-{}", {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        fs::read_to_string(&file).unwrap_or_default().hash(&mut h);
+        h.finish()
+    });
     let cmd = format!(
-        "old=$(cat '{0}' 2>/dev/null); [ -n \"$old\" ] && qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \"$old\" >/dev/null 2>&1; sleep 1; \
-         n=amadeus-bubble-$$; echo $n > '{0}'; \
-         id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{1}' $n) && \
-         qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null",
+        "n={n}; [ \"$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded $n)\" = true ] || {{ \
+           id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{1}' $n) && \
+           qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null; }}; \
+         old=$(cat '{0}' 2>/dev/null); echo $n > '{0}'; \
+         [ -n \"$old\" ] && [ \"$old\" != $n ] && qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \"$old\" >/dev/null 2>&1",
         names.display(),
         file.display()
     );
