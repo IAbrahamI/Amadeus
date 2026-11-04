@@ -113,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if u.path in ("/", "/m"):
                 return self._static("/call.html")
-        elif not self._desktop() and (u.path in ("/", "/index.html", "/call.html", "/mini.html") or "token" in qs):
+        elif not self._desktop() and (u.path in ("/", "/index.html", "/call.html", "/mini.html", "/bubble.html") or "token" in qs):
             return self._json({"error": "Amadeus only opens in its desktop window: use the tray icon or the Amadeus app."}, 403)
         if qs.get("token", [""])[0] == CFG["token"]:
             self.send_response(302)

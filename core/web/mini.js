@@ -48,31 +48,25 @@ addEventListener("mouseup", () => {
 $("#corewrap").addEventListener("mousemove", (e) => { $("#corewrap").style.cursor = onCore(e) ? "pointer" : ""; });
 // tell the window where the buttons are, so a press there isn't taken as moving the window
 function zones() {
-  const z = [...document.querySelectorAll(".bubble.show, .mini:hover .ctl")].map((e) => {
+  const z = [...document.querySelectorAll(".ctl" + (SEPARATE ? "" : ", .bubble.show"))].map((e) => {
     const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); });
   native("zones:" + JSON.stringify(z));
 }
-$("#mini").addEventListener("mouseenter", () => setTimeout(zones, 30));
-$("#mini").addEventListener("mouseleave", () => setTimeout(zones, 30));
 new MutationObserver(() => setTimeout(zones, 400)).observe($("#bubbles"), { childList: true, subtree: true, attributes: true });
-// The window only has room for a bubble around a conversation, so the core can go right up to the edge of the screen.
-// It stays tall from listening until her answer has faded, so nothing changes size while she talks.
-let tall = false, tallOff = 0, swapT = 0;
-const canResize = innerHeight < 470;  // (without KDE's window scripts the window just stays tall)
-const endSwap = () => { clearTimeout(swapT); requestAnimationFrame(() => requestAnimationFrame(() => $("#mini").classList.remove("swap"))); };
-function setTall(on) {
-  tall = on; tallOff = 0;
-  $("#mini").classList.add("swap");
-  setTimeout(() => native(on ? "tall" : "compact"), 90);
-  swapT = setTimeout(endSwap, 600);
+// Her bubble is its own window, so the core never moves or resizes for it (bubble.html). What's in #bubbles here is
+// copied there as it changes, and a click there presses the same button here. Without KDE's window scripts it stays
+// in this window, which is then taller.
+const SEPARATE = innerHeight < 470;
+if (SEPARATE) {
+  document.body.classList.add("separate");
+  let sent = "";
+  const copy = () => { const h = $("#bubbles").innerHTML; if (h !== sent) { sent = h; native("bubble:" + h); } };
+  new MutationObserver(copy).observe($("#bubbles"), { childList: true, subtree: true, attributes: true, characterData: true });
+  window.amadeusBubbleReady = () => { sent = null; copy(); };
+  window.amadeusBubbleClick = (a) => { const b = $(`#bubbles [data-a="${a}"]`); if (b) b.click(); };
 }
-setInterval(() => {
-  if (!canResize) return;
-  const want = $("#bubbles").children.length || busy || ringing || listenB;
-  if (want) { tallOff = 0; if (!tall) setTall(true); }
-  else if (tall) { tallOff = tallOff || Date.now(); if (Date.now() - tallOff > 1500) setTall(false); }
-}, 150);
-addEventListener("resize", () => { shape(); zones(); endSwap(); });
+addEventListener("resize", () => { shape(); zones(); });
+setTimeout(zones, 300);
 $("#cls").onclick = () => { stopAll(); native("close"); };
 
 // ---------- bubbles: only what is being said right now ----------
@@ -80,7 +74,7 @@ let shapeT = 0;
 function shape() {  // tell the window where something is drawn, so clicks elsewhere go to the desktop below
   clearTimeout(shapeT);
   shapeT = setTimeout(() => {
-    const rects = [$("#disc"), $("#ctl"), ...document.querySelectorAll(".bubble.show")].map((e) => { const r = e.getBoundingClientRect(); return [r.x - 4, r.y - 14, r.width + 8, r.height + 28].map(Math.round); });
+    const rects = [$("#disc"), $("#ctl"), ...(SEPARATE ? [] : document.querySelectorAll(".bubble.show"))].map((e) => { const r = e.getBoundingClientRect(); return [r.x - 4, r.y - 14, r.width + 8, r.height + 28].map(Math.round); });
     native("shape:" + JSON.stringify(rects));
   }, 60);
 }
@@ -103,8 +97,7 @@ const VM = { always: ["ON", "Reads every answer aloud"], voice: ["SPOKEN", "Spea
 let speakMode = "always", hasVoice = true;
 function setVoiceTag() {
   const t = $("#vTag");
-  t.classList.toggle("on", hasVoice && speakMode === "always"); t.classList.toggle("half", hasVoice && speakMode === "voice"); t.classList.toggle("warn", !hasVoice);
-  $("#vTagT").textContent = hasVoice ? VM[speakMode][0] : "NONE";
+  t.classList.toggle("voice", hasVoice && speakMode === "always"); t.classList.toggle("off", !hasVoice || speakMode === "off");
   t.title = hasVoice ? `Spoken answers: ${VM[speakMode][1]} (click to change)` : "No voice installed: pick one under Settings → Voice";
 }
 api("/api/voice/replies?for=mini").then((d) => { speakMode = VM[d.mode] ? d.mode : "always"; hasVoice = !!d.voice; setVoiceTag(); }).catch(setVoiceTag);

@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Amadeus' own pages, served by the local core, may send messages to their window",
-  "windows": ["mini", "dash"],
+  "windows": ["mini", "bubble", "dash"],
   "remote": { "urls": ["http://127.0.0.1:*/*"] },
   "permissions": ["core:default", "allow-native"]
 }

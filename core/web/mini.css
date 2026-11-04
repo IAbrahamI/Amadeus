@@ -1,10 +1,9 @@
 /* The mini core (mini.html): only the core is solid, a dark round disc with the sphere; everything around it is
-   see-through (clicks there reach the desktop). Click the sphere: the dashboard. Hold it: she listens. The outer
-   edge of the disc moves the window. On hover a small pill below it has the VOICE tag and close. Her speech bubble
-   sits above the core, never over it. The window fits the core (300 x 340), so you can drag it right up to the edge of
-   the screen. For a bubble it grows upward (300 x 480), or downward near the top of the screen (300 x 481: the bubble
-   goes below the pill). Without KDE's window scripts it just stays 300 x 480. Colours, fonts and the VOICE tag come from
-   hud.css and themes.js. */
+   see-through (clicks there reach the desktop). Click the sphere: the dashboard. Hold it: she listens. The outer edge
+   of the disc moves the window. A small pill below it has the mic and close, and only shows while you hover over it.
+   The window fits just the core (300 x 340), so it goes right up to the edge of the screen. Her speech bubble is its own
+   window above the core, or below near the top of the screen (bubble.html). Without KDE's window scripts it stays in
+   this window, which is then 300 x 480. Colours and fonts come from hud.css and themes.js. */
 :root { --top: 10px; }
 @media (height: 480px) { :root { --top: 150px; } }
 html, body.minibody { background: transparent !important; overflow: hidden; height: 100%; margin: 0; }
@@ -13,22 +12,20 @@ body.minibody::before, body.minibody::after { display: none; }
 .mini.closed { transform: scale(.2); opacity: 0; pointer-events: none; }
 /* the core's background: solid across the whole core (the sphere and its rings), then fading out to nothing before
    the edge of the window, so no box edge shows */
-.disc { position: absolute; left: 10px; top: var(--top); width: 280px; height: 280px; cursor: move; }
+.disc { position: absolute; left: 10px; top: var(--top); width: 280px; height: 280px; }
 .disc::before { content: ""; position: absolute; left: -10px; right: -10px; top: -10px; bottom: -40px; pointer-events: none;
   background: radial-gradient(circle closest-side at 50% 150px, rgba(var(--vd),1) 0 128px, rgba(var(--vd),0) 100%); }
 .mini.ringing .disc::before { background: radial-gradient(circle closest-side at 50% 150px, rgba(var(--vd),1) 0 128px, rgba(var(--w),.25) 92%, rgba(var(--w),0) 100%); }
 .mini.holding .disc::before { background: radial-gradient(circle closest-side at 50% 150px, rgba(var(--vd),1) 0 128px, rgba(var(--a),.28) 92%, rgba(var(--a),0) 100%); }
-/* the window changes size for a bubble: the core fades for that moment, so it doesn't jump */
-.disc, .ctl { transition: opacity .09s; } .mini.swap .disc { opacity: 0; }
 .corewrap { position: absolute; inset: 0; }
 .corewrap .core-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
-/* the two buttons, only on hover, below the disc (never over the core) */
+/* the two buttons, below the disc: only while you hover over them */
 .ctl { position: absolute; left: 50%; top: calc(var(--top) + 288px); transform: translate(-50%, -4px); display: flex; align-items: center; gap: 4px; padding: 4px 5px;
-  background: rgba(var(--vd),.94); border: 1px solid rgba(var(--a),.25); border-radius: 14px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
-.mini:hover .ctl { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
-.ctl .vtag { height: 20px; padding: 0 7px 0 8px; font-size: 10px; letter-spacing: .2em; border-radius: 10px; }
+  background: rgba(var(--vd),.94); border: 1px solid rgba(var(--a),.25); border-radius: 14px; opacity: 0; transition: opacity .2s, transform .2s; }
+.ctl:hover { opacity: 1; transform: translate(-50%, 0); }
 .ib { width: 24px; height: 22px; display: grid; place-items: center; color: var(--dim); border-radius: 10px; }
 .ib:hover { color: var(--ink); background: var(--cyan); }
+#vTag.voice { color: var(--cyan); } #vTag.speaking { color: var(--ink); background: var(--cyan); } #vTag .slash { display: none; } #vTag.off .slash { display: block; }
 .ib svg { display: block; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 
 /* speech bubbles at the top of the disc: only what is being said right now, then they fade */
@@ -42,10 +39,16 @@ body.minibody::before, body.minibody::after { display: none; }
   border-right: 1.5px solid rgba(var(--a),.75); border-bottom: 1.5px solid rgba(var(--a),.75); transform: rotate(45deg); border-bottom-right-radius: 3px; }
 .bubble .who { display: block; font: 600 9px var(--display); letter-spacing: .26em; color: var(--cyan); margin-bottom: 2px; text-transform: uppercase; }
 .bubble .tx { max-height: 6em; overflow: hidden; overflow-wrap: anywhere; }
-@media (height: 481px) {
-  .bubbles { bottom: auto; top: 334px; }
-  .bubble::after { bottom: auto; top: -8px; transform: rotate(225deg); }
+/* the bubble in its own window; it fades in when something is said, and points at the core below or above it */
+.bubblebody .bubbles { left: 10px; right: 10px; bottom: 4px; opacity: 0; transition: opacity .18s; }
+.bubblebody .bubbles.in { opacity: 1; }
+.bubblebody .bubble { opacity: 1; transform: none; }
+@media (min-height: 153px) {
+  .bubblebody .bubbles { bottom: auto; top: 8px; }
+  .bubblebody .bubble::after { bottom: auto; top: -8px; transform: rotate(225deg); }
 }
+/* in the mini core it's only the source for that window */
+.separate #bubbles { visibility: hidden; left: -9999px; right: auto; width: 280px; }
 /* a call's text is cut to fit, its buttons always show */
 .bubble.call .tx { max-height: none; }
 .bubble.call small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }

@@ -1,5 +1,6 @@
 //! Amadeus on the desktop, one process that stays running:
-//! - The mini core (web/mini.html): transparent, always on top, only the core. It speaks in bubbles and "calls" you;
+//! - The mini core (web/mini.html): transparent, always on top, only the core. It speaks in bubbles (their own small
+//!   window, web/bubble.html) and "calls" you;
 //!   clicks where nothing is drawn reach the desktop. Clicking the core opens the dashboard.
 //! - The dashboard (web/index.html), opened from the mini core, the tray or the `amadeus` command.
 //! - The tray icon: the "dot shell" in the theme's colour, an amber dot that beats while something waits for you, a
@@ -20,11 +21,13 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) AmadeusDesktop/1";
-// The mini core: the core and the small pill of buttons, so it can go right up to the edge of the screen. While there's
-// a speech bubble it's taller, upward (or downward near the top of the screen, told apart by one pixel: web/mini.css).
+// The mini core: the core and the small pill of buttons, so it can go right up to the edge of the screen. Without KDE's
+// window scripts the speech bubble stays in this window, which is then taller.
 const MW: f64 = 300.0;
 const MH: f64 = 340.0;
 const MH_TALL: f64 = 480.0;
+const BUBBLE_H: f64 = 150.0; // a little more when it sits below the core: that's how the page knows (web/mini.css)
+const BUBBLE_TITLE: &str = "Amadeus bubble";
 const MINI_TITLE: &str = "Amadeus core";
 const DASH_TITLE: &str = "Amadeus";
 // The pages talk to their window through window.amadeusBridge (web/mini.js, web/hud.js).
@@ -68,7 +71,6 @@ fn is_local(url: &tauri::Url) -> bool {
 
 #[derive(Default)]
 struct Shared {
-    tall: Mutex<bool>,
     zones: Arc<Mutex<Vec<[f64; 4]>>>, // the mini core's buttons and bubbles: clicks there aren't a drag
     crashes: Mutex<Vec<Instant>>,
 }
@@ -112,7 +114,6 @@ fn show_mini(app: &AppHandle, call: bool) -> tauri::Result<()> {
         }
         return w.show();
     }
-    *app.state::<Shared>().tall.lock().unwrap() = false;
     let path = if call { "/mini.html?call=1" } else { "/mini.html" };
     let w = window(app, "mini", MINI_TITLE, path)
         .inner_size(MW, if kde() { MH } else { MH_TALL })
@@ -122,6 +123,7 @@ fn show_mini(app: &AppHandle, call: bool) -> tauri::Result<()> {
         .shadow(false)
         .build()?;
     prepare(&w)?;
+    make_bubble(app)?;
     tell_core_open(true);
     Ok(())
 }
@@ -134,41 +136,69 @@ fn close_mini(app: &AppHandle, by_you: bool) {
     destroy_mini(app);
 }
 
-/// KWin remembers where the window closed, so it goes back to its small size first.
 fn destroy_mini(app: &AppHandle) {
-    let Some(w) = app.get_webview_window("mini") else { return };
-    if !*app.state::<Shared>().tall.lock().unwrap() {
-        let _ = w.destroy();
-        return;
+    for label in ["bubble", "mini"] {
+        if let Some(w) = app.get_webview_window(label) {
+            let _ = w.destroy();
+        }
     }
-    set_tall(app, false);
-    let a = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(300));
-        let _ = a.run_on_main_thread(move || drop(w.destroy()));
-    });
 }
 
-/// Room for a speech bubble: upward, or downward when there isn't room above.
-fn set_tall(app: &AppHandle, tall: bool) {
-    let shared = app.state::<Shared>();
-    let mut now = shared.tall.lock().unwrap();
-    if *now == tall || !kde() {
+/// The speech bubble is its own window, ready and hidden, so the core never resizes for it. The KWin script below keeps
+/// it above the core (or below, near the top of the screen).
+fn make_bubble(app: &AppHandle) -> tauri::Result<()> {
+    if !kde() || app.get_webview_window("bubble").is_some() {
+        return Ok(());
+    }
+    let w = window(app, "bubble", BUBBLE_TITLE, "/bubble.html")
+        .inner_size(MW, BUBBLE_H)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(false)
+        .focused(false)
+        .visible(false)
+        .build()?;
+    prepare(&w)
+}
+
+fn set_bubble(app: &AppHandle, html: &str) {
+    let Some(w) = app.get_webview_window("bubble") else { return };
+    let _ = if html.is_empty() { w.hide() } else { w.show() };
+    let _ = w.eval(&format!("window.amadeusSetBubble && window.amadeusSetBubble({})", json!(html)));
+}
+
+/// Stays loaded while the app runs: places the bubble the moment it opens, before you can see it, and moves it along
+/// when you drag the core.
+fn load_bubble_script() {
+    let file = data_dir().join("place-bubble.js");
+    let script = format!(
+        r#"function find(t) {{ return workspace.windowList().find((w) => w.resourceClass == "amadeus-call" && w.caption == t); }}
+function place() {{
+  const core = find("{MINI_TITLE}"), b = find("{BUBBLE_TITLE}");
+  if (!core || !b) return;
+  const g = core.frameGeometry, a = workspace.clientArea(KWin.MaximizeArea, core.output, workspace.currentDesktop), up = g.y - a.y >= {BUBBLE_H};
+  b.keepAbove = true; b.skipTaskbar = true; b.skipPager = true; b.skipSwitcher = true;
+  b.frameGeometry = {{ x: g.x, y: up ? g.y - {BUBBLE_H} : g.y + g.height, width: g.width, height: up ? {BUBBLE_H} : {BUBBLE_H} + 6 }};
+}}
+function watch(w) {{
+  if (w.resourceClass != "amadeus-call") return;
+  if (w.caption == "{MINI_TITLE}") w.frameGeometryChanged.connect(place);
+  place();
+}}
+workspace.windowAdded.connect(watch);
+workspace.windowList().forEach(watch);"#
+    );
+    if fs::write(&file, script).is_err() {
         return;
     }
-    *now = tall;
-    let grow = MH_TALL - MH;
-    let change = if tall {
-        format!("if (g.height < {MH_TALL} - 10) {{ const up = g.y - a.y >= {grow}; w.frameGeometry = {{ x: g.x, y: up ? g.y - {grow} : g.y, width: g.width, height: up ? {MH_TALL} : {MH_TALL} + 1 }}; }}")
-    } else {
-        format!("if (g.height >= {MH_TALL}) w.frameGeometry = {{ x: g.x, y: g.height == {MH_TALL} ? g.y + {grow} : g.y, width: g.width, height: {MH} }};")
-    };
-    kwin(&format!(
-        "for (const w of workspace.windowList()) if (w.resourceClass == \"amadeus-call\" && w.caption == \"{MINI_TITLE}\") {{
-           const g = w.frameGeometry, a = workspace.clientArea(KWin.MaximizeArea, w.output, workspace.currentDesktop);
-           {change}
-         }}"
-    ), 0.0);
+    let cmd = format!(
+        "qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript amadeus-bubble >/dev/null 2>&1; \
+         id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{}' amadeus-bubble) && \
+         qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null",
+        file.display()
+    );
+    let _ = std::process::Command::new("sh").arg("-c").arg(cmd).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
 }
 
 fn show_dash(app: &AppHandle, path: &str) -> tauri::Result<()> {
@@ -274,6 +304,9 @@ fn prepare(w: &WebviewWindow) -> tauri::Result<()> {
             v.reload();
         });
         let Ok(gw) = win.gtk_window() else { return };
+        if win.label() == "bubble" {
+            return;
+        }
         if win.label() == "mini" {
             let zones = win.state::<Shared>().zones.clone();
             let gw2 = gw.clone();
@@ -377,8 +410,18 @@ fn native(app: AppHandle, window: WebviewWindow, msg: String) {
                 let _ = w.destroy();
             }
             Ok(())
-        } else if m == "tall" || m == "compact" {
-            set_tall(&a, m == "tall");
+        } else if let Some(html) = m.strip_prefix("bubble:") {
+            set_bubble(&a, html);
+            Ok(())
+        } else if m == "bubble-ready" {
+            if let Some(mini) = a.get_webview_window("mini") {
+                let _ = mini.eval("window.amadeusBubbleReady && window.amadeusBubbleReady()");
+            }
+            Ok(())
+        } else if let Some(act) = m.strip_prefix("bubble-click:") {
+            if let Some(mini) = a.get_webview_window("mini") {
+                let _ = mini.eval(&format!("window.amadeusBubbleClick && window.amadeusBubbleClick({})", json!(act)));
+            }
             Ok(())
         } else if let Some(path) = m.strip_prefix("dash:") {
             show_dash(&a, if path.is_empty() { "/#home" } else { path })
@@ -456,12 +499,12 @@ fn listen(app: AppHandle) {
         };
         if lost {
             lost = false; // the core (re)started: it doesn't know about our windows yet
-            tell_core_open(!app.webview_windows().is_empty());
+            tell_core_open(app.webview_windows().keys().any(|l| l != "bubble"));
         }
         for cmd in reply["cmds"].as_array().cloned().unwrap_or_default() {
             let a = app.clone();
             let _ = app.run_on_main_thread(move || match cmd["do"].as_str() {
-                Some("call") if a.webview_windows().is_empty() => drop(show_mini(&a, true)),
+                Some("call") if a.webview_windows().keys().all(|l| l == "bubble") => drop(show_mini(&a, true)),
                 Some("wake") => on_wake(&a, &cmd["data"]),
                 _ => {}
             });
@@ -590,12 +633,14 @@ fn main() {
                 let app = w.app_handle();
                 if w.label() == "dash" {
                     close_dash(app);
+                } else if w.label() == "bubble" {
+                    let _ = w.hide();
                 } else {
                     close_mini(app, true);
                 }
             }
             WindowEvent::Destroyed => {
-                let left = w.app_handle().webview_windows().keys().filter(|l| l.as_str() != w.label()).count();
+                let left = w.app_handle().webview_windows().keys().filter(|l| l.as_str() != w.label() && l.as_str() != "bubble").count();
                 tell_core_open(left > 0);
             }
             _ => {}
@@ -603,6 +648,9 @@ fn main() {
         .setup(|app| {
             let h = app.handle().clone();
             tray(&h)?;
+            if kde() {
+                load_bubble_script();
+            }
             let arg = std::env::args().nth(1);
             if arg.is_some() {
                 handle(&h, arg.as_ref());
