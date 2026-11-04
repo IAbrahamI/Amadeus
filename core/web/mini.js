@@ -67,6 +67,9 @@ if (SEPARATE) {
 }
 addEventListener("resize", () => { shape(); zones(); });
 setTimeout(zones, 300);
+// the app tells us when the bottom of this window is off the screen (the core is at the bottom)
+window.amadeusPillTop = (on) => { document.body.classList.toggle("pilltop", on); shape(); setTimeout(zones, 50); };
+native("pill?");
 $("#cls").onclick = () => { stopAll(); native("close"); };
 
 // ---------- bubbles: only what is being said right now ----------
@@ -110,7 +113,7 @@ $("#vTag").onclick = () => {
 let busy = false;
 const Aloud = makeAloud({  // speak.js
   busy: () => busy, talk: () => core.talk(), strip: stripMood,
-  speaking: (on) => { $("#vTag").classList.toggle("speaking", on); if (on) setMode("speak"); },
+  speaking: (on) => { native("speaking:" + (on ? 1 : 0)); $("#vTag").classList.toggle("speaking", on); if (on) setMode("speak"); },
   idle: () => { if (!busy && !ringing) setMode("idle"); },
   failed: (e) => { if (/text-to-speech|voice/i.test(e.message)) { hasVoice = false; setVoiceTag(); } },
 });
@@ -211,7 +214,7 @@ async function refresh() {
   if (!ringing && queue.length && !busy && !listenB) ring(queue.pop());  // the newest first: what just came in beats what's been waiting
 }
 function ring(e) {
-  ringing = e; $("#mini").classList.add("ringing"); Aloud.stop(); setMode("think");  // the heartbeat; the ring plays on each beat
+  ringing = e; native("calling:1"); $("#mini").classList.add("ringing"); Aloud.stop(); setMode("think");  // the heartbeat; the ring plays on each beat
   const acts = e.kind === "approval" && e.status === "pending"
     ? '<button data-a="reject">Reject</button><button class="adj" data-a="adjust">Adjust</button><button class="go" data-a="approve">Approve</button>'
     : e.kind === "reminder" ? '<button class="go" data-a="ok">Got it</button><button data-a="snooze">Snooze 10 min</button>'
@@ -236,7 +239,7 @@ function endCall(reply) {
   stopRing();
   const b = document.querySelector(`.bubble.call[data-ev="${ringing && ringing.id}"]`); drop(b);
   if (ringing) handled.add(ringing.id);
-  ringing = null; $("#mini").classList.remove("ringing"); if (!busy) setMode("idle");
+  ringing = null; native("calling:0"); $("#mini").classList.remove("ringing"); if (!busy) setMode("idle");
   if (reply) say(reply);
   setTimeout(refresh, 600);
 }
@@ -269,7 +272,7 @@ $("#bubbles").addEventListener("click", async (ev) => {
   }
   if (a === "snooze") {  // the reminder stays; it rings again in ten minutes
     snoozed[e.id] = Date.now() + 10 * 60000; stopRing(); drop(document.querySelector(`.bubble.call[data-ev="${e.id}"]`));
-    ringing = null; $("#mini").classList.remove("ringing"); setMode("idle"); say("I'll remind you again in ten minutes."); return;
+    ringing = null; native("calling:0"); $("#mini").classList.remove("ringing"); setMode("idle"); say("I'll remind you again in ten minutes."); return;
   }
   if (a === "copy") { try { await navigator.clipboard.writeText(e.ref); } catch {} }
   await post(`/api/events/${e.id}/seen`).catch(() => {});
@@ -291,7 +294,7 @@ function maybeHide() {
   clearTimeout(hideT);
   hideT = setTimeout(() => { if (!ringing && !queue.length && !busy && !Aloud.active && !linePlaying && !listenB && !adjusting && !document.querySelector(".bubble")) native("hide"); }, 1500);
 }
-function stopAll() { Aloud.stop(); stopRing(); ringing = null; $("#mini").classList.remove("ringing"); setMode("idle"); }
+function stopAll() { Aloud.stop(); stopRing(); ringing = null; native("calling:0"); $("#mini").classList.remove("ringing"); setMode("idle"); }
 window.amadeusShown = (reason) => { if (reason === "call") refresh(); };  // the window was shown (again)
 
 (async () => {

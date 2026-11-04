@@ -277,7 +277,7 @@ $("#vTag").onclick = () => {
 // about 600 characters it says the rest is in the chat. The voice is the one from Settings → Voice.
 const Aloud = makeAloud({  // speak.js
   busy: () => state.busy, talk: () => core.talk(), strip: stripMood,
-  speaking: (on) => { $("#vTag").classList.toggle("speaking", on); if (on) { setMode("speak"); $("#state").textContent = "Speaking"; } },
+  speaking: (on) => { desktop("speaking:" + (on ? 1 : 0)); $("#vTag").classList.toggle("speaking", on); if (on) { setMode("speak"); $("#state").textContent = "Speaking"; } },
   idle: () => { if (!state.busy) setMode("idle"); },
   failed: (e) => {
     if (/text-to-speech|voice/i.test(e.message)) { hasVoice = false; setVoiceTag(); }

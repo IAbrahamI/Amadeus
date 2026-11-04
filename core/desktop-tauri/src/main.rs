@@ -3,14 +3,14 @@
 //!   window, web/bubble.html) and "calls" you;
 //!   clicks where nothing is drawn reach the desktop. Clicking the core opens the dashboard.
 //! - The dashboard (web/index.html), opened from the mini core, the tray or the `amadeus` command.
-//! - The tray icon: the "dot shell" in the theme's colour, an amber dot that beats while something waits for you, a
-//!   slashed look when the microphone is off. Its menu has the core, the dashboard, approvals and the wake word.
+//! - The tray icon: the "dot shell" in the theme's colour, an amber dot that beats during a call, small bars while she
+//!   speaks, a slashed look when the microphone is off. Its menu has the core, the dashboard, approvals and the wake word.
 //! A closed window is really gone, so nothing draws or runs behind it. The core tells this app what to show through a
 //! long-running request (core/amadeus_core/desktop.py), which works the same on every system.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -38,6 +38,7 @@ addEventListener("unhandledrejection", (e) => console.error("JS rejection: " + e
 "#;
 const SVG_NORMAL: &str = include_str!("../../web/tray/amadeus-tray.svg");
 const SVG_CALL: &str = include_str!("../../web/tray/amadeus-tray-call.svg");
+const SVG_SPEAKING: &str = include_str!("../../web/tray/amadeus-tray-speaking.svg");
 const SVG_VOICE_OFF: &str = include_str!("../../web/tray/amadeus-tray-voice-off.svg");
 
 fn config() -> Value {
@@ -68,6 +69,11 @@ fn hidden_flag() -> PathBuf {
 fn is_local(url: &tauri::Url) -> bool {
     url.scheme() == "about" || url.host_str() == Some("127.0.0.1")
 }
+
+// What the tray icon shows: only while it's really happening (a call rings, she speaks). The pages say so.
+static CALLING: AtomicBool = AtomicBool::new(false);
+static SPEAKING: AtomicBool = AtomicBool::new(false);
+static PILL_TOP: AtomicBool = AtomicBool::new(false); // the core is so low that there's no room under it
 
 #[derive(Default)]
 struct Shared {
@@ -137,6 +143,8 @@ fn close_mini(app: &AppHandle, by_you: bool) {
 }
 
 fn destroy_mini(app: &AppHandle) {
+    CALLING.store(false, Ordering::Relaxed);
+    SPEAKING.store(false, Ordering::Relaxed);
     for label in ["bubble", "mini"] {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.destroy();
@@ -168,16 +176,59 @@ fn set_bubble(app: &AppHandle, html: &str) {
     let _ = w.eval(&format!("window.amadeusSetBubble && window.amadeusSetBubble({})", json!(html)));
 }
 
+fn tell_pill(app: &AppHandle) {
+    if let Some(mini) = app.get_webview_window("mini") {
+        let _ = mini.eval(&format!("window.amadeusPillTop && window.amadeusPillTop({})", PILL_TOP.load(Ordering::Relaxed)));
+    }
+}
+
+/// The KWin script below calls this when the core goes too low for the pill under it.
+struct KwinBridge(AppHandle);
+
+#[zbus::interface(name = "com.amadeus.Desktop")]
+impl KwinBridge {
+    #[zbus(name = "PillOnTop")]
+    fn pill_on_top(&self, on: bool) {
+        PILL_TOP.store(on, Ordering::Relaxed);
+        let a = self.0.clone();
+        let _ = self.0.run_on_main_thread(move || tell_pill(&a));
+    }
+}
+
+/// Keeps the name on the session bus while the app runs.
+fn serve_kwin_bridge(app: AppHandle) {
+    std::thread::spawn(move || {
+        let conn = zbus::blocking::connection::Builder::session()
+            .and_then(|b| b.name("com.amadeus.Desktop"))
+            .and_then(|b| b.serve_at("/", KwinBridge(app)))
+            .and_then(|b| b.build());
+        match conn {
+            Ok(c) => {
+                load_bubble_script(); // (its first call needs the name to be there)
+                loop {
+                    std::thread::sleep(Duration::from_secs(3600));
+                    let _ = c.unique_name();
+                }
+            }
+            Err(e) => eprintln!("KWin bridge: {e}"),
+        }
+    });
+}
+
 /// Stays loaded while the app runs: places the bubble the moment it opens, before you can see it, and moves it along
 /// when you drag the core.
 fn load_bubble_script() {
     let file = data_dir().join("place-bubble.js");
     let script = format!(
         r#"function find(t) {{ return workspace.windowList().find((w) => w.resourceClass == "amadeus-call" && w.caption == t); }}
+let low = null;
 function place() {{
   const core = find("{MINI_TITLE}"), b = find("{BUBBLE_TITLE}");
-  if (!core || !b) return;
+  if (!core) return;
   const g = core.frameGeometry, a = workspace.clientArea(KWin.MaximizeArea, core.output, workspace.currentDesktop), up = g.y - a.y >= {BUBBLE_H};
+  const isLow = g.y + g.height > a.y + a.height;
+  if (isLow !== low) {{ low = isLow; callDBus("com.amadeus.Desktop", "/", "com.amadeus.Desktop", "PillOnTop", isLow); }}
+  if (!b) return;
   b.keepAbove = true; b.skipTaskbar = true; b.skipPager = true; b.skipSwitcher = true;
   b.frameGeometry = {{ x: g.x, y: up ? g.y - {BUBBLE_H} : g.y + g.height, width: g.width, height: up ? {BUBBLE_H} : {BUBBLE_H} + 6 }};
 }}
@@ -413,6 +464,15 @@ fn native(app: AppHandle, window: WebviewWindow, msg: String) {
         } else if let Some(html) = m.strip_prefix("bubble:") {
             set_bubble(&a, html);
             Ok(())
+        } else if m == "calling:1" || m == "calling:0" {
+            CALLING.store(m.ends_with('1'), Ordering::Relaxed);
+            Ok(())
+        } else if m == "speaking:1" || m == "speaking:0" {
+            SPEAKING.store(m.ends_with('1'), Ordering::Relaxed);
+            Ok(())
+        } else if m == "pill?" {
+            tell_pill(&a);
+            Ok(())
         } else if m == "bubble-ready" {
             if let Some(mini) = a.get_webview_window("mini") {
                 let _ = mini.eval("window.amadeusBubbleReady && window.amadeusBubbleReady()");
@@ -567,17 +627,14 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
-    // the amber dot beats while something waits for you; every few beats a look at what's going on
+    // every few beats a look at what's going on
     std::thread::spawn(move || {
-        let (mut theme, mut waits, mut beat, mut shown, mut tick) = ("blue".to_string(), false, false, (String::new(), ""), 0);
+        let (mut theme, mut beat, mut shown, mut tick) = ("blue".to_string(), false, (String::new(), ""), 0);
         loop {
             if tick % 5 == 0 {
                 let _ = wake.set_checked(!off_file.exists()); // it may have been switched by voice or chat ("voice off")
                 if let Some(t) = api("/api/theme").call().ok().and_then(|r| r.into_json::<Value>().ok()) {
                     theme = t["theme"].as_str().unwrap_or("blue").to_string();
-                }
-                if let Some(e) = api("/api/events").call().ok().and_then(|r| r.into_json::<Value>().ok()) {
-                    waits = e.as_array().is_some_and(|l| !l.is_empty());
                 }
                 let n = api("/api/approvals?status=pending").call().ok().and_then(|r| r.into_json::<Value>().ok()).and_then(|l| l.as_array().map(Vec::len));
                 let _ = appr.set_text(match n {
@@ -586,11 +643,14 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
                 });
             }
             tick += 1;
-            beat = waits && !beat;
-            let svg = if off_file.exists() {
+            let calling = CALLING.load(Ordering::Relaxed);
+            beat = calling && !beat;
+            let svg = if calling {
+                if beat { SVG_CALL } else { SVG_NORMAL } // the amber dot beats
+            } else if SPEAKING.load(Ordering::Relaxed) {
+                SVG_SPEAKING
+            } else if off_file.exists() {
                 SVG_VOICE_OFF
-            } else if beat {
-                SVG_CALL
             } else {
                 SVG_NORMAL
             };
@@ -640,6 +700,10 @@ fn main() {
                 }
             }
             WindowEvent::Destroyed => {
+                if w.label() != "bubble" {
+                    CALLING.store(false, Ordering::Relaxed);
+                    SPEAKING.store(false, Ordering::Relaxed);
+                }
                 let left = w.app_handle().webview_windows().keys().filter(|l| l.as_str() != w.label() && l.as_str() != "bubble").count();
                 tell_core_open(left > 0);
             }
@@ -649,7 +713,7 @@ fn main() {
             let h = app.handle().clone();
             tray(&h)?;
             if kde() {
-                load_bubble_script();
+                serve_kwin_bridge(h.clone());
             }
             let arg = std::env::args().nth(1);
             if arg.is_some() {

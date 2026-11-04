@@ -23,6 +23,8 @@ body.minibody::before, body.minibody::after { display: none; }
 .ctl { position: absolute; left: 50%; top: calc(var(--top) + 288px); transform: translate(-50%, -4px); display: flex; align-items: center; gap: 4px; padding: 4px 5px;
   background: rgba(var(--vd),.94); border: 1px solid rgba(var(--a),.25); border-radius: 14px; opacity: 0; transition: opacity .2s, transform .2s; }
 .ctl:hover { opacity: 1; transform: translate(-50%, 0); }
+/* below the screen's edge there's no room under the core: then it sits over the core's top edge */
+.pilltop .ctl { top: calc(var(--top) + 2px); z-index: 6; }
 .ib { width: 24px; height: 22px; display: grid; place-items: center; color: var(--dim); border-radius: 10px; }
 .ib:hover { color: var(--ink); background: var(--cyan); }
 #vTag.voice { color: var(--cyan); } #vTag.speaking { color: var(--ink); background: var(--cyan); } #vTag .slash { display: none; } #vTag.off .slash { display: block; }
