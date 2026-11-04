@@ -14,8 +14,10 @@ git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 amadeus                  # opens it
 ```
 
-It tests this PC's speed (with a small model if none is installed, removed again afterwards) and suggests three models
-that fit, the best one first. After you pick, it downloads that model and measures it for real. Run
+It tests this PC's speed (with a small model if none is installed, removed again afterwards), reads the newest models
+that can use tools from Ollama's library and suggests three that fit: the newest strong one, the one Amadeus is tuned on,
+and a lighter one. After you pick, it downloads that model, measures it and checks that it really calls tools. Offline it
+uses a built-in list. Run
 `./install.sh --benchmark` any time to do this again.
 
 The first run also asks three things:

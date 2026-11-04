@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
-"""Which local model fits this PC: looks at the hardware, measures real speed with a small model, and suggests three
-(the best it can run comfortably, then two lighter ones). After you pick one it's downloaded and measured for real.
-Used by install.sh; again any time with ./install.sh --benchmark. Standard library only."""
+"""Which local model fits this PC: looks at the hardware, measures real speed with a small model, reads the newest models
+that can use tools from Ollama's library, and suggests three: the newest strong one that runs comfortably here, the one
+Amadeus is tuned on, and a lighter one. After you pick, it's downloaded, measured and checked that it really calls tools.
+Used by install.sh; again any time with ./install.sh --benchmark. Standard library only. If the library can't be read,
+the built-in list below is used."""
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+LIBRARY = "https://ollama.com"
+NEWEST_PAGES = 2     # pages of 20 models each
+NOT_FOR_CHAT = re.compile(r"guard|audio|-vl\b|ocr|embed|vision|code$|-code-", re.I)
+NOT_A_PLAIN_TAG = re.compile(r"q\d|fp\d|bf\d|qat|mtp|instruct|cloud|-it-|text", re.I)
+# Used when the library can't be read, and for the tuned suggestion.
 # (Ollama name, download size in GB, what it's good for). All can call tools, which Amadeus needs. Smallest first.
 CATALOG = [
     ("qwen3.5:0.8b", 1.2, "very fast, simple requests only"),
@@ -76,6 +85,90 @@ def suggest(hw, speed=None):
     return picks + fit[best + 1:best + 1 + 3 - len(picks)]
 
 
+def parse_newest(page):
+    """Model names from a page of Ollama's search, newest first."""
+    return list(dict.fromkeys(re.findall(r'href="/library/([a-z0-9.\-]+)"', page)))
+
+
+def parse_tags(model, page):
+    """The plain downloadable versions of a model from its tags page: [(name:tag, size in GB)]."""
+    out = {}
+    for m in re.finditer(r'/library/' + re.escape(model) + r':([a-z0-9.\-_]+)"[\s\S]{0,700}?([0-9.]+) ?(GB|MB)\b', page):
+        tag, size = m.group(1), float(m.group(2)) / (1 if m.group(3) == "GB" else 1024)
+        if not NOT_A_PLAIN_TAG.search(tag):
+            out.setdefault(f"{model}:{tag}".removesuffix(":latest"), size)
+    return list(out.items())
+
+
+def _fetch(url):
+    req = urllib.request.Request(url, headers={"user-agent": "Amadeus installer", "HX-Request": "true"})
+    return urllib.request.urlopen(req, timeout=12).read().decode("utf-8", "replace")
+
+
+def latest_models():
+    """Newest models that can use tools, newest first: [{name, versions: [(name:tag, GB)]}], or [] if offline."""
+    try:
+        names = []
+        for p in range(1, NEWEST_PAGES + 1):
+            names += parse_newest(_fetch(f"{LIBRARY}/search?c=tools&o=newest&page={p}"))
+    except OSError:
+        return []
+    names = [n for n in dict.fromkeys(names) if not NOT_FOR_CHAT.search(n)]
+
+    def read(name):
+        try:
+            return {"name": name, "versions": parse_tags(name, _fetch(f"{LIBRARY}/library/{name}/tags"))}
+        except OSError:
+            return {"name": name, "versions": []}
+    with ThreadPoolExecutor(8) as pool:
+        return [m for m in pool.map(read, names) if m["versions"]]
+
+
+def suggest_latest(hw, latest, speed=None):
+    """Three different models, recommended first: the newest strong one that runs comfortably here, the one Amadeus is
+    tuned on, and a lighter one. Falls back on the built-in list for whatever the library doesn't give."""
+    tuned = suggest(hw, speed)
+    if not latest:
+        return tuned
+    usable = lambda s: runs_on(s, hw) == "gpu" or (not hw["gpu_gb"] and runs_on(s, hw))  # noqa: E731
+    fits = []  # per model the biggest version that fits and stays comfortable, newest model first
+    for rank, m in enumerate(latest):
+        ok = [(n, s) for n, s in m["versions"] if usable(s) and hw["disk_gb"] >= s + 2 and (estimate(s, speed) or COMFORT) >= COMFORT]
+        if ok:
+            name, size = max(ok, key=lambda v: v[1])
+            fits.append(dict(model=name, size=size, about="one of the newest, not yet tried with Amadeus", on=runs_on(size, hw),
+                             speed=estimate(size, speed), rank=rank))
+    if not fits:
+        return tuned
+    best = max(fits[:12], key=lambda m: m["size"])  # the strongest among the newest
+    picks = [best]
+    for t in tuned:  # the tuned family, if it's a different model
+        if t["model"].split(":")[0] != best["model"].split(":")[0]:
+            picks.append(t)
+            break
+    light = [m for m in fits if m["size"] <= best["size"] * 0.6 and m["model"].split(":")[0] not in {p["model"].split(":")[0] for p in picks}]
+    if light:
+        picks.append(light[0])
+    for t in tuned[1:] + fits:
+        if len(picks) >= 3:
+            break
+        if t["model"] not in {p["model"] for p in picks}:
+            picks.append(t)
+    return picks[:3]
+
+
+def calls_tools(model):
+    """It really uses a tool when asked to: Amadeus can't work without that."""
+    tool = {"type": "function", "function": {"name": "get_time", "description": "The current time in a city.", "parameters": {
+        "type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}
+    try:
+        r = _api("/api/chat", {"model": model, "stream": False, "think": False, "keep_alive": 0, "tools": [tool], "options": {"temperature": 0},
+                               "messages": [{"role": "user", "content": "What time is it in Paris? Use the tool."}]})
+        return any(c["function"]["name"] == "get_time" for c in r["message"].get("tool_calls") or [])
+    except (OSError, ValueError, KeyError):
+        return False
+
+
 def context_for(hw, size):
     """How much conversation it holds: more where there's room on the graphics card."""
     room = hw["gpu_gb"] - (size * 1.25 + 1.5)
@@ -136,7 +229,12 @@ def choose(out_file, interactive):
     hw = hardware()
     print(f"  This PC: {hw['gpu'] or 'no dedicated graphics card'}" + (f" with {hw['gpu_gb']:g} GB" if hw["gpu_gb"] else "") +
           f", {hw['ram_gb']:g} GB memory, {hw['cores']} CPU threads, {hw['disk_gb']:g} GB free disk.")
-    picks = suggest(hw, baseline())
+    speed = baseline()
+    print("  Reading the newest models from Ollama's library...")
+    latest = latest_models()
+    if not latest:
+        print("  Couldn't read the library: using the built-in list.")
+    picks = suggest_latest(hw, latest, speed)
     if not picks:
         print("  Not enough memory or disk for any model here.")
         return 1
@@ -144,11 +242,23 @@ def choose(out_file, interactive):
     while True:
         reply = input("  ? Which one? [1] ").strip() if interactive else "1"
         m = picks[int(reply) - 1 if reply in ("1", "2", "3") and int(reply) <= len(picks) else 0]
+        if not interactive:  # nobody to ask: the safest, the one Amadeus is tuned on
+            m = next((p for p in picks if p["model"].startswith("qwen3.5")), m)
         if m["model"] not in installed() and not pull(m["model"]):
             print(f"  Couldn't download {m['model']}.")
             return 1
         tps, share = measure(m["model"])
-        print(f"  {m['model']}: {tps:.0f} tokens per second, {share * 100:.0f}% on the graphics card.")
+        tools_ok = calls_tools(m["model"])
+        print(f"  {m['model']}: {tps:.0f} tokens per second, {share * 100:.0f}% on the graphics card, tools {'work' if tools_ok else 'did NOT work'}.")
+        if not tools_ok:
+            rest = [p for p in picks if p is not m]
+            if not rest:
+                print("  It can't use tools, so Amadeus couldn't work with it.")
+                return 1
+            print("  Amadeus needs tools for nearly everything, so this one won't do.")
+            picks = rest
+            show(picks)
+            continue
         if tps >= TOO_SLOW or not interactive or m is picks[-1]:
             break
         print("  That's slow enough to be annoying. Pick a lighter one, or the same to keep it.")
@@ -164,5 +274,8 @@ def choose(out_file, interactive):
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--hardware"]:
         print(json.dumps(hardware(), indent=2))
+        sys.exit(0)
+    if sys.argv[1:2] == ["--suggest"]:  # only look: no download, no changes
+        show(suggest_latest(hardware(), latest_models()))
         sys.exit(0)
     sys.exit(choose(sys.argv[1], sys.stdin.isatty() and "--auto" not in sys.argv))
