@@ -96,7 +96,7 @@ The exact packages for Arch, Debian/Ubuntu and Fedora are in [docs/INSTALL.md](d
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 ./install.sh --check        # what's there and what's missing (changes nothing)
-./install.sh                # asks for a projects folder, mail and voice, then sets everything up
+./install.sh                # installs what's missing after asking, suggests a model for this PC, then sets everything up
 amadeus                     # open it; later, amadeus update gets the newest version
 ```
 

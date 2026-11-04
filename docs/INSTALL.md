@@ -14,7 +14,11 @@ git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 amadeus                  # opens it
 ```
 
-The first run asks three things:
+It tests this PC's speed (with a small model if none is installed, removed again afterwards) and suggests three models
+that fit, the best one first. After you pick, it downloads that model and measures it for real. Run
+`./install.sh --benchmark` any time to do this again.
+
+The first run also asks three things:
 
 1. **A folder for Claude Code projects** (suggested: `~/Amadeus/Projects`), so a work run never sees your notes. You
    can change it later on the Projects page.
@@ -38,7 +42,9 @@ Tested on CachyOS (Arch) with KDE Plasma 6 on Wayland and an RTX 3080 Ti (12 GB)
 opens as a normal window instead of sitting in the corner (on X11 it is still placed there), and GNOME needs the
 *AppIndicator* extension to show the tray icon.
 
-**Needed:** Ollama (the local model), Docker (memory and the privacy filter) and the packages below. **Everything else
+**Needed:** Ollama (the local model), Docker (memory and the privacy filter) and the packages below. On Arch, Debian/Ubuntu
+and Fedora the installer offers to install whatever is missing (it shows what and asks before using `sudo`), so you
+normally don't need to do this by hand. **Everything else
 is optional and can be added later:** Thunderbird (mail), Obsidian (notes in your vault), Claude Code (work runs),
 Tailscale (the phone app), KDE Plasma (window placement) and an NVIDIA GPU (speed). Without one of them, only that part
 stays off, and Settings → Connectors says what it needs.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Amadeus installer: everything in one go. The first run asks a few questions (projects, mail, voice) and keeps the
+# Amadeus installer: everything in one go. It offers to install what's missing (Ollama, Docker, system packages), tests
+# this PC's speed and suggests three models. The first run asks a few questions (projects, mail, voice) and keeps the
 # answers in ./amadeus.env. Then it sets up Ollama (local LLM), private keys, Presidio (privacy filter), Hindsight
 # (memory), the projects folder with the guard for work runs, voice, the assistant itself (core/deploy/install.sh:
 # services, window, tray) and the Thunderbird bridge.
@@ -13,11 +14,12 @@
 #   ./install.sh --update     get the latest version (git pull), then install / repair and restart (= amadeus update)
 #   ./install.sh --check      read-only: prerequisites and status, changes nothing
 #   ./install.sh --dry-run    print what would be done, changes nothing
+#   ./install.sh --benchmark  test this PC's speed again and pick another model
 #   ./install.sh --only ollama|secrets|presidio|hindsight|obsidian|work|voice|app|mail
 #   ./install.sh --help
 #
 # Settings (override with environment variables, or put them in ./amadeus.env):
-#   OLLAMA_MODEL           base model to pull                  (default: qwen3.5:9b)
+#   OLLAMA_MODEL           base model to pull                  (default: the one you pick from the suggestions)
 #   OLLAMA_CTX_VARIANT     name of the larger-context variant  (default: qwen3.5-9b-48k, what Amadeus uses)
 #   OLLAMA_NUM_CTX         context length for that variant     (default: 49152)
 #   OLLAMA_URL             Ollama endpoint                     (default: http://127.0.0.1:11434)
@@ -38,6 +40,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 [[ -f "$SCRIPT_DIR/amadeus.env" ]] && source "$SCRIPT_DIR/amadeus.env"
 
+MODEL_CHOSEN="${OLLAMA_MODEL:+1}"  # set by you or an earlier run: no need to ask
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
 OLLAMA_CTX_VARIANT="${OLLAMA_CTX_VARIANT:-qwen3.5-9b-48k}"
 OLLAMA_NUM_CTX="${OLLAMA_NUM_CTX:-49152}"
@@ -112,12 +115,14 @@ wait_http() { # url seconds
 
 usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
 
+ORIGINAL_ARGS=("$@")
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --check)   MODE=check ;;
     --dry-run) MODE=dry-run ;;
     --only)    ONLY="${2:-}"; shift ;;
     --setup)   SETUP=1 ;;
+    --benchmark) ONLY=ollama; MODEL_CHOSEN=""; BENCHMARK=1 ;;
     --update)  UPDATE=1 ;;
     --updated) UPDATE=2 ;;  # internal: the new installer after an update (pull already done)
     -y|--yes)  ASSUME_YES=1 ;;
@@ -127,6 +132,75 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 want() { [[ -z "$ONLY" || "$ONLY" == "$1" ]]; }
+
+# ---------------------------------------------------------------- what's missing gets installed, after asking
+PKG=""; have pacman && PKG=pacman; have apt-get && PKG=apt; have dnf && PKG=dnf
+pkg_install() {  # pkg_install NAME...: with the distribution's package manager
+  case "$PKG" in
+    pacman) run sudo pacman -S --needed --noconfirm "$@" ;;
+    apt)    run sudo apt-get update -qq; run sudo apt-get install -y "$@" ;;
+    dnf)    run sudo dnf install -y "$@" ;;
+  esac
+}
+offer() {  # offer "what" "commands shown": yes in a real install when you agree; a dry run just shows it
+  info "$1 is missing. To install it: $2"
+  [[ "$MODE" == dry-run ]] && return 0
+  [[ "$MODE" == install ]] && confirm "Install $1 now? (uses sudo)"
+}
+phase_deps() {
+  [[ "$MODE" != check ]] || return 0
+  [[ -n "$PKG" ]] || { info "Unknown package manager: install what's reported below by hand (docs/INSTALL.md)."; return 0; }
+  # the desktop app's system packages
+  if want app; then
+    local need=()
+    have python3 && python3 -c 'import venv, ensurepip' 2>/dev/null || need+=(python)
+    have gcc && have pkg-config || need+=(build)
+    pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null || need+=(gui)
+    pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null || pkg-config --exists appindicator3-0.1 2>/dev/null || need+=(tray)
+    have curl || need+=(curl)
+    if (( ${#need[@]} )); then
+      local pkgs=() n
+      for n in "${need[@]}"; do case "$PKG:$n" in
+        pacman:python) pkgs+=(python) ;; apt:python) pkgs+=(python3 python3-venv) ;; dnf:python) pkgs+=(python3) ;;
+        pacman:build) pkgs+=(base-devel pkgconf) ;; apt:build) pkgs+=(build-essential pkg-config) ;; dnf:build) pkgs+=(gcc pkgconf) ;;
+        pacman:gui) pkgs+=(gtk3 webkit2gtk-4.1) ;; apt:gui) pkgs+=(libgtk-3-dev libwebkit2gtk-4.1-dev) ;; dnf:gui) pkgs+=(gtk3-devel webkit2gtk4.1-devel) ;;
+        pacman:tray) pkgs+=(libappindicator-gtk3) ;; apt:tray) pkgs+=(libayatana-appindicator3-dev) ;; dnf:tray) pkgs+=(libappindicator-gtk3-devel) ;;
+        *:curl) pkgs+=(curl) ;;
+      esac; done
+      if offer "${pkgs[*]}" "the $PKG packages for the window and tray"; then pkg_install "${pkgs[@]}"; fi
+    fi
+  fi
+  # Ollama runs the model
+  if { want ollama || want hindsight; } && ! have ollama; then
+    local ollama_pkg=ollama; have nvidia-smi && ollama_pkg=ollama-cuda
+    if [[ "$PKG" == pacman ]]; then
+      if offer Ollama "sudo pacman -S $ollama_pkg"; then pkg_install "$ollama_pkg"; run sudo systemctl enable --now ollama; fi
+    elif offer Ollama "Ollama's own installer from https://ollama.com/install.sh"; then
+      if [[ "$MODE" == install ]]; then curl -fsSL https://ollama.com/install.sh | sh; else printf '  → would run: curl -fsSL https://ollama.com/install.sh | sh\n'; fi
+    fi
+  fi
+  if { want ollama || want hindsight; } && have ollama && [[ "$MODE" == install ]] && ! curl -fsS --max-time 3 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
+    if confirm "Ollama isn't running. Start it now? (uses sudo)"; then run sudo systemctl enable --now ollama; wait_http "$OLLAMA_URL/api/tags" 30 || true; fi
+  fi
+  # Docker runs the memory and the privacy filter
+  if want hindsight || want presidio; then
+    if ! have docker; then
+      local docker_pkg=docker; [[ "$PKG" == apt ]] && docker_pkg=docker.io; [[ "$PKG" == dnf ]] && docker_pkg=moby-engine
+      if offer Docker "the $docker_pkg package, its service, and your user in the docker group"; then
+        pkg_install "$docker_pkg"; run sudo systemctl enable --now docker; run sudo usermod -aG docker "$USER"
+      fi
+    elif [[ "$MODE" == install ]] && ! docker info >/dev/null 2>&1; then
+      if confirm "Docker isn't usable by $USER yet. Start it and add you to the docker group? (uses sudo)"; then
+        run sudo systemctl enable --now docker; run sudo usermod -aG docker "$USER"
+      fi
+    fi
+    # the new group only counts in a new session: carry on in one, instead of asking you to log out first
+    if [[ "$MODE" == install && -z "${AMADEUS_IN_DOCKER_GROUP:-}" ]] && have docker && have sg && ! docker info >/dev/null 2>&1; then
+      export AMADEUS_IN_DOCKER_GROUP=1
+      exec sg docker -c "$(printf '%q ' "$0" "${ORIGINAL_ARGS[@]}")"
+    fi
+  fi
+}
 
 # ---------------------------------------------------------------- prerequisites
 phase_prereqs() {
@@ -177,6 +251,29 @@ phase_prereqs() {
   fi
 }
 
+# ---------------------------------------------------------------- which model: speed test and three suggestions
+phase_pick_model() {
+  [[ -z "$MODEL_CHOSEN" ]] || return 0
+  ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${OLLAMA_CTX_VARIANT}:latest\|${OLLAMA_CTX_VARIANT}" && [[ "${BENCHMARK:-}" != 1 ]] && return 0
+  if [[ "$MODE" != install ]]; then info "would test this PC's speed and suggest three models"; return 0; fi
+  head_ "Which model fits this PC"
+  local out; out="$(mktemp)"
+  local auto=(); [[ "$ASSUME_YES" == 1 ]] && auto=(--auto)
+  python3 "$SCRIPT_DIR/core/deploy/pick_model.py" "$out" "${auto[@]}" || { rm -f "$out"; warn "keeping $OLLAMA_MODEL"; return 0; }
+  local pick; mapfile -t pick <"$out"; rm -f "$out"
+  OLLAMA_MODEL="${pick[0]}"; OLLAMA_CTX_VARIANT="${pick[1]}"; OLLAMA_NUM_CTX="${pick[2]}"; HINDSIGHT_LLM_MODEL="${pick[1]}"
+  env_set OLLAMA_MODEL "$OLLAMA_MODEL"; env_set OLLAMA_CTX_VARIANT "$OLLAMA_CTX_VARIANT"; env_set OLLAMA_NUM_CTX "$OLLAMA_NUM_CTX"; env_set HINDSIGHT_LLM_MODEL "$HINDSIGHT_LLM_MODEL"
+  python3 - "$OLLAMA_CTX_VARIANT" <<'PYC'
+import json, os, sys
+p = os.path.expanduser("~/.config/amadeus-core/config.json")
+c = json.load(open(p)) if os.path.exists(p) else {}
+c["default_model"] = sys.argv[1]
+os.makedirs(os.path.dirname(p), exist_ok=True)
+json.dump(c, open(p, "w"), indent=2)
+PYC
+  ok "model: $OLLAMA_MODEL (Amadeus uses $OLLAMA_CTX_VARIANT)"
+}
+
 # ---------------------------------------------------------------- Ollama models
 phase_ollama() {
   head_ "Local LLM: Ollama"
@@ -188,6 +285,7 @@ phase_ollama() {
   fi
   ok "Ollama API reachable at $OLLAMA_URL"
 
+  phase_pick_model
   local models; models="$(ollama list 2>/dev/null | awk 'NR>1 {print $1}')"
   if grep -qx "${OLLAMA_MODEL}:latest\|${OLLAMA_MODEL}" <<<"$models"; then
     ok "model $OLLAMA_MODEL present"
@@ -512,6 +610,7 @@ printf '%sAmadeus installer%s  (mode: %s%s)\n' "$C_HEAD" "$C_OFF" "$MODE" "${ONL
 PASSTHRU=(); [[ -n "$ONLY" ]] && PASSTHRU=(--only "$ONLY")
 [[ "$UPDATE" == 1 ]] && phase_update
 phase_setup
+phase_deps
 phase_prereqs
 want ollama    && phase_ollama
 want secrets   && phase_secrets
