@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Amadeus' own pages, served by the local core, may send messages to their window","remote":{"urls":["http://127.0.0.1:8095/*"]},"local":true,"windows":["mini","dash"],"permissions":["core:default","allow-native"]}}

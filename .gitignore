@@ -14,3 +14,4 @@ __pycache__/
 
 # Rust toolchain and build output for the desktop app test, installed locally
 .tauri-build/
+core/desktop-tauri/gen/
