@@ -1,6 +1,6 @@
 {
   "productName": "Amadeus",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.amadeus.desktop",
   "build": { "frontendDist": "http://127.0.0.1:8095" },
   "app": { "windows": [], "security": { "csp": null } },

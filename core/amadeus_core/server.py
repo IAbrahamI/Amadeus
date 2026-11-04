@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import agenda, agent, background, db, devices, events, llm, mailbridge, phoneapp, profile, tools
+from . import agenda, agent, background, db, desktop, devices, events, llm, mailbridge, phoneapp, profile, tools
 from .config import CFG
 
 DESKTOP_UA = "AmadeusDesktop/1"
@@ -34,7 +34,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------- helpers ----------
     def _desktop(self):
-        """Amadeus runs only in its KDE window (desktop/popup.py), which identifies itself in the user agent."""
+        """Amadeus runs only in its desktop app (desktop-tauri/), which identifies itself in the user agent."""
         return DESKTOP_UA in self.headers.get("user-agent", "")
 
     def _tailnet(self):
@@ -161,6 +161,10 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/voice/voices":  # reading-aloud voices (Settings → Voice)
             from . import voices
             return self._json(voices.listing())
+        if p == "/api/desktop/wait":  # the desktop app waits here for what to show (a call, the wake word)
+            if self._tailnet():
+                return self._json({"error": "Only on the PC."}, 403)
+            return self._json({"cmds": desktop.wait()})
         if p == "/api/identity":  # the assistant's name and look, for the window and the phone app
             return self._json({"name": CFG["assistant_name"], "avatar": os.path.basename(CFG.get("avatar") or ""), "theme": db.get_setting("theme", "blue")})
         if p == "/api/voice/replies":  # read replies aloud: "voice" (when you talked), "always" or "off"; the mini core has its own
@@ -531,19 +535,14 @@ class Handler(BaseHTTPRequestHandler):
             db.set_setting("ask_patterns", pats)
             return self._json({"asking": pats})
         if p == "/api/wake":  # the wake word was heard: small window to the front, listening
-            import signal, subprocess, sys
             stage = b.get("stage", "listening") if b.get("stage") in ("listening", "text", "cancel") else "listening"
-            with open(os.path.join(CFG["data_dir"], "popup.wake"), "w") as f:
-                json.dump({"stage": stage, "word": re.sub(r"[^a-z]", "", str(b.get("word", "")).lower())[:20],
-                           "text": str(b.get("text", ""))[:2000], "quiet": bool(b.get("quiet"))}, f)
-            popup = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "desktop", "popup.py")
-            if events._popup_open():
-                os.kill(int(open(events.PIDFILE).read()), signal.SIGUSR1)
-            elif stage != "cancel":
-                from .config import desktop_env
-                desktop_env()  # started at boot without a display: take the desktop session's (else Gtk fails)
-                log = open(os.path.join(CFG["data_dir"], "popup.log"), "a")
-                subprocess.Popen([sys.executable, popup, "--mini"], start_new_session=True, stdout=log, stderr=log)
+            desktop.send({"do": "wake", "data": {"stage": stage, "word": re.sub(r"[^a-z]", "", str(b.get("word", "")).lower())[:20],
+                                                 "text": str(b.get("text", ""))[:2000], "quiet": bool(b.get("quiet"))}})
+            return self._json({"ok": True})
+        if p == "/api/desktop/state":  # the desktop app: whether a window is open
+            if self._tailnet():
+                return self._json({"error": "Only on the PC."}, 403)
+            desktop.set_open(bool(b.get("open")))
             return self._json({"ok": True})
         if p == "/api/mail/vip":  # senders whose mail always calls you (your own list, set in the Memory page)
             vip = [v.strip()[:120] for v in b.get("vip", []) if isinstance(v, str) and v.strip()][:200]

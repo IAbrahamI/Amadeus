@@ -1,0 +1,12 @@
+[Unit]
+Description=Amadeus desktop app (mini core, dashboard, tray icon)
+PartOf=graphical-session.target
+After=graphical-session.target amadeus-core.service
+
+[Service]
+ExecStart=@REPO@/.tauri-build/target/release/amadeus-desktop
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -44,7 +44,7 @@ opens as a normal window instead of sitting in the corner (on X11 it is still pl
 |---|---|---|---|
 | the local model | `ollama` or `ollama-cuda` | [ollama.com/download](https://ollama.com/download) | [ollama.com/download](https://ollama.com/download) |
 | memory and the privacy filter | `docker` | `docker.io` | `moby-engine` |
-| the assistant, its window and tray | `python-gobject gtk3 webkit2gtk-4.1 python-pyqt6` | `python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 python3-pyqt6` | `python3-gobject gtk3 webkit2gtk4.1 python3-pyqt6` |
+| the assistant, its window and tray (the installer builds the app, and fetches Rust for that into the repo folder) | `base-devel gtk3 webkit2gtk-4.1 libappindicator-gtk3 pkgconf` | `build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev pkg-config` | `gcc gtk3-devel webkit2gtk4.1-devel libappindicator-gtk3-devel pkgconf` |
 | sound and voice | `gst-plugins-good ffmpeg` | `gstreamer1.0-plugins-good ffmpeg` | `gstreamer1-plugins-good ffmpeg-free` |
 | the installer, vault snapshots | `curl zstd` | `curl zstd` | `curl zstd` |
 
@@ -79,7 +79,7 @@ Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|ob
 
 ## 3. The assistant itself
 
-`install.sh` runs `core/deploy/install.sh` for you (`--dry-run` shows what it would write). It installs the user services (`amadeus-core`, `amadeus-tray`, voice and the nightly leak scan), the
+`install.sh` runs `core/deploy/install.sh` for you (`--dry-run` shows what it would write). It installs the user services (`amadeus-core`, `amadeus-desktop`, voice and the nightly leak scan), the
 `amadeus` command, the app-menu entry and a KWin rule for the small window. Run it again after moving the
 repository folder.
 
@@ -234,7 +234,7 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 
 | Problem | What to do |
 |---|---|
-| `amadeus` opens nothing | `journalctl --user -u amadeus-core -f` and `~/.local/share/amadeus/core/popup.log` |
+| `amadeus` opens nothing | `journalctl --user -u amadeus-core -f` and `journalctl --user -u amadeus-desktop -f` |
 | The window opens blank or keeps crashing on an NVIDIA GPU | After three crashes in a row it switches to software drawing by itself (slower when scrolling in a big window). You can also set `"gpu_rendering": false`. To try the GPU again, delete `~/.local/share/amadeus/core/popup-software-rendering`. Updating `webkit2gtk-4.1` and the driver usually helps |
 | Hindsight doesn't answer right after installing | The first start downloads models: `docker logs -f hindsight` |
 | "Send to work" says the text was held | It contained a deny-list word or a canary, or Presidio couldn't start: `docker start presidio-analyzer presidio-anonymizer` |

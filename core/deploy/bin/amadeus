@@ -4,4 +4,5 @@
 if [ "${1:-}" = update ]; then shift; exec @REPO@/install.sh --update "$@"; fi
 systemctl --user start amadeus-core 2>/dev/null
 for i in $(seq 1 20); do curl -sf -o /dev/null http://127.0.0.1:8095/favicon.png && break; sleep 0.5; done
-exec python3 @REPO@/core/desktop/tray.py --open "${1:-/#home}"
+systemctl --user start amadeus-desktop 2>/dev/null
+exec @REPO@/.tauri-build/target/release/amadeus-desktop "${1:-/#home}"

@@ -1,23 +1,18 @@
 """Things worth telling you about right away (approvals, reminders, work results, finished jobs).
-Each new event makes Amadeus "call" you with a small desktop popup (desktop/popup.py), except in quiet hours:
-then the call waits until the morning."""
+Each new event makes Amadeus "call" you through the desktop app (desktop.py), except in quiet hours: then the call
+waits until the morning."""
 import datetime
-import os
 import re
 import subprocess
-import sys
 import threading
 
-from . import db
+from . import db, desktop
 from .config import CFG, NAME
 
 db.q("""CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, kind TEXT, title TEXT, body TEXT, ref TEXT,
         conversation_id TEXT, created REAL, seen INTEGER DEFAULT 0)""")
 
-POPUP = os.path.join(os.path.dirname(os.path.dirname(__file__)), "desktop", "popup.py")
-PIDFILE = os.path.join(CFG["data_dir"], "popup.pid")
 _lock = threading.Lock()
-_children = []
 
 
 def _plain(text):
@@ -59,23 +54,12 @@ def quiet(now=None):
     return (h >= start or h < end) if start > end else (start <= h < end)
 
 
-def _popup_open():
-    """True if the window is open (not a finished "zombie" process, not a reused pid)."""
-    try:
-        pid = int(open(PIDFILE).read())
-        with open(f"/proc/{pid}/stat") as f:
-            state = f.read().rsplit(")", 1)[1].split()[0]
-        return state not in ("Z", "X") and "popup.py" in open(f"/proc/{pid}/cmdline").read()
-    except (OSError, ValueError, IndexError):
-        return False
-
-
 def maybe_ring():
     """Ring if something new arrived since the last call and it is not quiet hours.
     Missed calls are not repeated; they are listed in the next call."""
     with _lock:
-        if _popup_open():
-            return  # an open popup polls for new events itself
+        if desktop.window_open():
+            return  # an open window polls for new events itself
         from . import phoneapp
         if phoneapp.in_use():
             return  # you're in the phone app right now: it shows this there, the PC stays quiet
@@ -89,17 +73,12 @@ def maybe_ring():
             push.notify()  # the phone app (if paired): a content-free nudge
         except Exception as e:
             print("push failed:", e, flush=True)
-        for p in list(_children):  # reap windows that were closed
-            if p.poll() is not None:
-                _children.remove(p)
-        try:
+        if desktop.connected():
+            desktop.send({"do": "call"})
+            return
+        try:  # the desktop app isn't running: at least a notification
             from .config import desktop_env
             desktop_env()
-            p = subprocess.Popen([sys.executable, POPUP], start_new_session=True,
-                                 stdout=open(os.path.join(CFG["data_dir"], "popup.log"), "a"), stderr=open(os.path.join(CFG["data_dir"], "popup.log"), "a"))
-            _children.append(p)
-            with open(PIDFILE, "w") as f:  # right away: the window needs a moment to start, and more events may come in meanwhile
-                f.write(str(p.pid))
-        except Exception as e:
-            print("popup failed:", e, flush=True)
             subprocess.run(["notify-send", "-a", "Amadeus", NAME, "Something needs your attention."], timeout=10)
+        except Exception as e:
+            print("notification failed:", e, flush=True)

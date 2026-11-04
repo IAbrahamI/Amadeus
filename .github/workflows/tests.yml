@@ -23,7 +23,17 @@ jobs:
       - name: JavaScript parses
         run: for f in core/web/*.js core/thunderbird/addon/*.js; do node --check "$f"; done
       - name: Shell scripts parse
-        run: for f in install.sh core/deploy/install.sh core/deploy/bin/* core/thunderbird/install.sh obsidian/amadeus-vault-snapshot; do bash -n "$f"; done
+        run: for f in install.sh core/deploy/install.sh core/deploy/bin/* core/desktop-tauri/build.sh core/thunderbird/install.sh obsidian/amadeus-vault-snapshot; do bash -n "$f"; done
+
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages the desktop app builds against
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+      - name: The desktop app compiles
+        working-directory: core/desktop-tauri
+        run: cargo check --locked
 
   android:
     runs-on: ubuntu-latest

@@ -1,52 +1,114 @@
-//! A test of Amadeus' desktop side in Tauri: the mini core and the tray, showing the same pages as desktop/popup.py.
-//! The current window and tray stay as they are. Calls and the wake word aren't connected here.
+//! Amadeus on the desktop, one process that stays running:
+//! - The mini core (web/mini.html): transparent, always on top, only the core. It speaks in bubbles and "calls" you;
+//!   clicks where nothing is drawn reach the desktop. Clicking the core opens the dashboard.
+//! - The dashboard (web/index.html), opened from the mini core, the tray or the `amadeus` command.
+//! - The tray icon: the "dot shell" in the theme's colour, an amber dot that beats while something waits for you, a
+//!   slashed look when the microphone is off. Its menu has the core, the dashboard, approvals and the wake word.
+//! A closed window is really gone, so nothing draws or runs behind it. The core tells this app what to show through a
+//! long-running request (core/amadeus_core/desktop.py), which works the same on every system.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use std::fs;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
+use serde_json::{json, Value};
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
-const BASE: &str = "http://127.0.0.1:8095";
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) AmadeusDesktop/1";
-const MW: f64 = 300.0;
+const MW: f64 = 300.0; // the mini core: her speech bubble on top (150), the core (280), the small pill of buttons
 const MH: f64 = 480.0;
-// The pages talk to their window through window.amadeusBridge when it's there (web/mini.js, web/hud.js).
+const MINI_TITLE: &str = "Amadeus core";
+const DASH_TITLE: &str = "Amadeus";
+// The pages talk to their window through window.amadeusBridge (web/mini.js, web/hud.js).
 const BRIDGE: &str = r#"
 window.amadeusBridge = { postMessage: (msg) => window.__TAURI_INTERNALS__.invoke("native", { msg: String(msg) }) };
 addEventListener("error", (e) => console.error("JS error: " + e.message + " @" + e.lineno));
+addEventListener("unhandledrejection", (e) => console.error("JS rejection: " + e.reason));
 "#;
+const SVG_NORMAL: &str = include_str!("../../web/tray/amadeus-tray.svg");
+const SVG_CALL: &str = include_str!("../../web/tray/amadeus-tray-call.svg");
+const SVG_VOICE_OFF: &str = include_str!("../../web/tray/amadeus-tray-voice-off.svg");
+
+fn config() -> Value {
+    let home = std::env::var("HOME").unwrap_or_default();
+    fs::read_to_string(PathBuf::from(home).join(".config/amadeus-core/config.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({}))
+}
+
+fn data_dir() -> PathBuf {
+    match config()["data_dir"].as_str() {
+        Some(d) => PathBuf::from(d),
+        None => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share/amadeus/core"),
+    }
+}
+
+fn base() -> String {
+    format!("http://127.0.0.1:{}", config()["port"].as_u64().unwrap_or(8095))
+}
+
+fn token() -> String {
+    fs::read_to_string(data_dir().join("token")).unwrap_or_default().trim().to_string()
+}
+
+/// You closed the mini core: it only comes back for a call, the wake word or the tray.
+fn hidden_flag() -> PathBuf {
+    data_dir().join("mini-hidden")
+}
+
+fn is_local(url: &tauri::Url) -> bool {
+    url.scheme() == "about" || url.host_str() == Some("127.0.0.1")
+}
 
 #[derive(Default)]
-struct Zones(Arc<Mutex<Vec<[f64; 4]>>>);
-
-fn data_dir() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
-    std::path::PathBuf::from(home).join(".local/share/amadeus/core")
+struct Shared {
+    zones: Arc<Mutex<Vec<[f64; 4]>>>, // the mini core's buttons and bubbles: clicks there aren't a drag
+    crashes: Mutex<Vec<Instant>>,
 }
 
-fn page(path: &str) -> WebviewUrl {
-    // the first page signs the window in (a cookie), then goes on
-    let token = std::fs::read_to_string(data_dir().join("token")).unwrap_or_default();
-    let url = format!("{BASE}/?token={}&next={path}", token.trim());
-    WebviewUrl::External(url.parse().expect("a valid address"))
+// ---------- the windows ----------
+
+/// The address that signs a window in (a cookie) and then goes on to a page.
+fn login(path: &str) -> WebviewUrl {
+    let next = path.replace('%', "%25").replace('#', "%23").replace('?', "%3F").replace('&', "%26").replace('=', "%3D");
+    WebviewUrl::External(format!("{}/?token={}&next={next}", base(), token()).parse().expect("a valid address"))
 }
 
-fn window<'a>(app: &'a AppHandle, label: &str, title: &str, path: &str) -> tauri::Result<WebviewWindowBuilder<'a, tauri::Wry, AppHandle>> {
-    Ok(WebviewWindowBuilder::new(app, label, page(path))
+fn window<'a>(app: &'a AppHandle, label: &str, title: &str, path: &str) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    WebviewWindowBuilder::new(app, label, login(path))
         .title(title)
         .decorations(false)
         .user_agent(UA)
-        .data_directory(data_dir().join("tauri-test-webview"))
-        .initialization_script(BRIDGE))
+        .data_directory(data_dir().join("webview"))
+        .initialization_script(BRIDGE)
+        // links to the web open in the normal browser, never inside these windows
+        .on_navigation(|url| {
+            let local = is_local(url);
+            if !local {
+                let _ = open::that_detached(url.as_str());
+            }
+            local
+        })
+        .on_new_window(|url, _| {
+            let _ = open::that_detached(url.as_str());
+            tauri::webview::NewWindowResponse::Deny
+        })
 }
 
-fn show_mini(app: &AppHandle) -> tauri::Result<()> {
+fn show_mini(app: &AppHandle, call: bool) -> tauri::Result<()> {
+    if !call {
+        let _ = fs::remove_file(hidden_flag());
+    }
     if let Some(w) = app.get_webview_window("mini") {
+        if call {
+            w.eval("window.amadeusShown && window.amadeusShown('call')")?;
+        }
         return w.show();
     }
-    let w = window(app, "mini", "Amadeus core", "/mini.html")?
+    let path = if call { "/mini.html?call=1" } else { "/mini.html" };
+    let w = window(app, "mini", MINI_TITLE, path)
         .inner_size(MW, MH)
         .resizable(false)
         .transparent(true)
@@ -54,24 +116,83 @@ fn show_mini(app: &AppHandle) -> tauri::Result<()> {
         .skip_taskbar(true)
         .shadow(false)
         .build()?;
-    prepare(&w)
+    prepare(&w)?;
+    tell_core_open(true);
+    Ok(())
+}
+
+/// Gone, not just hidden: nothing runs or draws while it's closed.
+fn close_mini(app: &AppHandle, by_you: bool) {
+    if by_you {
+        let _ = fs::write(hidden_flag(), "");
+    }
+    if let Some(w) = app.get_webview_window("mini") {
+        let _ = w.destroy();
+    }
 }
 
 fn show_dash(app: &AppHandle, path: &str) -> tauri::Result<()> {
     if let Some(m) = app.get_webview_window("mini") {
-        m.hide()?;
+        m.destroy()?; // the mini core steps aside while the dashboard is open
     }
     if let Some(w) = app.get_webview_window("dash") {
+        w.navigate(format!("{}{path}", base()).parse().expect("a valid address"))?;
         w.show()?;
         return w.set_focus();
     }
-    let w = window(app, "dash", "Amadeus", path)?.inner_size(1200.0, 800.0).build()?;
-    prepare(&w)
+    let (mut width, mut height) = (1200.0, 800.0);
+    if let Ok(Some(m)) = app.primary_monitor() {
+        let size = m.size().to_logical::<f64>(m.scale_factor());
+        (width, height) = ((size.width * 0.72).min(1500.0).round(), (size.height * 0.82).min(950.0).round());
+    }
+    let w = window(app, "dash", DASH_TITLE, path).inner_size(width, height).center().build()?;
+    prepare(&w)?;
+    tell_core_open(true);
+    center_on_kde(width, height);
+    w.set_focus()
 }
 
-/// Microphone and autoplay for our pages, as desktop/popup.py allows them; on the mini core also dragging by its edge.
+fn close_dash(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("dash") {
+        let _ = w.destroy();
+    }
+    if !hidden_flag().exists() {
+        let _ = show_mini(app, false); // back to the mini core (unless you closed it)
+    }
+}
+
+/// Wayland apps can't place themselves: on KDE a short KWin script centres the dashboard. (The mini core has the rule
+/// from desktop/install-kwin-rule.sh, which keeps it on top and remembers where you dragged it.)
+fn center_on_kde(width: f64, height: f64) {
+    if !std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_uppercase().contains("KDE") {
+        return;
+    }
+    let file = data_dir().join("place-window.js");
+    let script = format!(
+        "for (const w of workspace.windowList()) if (w.resourceClass == \"amadeus-call\" && w.caption == \"{DASH_TITLE}\") {{
+           const a = workspace.clientArea(KWin.MaximizeArea, workspace.activeScreen, workspace.currentDesktop);
+           w.frameGeometry = {{ x: Math.round(a.x + (a.width - {width}) / 2), y: Math.round(a.y + (a.height - {height}) / 2), width: {width}, height: {height} }};
+         }}"
+    );
+    if fs::write(&file, script).is_err() {
+        return;
+    }
+    let cmd = format!(
+        "sleep 0.3; n=amadeus-place; qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript $n >/dev/null 2>&1; \
+         id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript '{}' $n) && \
+         qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run >/dev/null; sleep 1; \
+         qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript $n >/dev/null 2>&1",
+        file.display()
+    );
+    let _ = std::process::Command::new("sh").arg("-c").arg(cmd).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+}
+
+/// What only this system can do: the microphone and speaking without a click first, reloading a crashed page, moving
+/// the windows by their edge or top bar.
 #[cfg(target_os = "linux")]
 fn prepare(w: &WebviewWindow) -> tauri::Result<()> {
+    use gtk::gdk::EventType;
+    use gtk::glib::Propagation;
     use gtk::prelude::*;
     use webkit2gtk::{PermissionRequestExt, SettingsExt, UserMediaPermissionRequest, WebViewExt};
     let win = w.clone();
@@ -82,30 +203,64 @@ fn prepare(w: &WebviewWindow) -> tauri::Result<()> {
             st.set_media_playback_requires_user_gesture(false);
             st.set_enable_write_console_messages_to_stdout(true);
         }
+        // only Amadeus' own pages run here: the microphone is allowed, everything else refused
         view.connect_permission_request(|_, req| {
             if req.downcast_ref::<UserMediaPermissionRequest>().is_some() {
                 req.allow();
-                return true;
+            } else {
+                req.deny();
             }
-            false
+            true
         });
-        if win.label() != "mini" {
-            return;
-        }
-        let zones = win.state::<Zones>().0.clone();
+        let app = win.app_handle().clone();
+        view.connect_web_process_terminated(move |v, reason| {
+            println!("web process terminated: {reason:?}");
+            if crashed_too_often(&app) {
+                let _ = fs::write(software_flag(), "");
+                app.restart();
+            }
+            v.reload();
+        });
         let Ok(gw) = win.gtk_window() else { return };
-        view.connect_button_press_event(move |_, ev| {
-            let (x, y) = ev.position();
-            let (cx, cy, r) = (MW / 2.0, 150.0 + 140.0, 280.0 / 2.0 / 1.5 * 1.15); // the sphere: click and hold
-            let on_sphere = (x - cx).powi(2) + (y - cy).powi(2) <= r * r;
-            let on_zone = zones.lock().unwrap().iter().any(|z| x >= z[0] && x <= z[0] + z[2] && y >= z[1] && y <= z[1] + z[3]);
-            if ev.button() != 1 || ev.event_type() != gtk::gdk::EventType::ButtonPress || on_sphere || on_zone {
-                return gtk::glib::Propagation::Proceed;
-            }
-            let (rx, ry) = ev.root();
-            gw.begin_move_drag(1, rx as i32, ry as i32, ev.time());
-            gtk::glib::Propagation::Stop
-        });
+        if win.label() == "mini" {
+            let zones = win.state::<Shared>().zones.clone();
+            view.connect_button_press_event(move |_, ev| {
+                let (x, y) = ev.position();
+                let (cx, cy, r) = (MW / 2.0, 150.0 + 140.0, 280.0 / 2.0 / 1.5 * 1.15); // the sphere: click and hold
+                let on_sphere = (x - cx).powi(2) + (y - cy).powi(2) <= r * r;
+                let on_zone = zones.lock().unwrap().iter().any(|z| x >= z[0] && x <= z[0] + z[2] && y >= z[1] && y <= z[1] + z[3]);
+                if ev.button() != 1 || ev.event_type() != EventType::ButtonPress || on_sphere || on_zone {
+                    return Propagation::Proceed;
+                }
+                let (rx, ry) = ev.root();
+                gw.begin_move_drag(1, rx as i32, ry as i32, ev.time());
+                Propagation::Stop
+            });
+        } else {
+            // the top bar (52 px, right of the rail, left of the clock and X) moves it; a double click maximizes
+            view.connect_button_press_event(move |_, ev| {
+                let (x, y) = ev.position();
+                if ev.button() != 1 || !(x > 64.0 && x < gw.allocated_width() as f64 - 170.0 && y < 52.0) {
+                    return Propagation::Proceed;
+                }
+                match ev.event_type() {
+                    EventType::DoubleButtonPress => {
+                        if gw.is_maximized() {
+                            gw.unmaximize();
+                        } else {
+                            gw.maximize();
+                        }
+                        Propagation::Stop
+                    }
+                    EventType::ButtonPress => {
+                        let (rx, ry) = ev.root();
+                        gw.begin_move_drag(1, rx as i32, ry as i32, ev.time());
+                        Propagation::Stop
+                    }
+                    _ => Propagation::Proceed,
+                }
+            });
+        }
     })
 }
 
@@ -114,7 +269,7 @@ fn prepare(_w: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Clicks only where something is drawn; everywhere else they reach the desktop.
+/// Clicks only where something is drawn (the core, the bubbles); everywhere else they reach the desktop.
 #[cfg(target_os = "linux")]
 fn set_shape(w: &WebviewWindow, rects: &[[f64; 4]]) {
     use gtk::cairo::{RectangleInt, Region};
@@ -128,77 +283,285 @@ fn set_shape(w: &WebviewWindow, rects: &[[f64; 4]]) {
 #[cfg(not(target_os = "linux"))]
 fn set_shape(_w: &WebviewWindow, _rects: &[[f64; 4]]) {}
 
+/// Drawing without the GPU (the slow, CPU-only way) is only for graphics drivers where WebKit's GPU drawing crashes:
+/// "gpu_rendering": false in the config, or automatically after the page crashed a few times in a row (this marker
+/// file; delete it to try the GPU again).
+fn software_flag() -> PathBuf {
+    data_dir().join("popup-software-rendering")
+}
+
+#[cfg(target_os = "linux")]
+fn crashed_too_often(app: &AppHandle) -> bool {
+    let shared = app.state::<Shared>();
+    let mut crashes = shared.crashes.lock().unwrap();
+    crashes.retain(|t| t.elapsed() < Duration::from_secs(120));
+    crashes.push(Instant::now());
+    crashes.len() >= 3 && std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err()
+}
+
+/// Messages from the pages.
 #[tauri::command]
 fn native(app: AppHandle, window: WebviewWindow, msg: String) {
-    println!("from {}: {}", window.label(), msg.chars().take(70).collect::<String>());
-    let done = match msg.as_str() {
-        "close" | "hide" => window.hide(),
-        "mini" => window.hide().and_then(|_| show_mini(&app)),
-        "quit" => {
-            app.exit(0);
+    let a = app.clone();
+    let w = window.clone();
+    let _ = app.run_on_main_thread(move || {
+        let m = msg.as_str();
+        let done = if m == "close" {
+            close_mini(&a, true);
             Ok(())
+        } else if m == "hide" {
+            close_mini(&a, false); // a call is over: back to how it was
+            Ok(())
+        } else if m == "mini" {
+            let _ = fs::remove_file(hidden_flag());
+            close_dash(&a);
+            Ok(())
+        } else if m == "quit" {
+            // the X: the windows close, the tray icon stays (a click there brings the core back)
+            let _ = fs::write(hidden_flag(), "");
+            for w in a.webview_windows().values() {
+                let _ = w.destroy();
+            }
+            Ok(())
+        } else if let Some(path) = m.strip_prefix("dash:") {
+            show_dash(&a, if path.is_empty() { "/#home" } else { path })
+        } else if let Some(path) = m.strip_prefix("open:") {
+            w.navigate(format!("{}{path}", base()).parse().expect("a valid address"))
+        } else if let Some(list) = m.strip_prefix("shape:") {
+            if let Ok(rects) = serde_json::from_str::<Vec<[f64; 4]>>(list) {
+                set_shape(&w, &rects);
+            }
+            Ok(())
+        } else if let Some(list) = m.strip_prefix("zones:") {
+            if let Ok(zones) = serde_json::from_str::<Vec<[f64; 4]>>(list) {
+                *a.state::<Shared>().zones.lock().unwrap() = zones;
+            }
+            Ok(())
+        } else {
+            Ok(())
+        };
+        if let Err(e) = done {
+            eprintln!("{msg}: {e}");
         }
-        m if m.starts_with("dash:") => {
-            let path = if m.len() > 5 { m[5..].to_string() } else { "/#home".into() };
+    });
+}
+
+// ---------- the core tells us what to show ----------
+
+fn api(path: &str) -> ureq::Request {
+    ureq::get(&format!("{}{path}", base())).set("authorization", &format!("Bearer {}", token())).timeout(Duration::from_secs(5))
+}
+
+/// The core only "calls" through a new window when none is open: an open one looks for new events itself.
+fn tell_core_open(open: bool) {
+    std::thread::spawn(move || {
+        let _ = ureq::post(&format!("{}/api/desktop/state", base()))
+            .set("authorization", &format!("Bearer {}", token()))
+            .timeout(Duration::from_secs(5))
+            .send_json(json!({ "open": open }));
+    });
+}
+
+fn on_wake(app: &AppHandle, data: &Value) {
+    // the dashboard listens if it's in front, else the mini core
+    let js = format!("window.amadeusWake && window.amadeusWake({data})");
+    if let Some(d) = app.get_webview_window("dash") {
+        if d.is_focused().unwrap_or(false) {
+            let _ = d.eval(&js);
+            return;
+        }
+    }
+    if let Some(m) = app.get_webview_window("mini") {
+        let _ = m.eval(&js);
+        return;
+    }
+    if data["stage"] == "cancel" {
+        return;
+    }
+    let _ = show_mini(app, false);
+    let a = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500)); // the page needs a moment to load
+        if let Some(m) = a.get_webview_window("mini") {
+            let _ = m.eval(&js);
+        }
+    });
+}
+
+fn listen(app: AppHandle) {
+    let mut lost = true;
+    loop {
+        let reply = api("/api/desktop/wait").timeout(Duration::from_secs(45)).call().and_then(|r| Ok(r.into_json::<Value>()?));
+        let Ok(reply) = reply else {
+            lost = true;
+            std::thread::sleep(Duration::from_secs(3));
+            continue;
+        };
+        if lost {
+            lost = false; // the core (re)started: it doesn't know about our windows yet
+            tell_core_open(!app.webview_windows().is_empty());
+        }
+        for cmd in reply["cmds"].as_array().cloned().unwrap_or_default() {
             let a = app.clone();
-            app.run_on_main_thread(move || {
-                if let Err(e) = show_dash(&a, &path) {
-                    eprintln!("dashboard: {e}");
-                }
-            })
+            let _ = app.run_on_main_thread(move || match cmd["do"].as_str() {
+                Some("call") if a.webview_windows().is_empty() => drop(show_mini(&a, true)),
+                Some("wake") => on_wake(&a, &cmd["data"]),
+                _ => {}
+            });
         }
-        m if m.starts_with("shape:") => {
-            if let Ok(rects) = serde_json::from_str::<Vec<[f64; 4]>>(&m[6..]) {
-                let w = window.clone();
-                app.run_on_main_thread(move || set_shape(&w, &rects)).ok();
-            }
-            Ok(())
-        }
-        m if m.starts_with("zones:") => {
-            if let Ok(z) = serde_json::from_str::<Vec<[f64; 4]>>(&m[6..]) {
-                *app.state::<Zones>().0.lock().unwrap() = z;
-            }
-            Ok(())
-        }
-        _ => Ok(()),
-    };
-    if let Err(e) = done {
-        eprintln!("{msg}: {e}");
     }
 }
 
+// ---------- the tray icon ----------
+
+/// A tray icon in the theme's main colour (web/themes.js).
+fn tray_icon(svg: &str, theme: &str) -> Option<Image<'static>> {
+    let colour = match theme {
+        "purple" => "#B68CFF",
+        "red" => "#FF5260",
+        _ => "#5FD8FF",
+    };
+    let tree = resvg::usvg::Tree::from_str(&svg.replace("#5FD8FF", colour), &Default::default()).ok()?;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(64, 64)?;
+    let scale = 64.0 / tree.size().width();
+    resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+    let rgba = pixmap.pixels().iter().flat_map(|p| {
+        let c = p.demultiply();
+        [c.red(), c.green(), c.blue(), c.alpha()]
+    });
+    Some(Image::new_owned(rgba.collect(), 64, 64))
+}
+
 fn tray(app: &AppHandle) -> tauri::Result<()> {
+    let off_file = data_dir().join("wake-off");
     let toggle = MenuItem::with_id(app, "toggle", "Show or hide the core", true, None::<&str>)?;
-    let dash = MenuItem::with_id(app, "dash", "Dashboard", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit the test", true, None::<&str>)?;
-    TrayIconBuilder::new()
-        .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
-        .tooltip("Amadeus (Tauri test)")
-        .menu(&Menu::with_items(app, &[&toggle, &dash, &quit])?)
-        .on_menu_event(|app, ev| match ev.id.as_ref() {
-            "toggle" => match app.get_webview_window("mini") {
-                Some(w) if w.is_visible().unwrap_or(false) => drop(w.hide()),
-                _ => drop(show_mini(app)),
-            },
+    let dash = MenuItem::with_id(app, "dash", "Open dashboard", true, None::<&str>)?;
+    let appr = MenuItem::with_id(app, "approvals", "Approvals", true, None::<&str>)?;
+    let rem = MenuItem::with_id(app, "reminders", "Reminders", true, None::<&str>)?;
+    let wake = CheckMenuItem::with_id(app, "wake", "Wake word", true, !off_file.exists(), None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let line = PredefinedMenuItem::separator(app)?;
+    let line2 = PredefinedMenuItem::separator(app)?;
+    let wake2 = wake.clone();
+    let off = off_file.clone();
+    let icon = tray_icon(SVG_NORMAL, "blue").expect("the tray icon");
+    let t = TrayIconBuilder::with_id("main")
+        .icon(icon)
+        .tooltip("Amadeus")
+        .menu(&Menu::with_items(app, &[&toggle, &dash, &appr, &rem, &line, &wake, &line2, &quit])?)
+        .on_menu_event(move |app, ev| match ev.id.as_ref() {
+            "toggle" => {
+                if app.get_webview_window("mini").is_some() {
+                    close_mini(app, true);
+                } else {
+                    let _ = show_mini(app, false);
+                }
+            }
             "dash" => drop(show_dash(app, "/#home")),
+            "approvals" => drop(show_dash(app, "/#approvals")),
+            "reminders" => drop(show_dash(app, "/#reminders")),
+            "wake" => {
+                let _ = if wake2.is_checked().unwrap_or(true) { fs::remove_file(&off) } else { fs::write(&off, "") };
+            }
             "quit" => app.exit(0),
             _ => {}
         })
         .build(app)?;
+    // the amber dot beats while something waits for you; every few beats a look at what's going on
+    std::thread::spawn(move || {
+        let (mut theme, mut waits, mut beat, mut shown, mut tick) = ("blue".to_string(), false, false, (String::new(), ""), 0);
+        loop {
+            if tick % 5 == 0 {
+                let _ = wake.set_checked(!off_file.exists()); // it may have been switched by voice or chat ("voice off")
+                if let Some(t) = api("/api/theme").call().ok().and_then(|r| r.into_json::<Value>().ok()) {
+                    theme = t["theme"].as_str().unwrap_or("blue").to_string();
+                }
+                if let Some(e) = api("/api/events").call().ok().and_then(|r| r.into_json::<Value>().ok()) {
+                    waits = e.as_array().is_some_and(|l| !l.is_empty());
+                }
+                let n = api("/api/approvals?status=pending").call().ok().and_then(|r| r.into_json::<Value>().ok()).and_then(|l| l.as_array().map(Vec::len));
+                let _ = appr.set_text(match n {
+                    Some(n) if n > 0 => format!("Approvals ({n} waiting)"),
+                    _ => "Approvals".to_string(),
+                });
+            }
+            tick += 1;
+            beat = waits && !beat;
+            let svg = if off_file.exists() {
+                SVG_VOICE_OFF
+            } else if beat {
+                SVG_CALL
+            } else {
+                SVG_NORMAL
+            };
+            if shown != (theme.clone(), svg) {
+                shown = (theme.clone(), svg);
+                let _ = t.set_icon(tray_icon(svg, &theme));
+            }
+            std::thread::sleep(Duration::from_millis(950));
+        }
+    });
     Ok(())
 }
 
+// ---------- start ----------
+
+/// amadeus-desktop /#path   the dashboard at a page, e.g. /#approvals
+/// amadeus-desktop --mini   the mini core
+/// Without anything it starts with the mini core (unless you closed it). A running app is handed the request.
+fn handle(app: &AppHandle, arg: Option<&String>) {
+    match arg {
+        Some(a) if a.starts_with('/') => drop(show_dash(app, a)),
+        Some(a) if a == "--mini" => drop(show_mini(app, false)),
+        _ => {}
+    }
+}
+
 fn main() {
+    if config()["gpu_rendering"] == json!(false) || software_flag().exists() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     #[cfg(target_os = "linux")]
-    gtk::glib::set_prgname(Some("amadeus-call")); // the Wayland app id the KWin rule matches (always on top, its place)
+    gtk::glib::set_prgname(Some("amadeus-call")); // the Wayland app id the KWin rule matches
     tauri::Builder::default()
-        .manage(Zones::default())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| handle(app, args.get(1))))
+        .manage(Shared::default())
         .invoke_handler(tauri::generate_handler![native])
+        .on_window_event(|w, ev| match ev {
+            WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let app = w.app_handle();
+                if w.label() == "dash" {
+                    close_dash(app);
+                } else {
+                    close_mini(app, true);
+                }
+            }
+            WindowEvent::Destroyed => {
+                let left = w.app_handle().webview_windows().keys().filter(|l| l.as_str() != w.label()).count();
+                tell_core_open(left > 0);
+            }
+            _ => {}
+        })
         .setup(|app| {
-            tray(app.handle())?;
-            show_mini(app.handle())?;
+            let h = app.handle().clone();
+            tray(&h)?;
+            let arg = std::env::args().nth(1);
+            if arg.is_some() {
+                handle(&h, arg.as_ref());
+            } else if !hidden_flag().exists() {
+                show_mini(&h, false)?;
+            }
+            std::thread::spawn(move || listen(h));
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("the desktop app");
+        .build(tauri::generate_context!())
+        .expect("the desktop app")
+        .run(|_, ev| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = ev {
+                if code.is_none() {
+                    api.prevent_exit(); // no window open is normal: the tray icon stays
+                }
+            }
+        });
 }

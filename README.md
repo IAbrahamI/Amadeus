@@ -89,7 +89,7 @@ you approved. More detail, including the privacy filter step by step: [docs/ARCH
 ## Getting started
 
 You need Linux with systemd (KDE Plasma gives the best experience, other desktops work too), Python 3.10 or newer,
-Docker, Ollama, GTK 3 with WebKit2GTK 4.1 and PyQt6 for the window and tray, GStreamer for sound, about 15 GB of
+Docker, Ollama, GTK 3 with WebKit2GTK 4.1 and AppIndicator for the window and tray, GStreamer for sound, about 15 GB of
 disk (mostly the local model and the memory and privacy-filter images), and ideally an NVIDIA GPU with about 12 GB.
 The exact packages for Arch, Debian/Ubuntu and Fedora are in [docs/INSTALL.md](docs/INSTALL.md#1-what-you-need).
 
@@ -105,7 +105,7 @@ Everything your assistant knows is stored in `~/.local/share/amadeus/` on your P
 
 ## Built with
 
-Python (the core uses only the standard library) · plain JavaScript and WebGL, no build step · GTK/WebKit and PyQt
+Python (the core uses only the standard library) · plain JavaScript and WebGL, no build step · Tauri (Rust)
 for the desktop window and tray · Kotlin + Jetpack Compose for the phone app · [Ollama](https://ollama.com) (Qwen 3.5) ·
 [Hindsight](https://github.com/vectorize-io/hindsight) · [Presidio](https://github.com/microsoft/presidio) ·
 [Whisper](https://github.com/SYSTRAN/faster-whisper) and [Vosk](https://alphacephei.com/vosk/) ·

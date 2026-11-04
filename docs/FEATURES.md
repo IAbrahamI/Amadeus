@@ -72,8 +72,8 @@ Put any of these into `~/.config/amadeus-core/config.json`, then run `systemctl 
 
 ```bash
 amadeus                                          # open the dashboard
-systemctl --user status amadeus-core amadeus-tray amadeus-voice
+systemctl --user status amadeus-core amadeus-desktop amadeus-voice
 journalctl --user -u amadeus-core -f             # the log
-tail -f ~/.local/share/amadeus/core/popup.log    # the window's log
+journalctl --user -u amadeus-desktop -f           # the window's log
 core/desktop/install-kwin-rule.sh                # after changing your monitor layout
 ```

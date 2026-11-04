@@ -491,14 +491,15 @@ phase_voice() {
 # ---------------------------------------------------------------- the assistant itself
 phase_app() {
   head_ "The assistant: services, window, tray"
-  if ! python3 -c 'import gi; gi.require_version("Gtk", "3.0"); gi.require_version("WebKit2", "4.1")' 2>/dev/null; then
-    err "GTK 3 with WebKit2GTK 4.1 for Python is missing (see docs/INSTALL.md, What you need)"; return
+  if ! pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
+    err "GTK 3 with WebKit2GTK 4.1 is missing, or its development files (see docs/INSTALL.md, What you need)"; return
   fi
-  python3 -c 'import PyQt6' 2>/dev/null && ok "PyQt6 (tray icon)" || warn "PyQt6 is missing: no tray icon (see docs/INSTALL.md)"
+  pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null || pkg-config --exists appindicator3-0.1 2>/dev/null \
+    && ok "AppIndicator (tray icon)" || warn "AppIndicator is missing: the desktop app won't build (see docs/INSTALL.md)"
   if [[ "$MODE" != install ]]; then "$SCRIPT_DIR/core/deploy/install.sh" --dry-run | sed 's/^/  /'; return; fi
   "$SCRIPT_DIR/core/deploy/install.sh" | sed 's/^/  /'
   if [[ "$UPDATE" != 0 ]]; then
-    run systemctl --user restart amadeus-core amadeus-tray
+    run systemctl --user restart amadeus-core amadeus-desktop
     systemctl --user is-enabled --quiet amadeus-voice 2>/dev/null && run systemctl --user restart amadeus-voice
     systemctl --user is-enabled --quiet amadeus-wake 2>/dev/null && run systemctl --user restart amadeus-wake
   fi

@@ -52,7 +52,7 @@ flowchart TB
 |---|---|---|
 | Amadeus Core | `core/amadeus_core/` | `server` (API + static files), `agent` (model loop, approvals), `tools` (everything it can do), `privacy` (the filter), `work` (Claude Code runs), `background` (timed jobs), `quickchat` (one chat per day), `digest` (morning brief, evening summary) |
 | Web UI | `core/web/` | Plain HTML/CSS/JS, no build step: dashboard (`index.html` with `hud.js`, `hud-views.js`, `hud-settings.js`, and `core.js` drawing the core on the GPU), the small call window (`call.html`), the default avatar (`agent.svg`) |
-| Desktop | `core/desktop/` | `popup.py` (the window), `tray.py` (tray icon) |
+| Desktop | `core/desktop-tauri/` | The desktop app in Rust (Tauri): mini core, dashboard, tray icon. It shows the same web pages; the core tells it what to show through `amadeus_core/desktop.py`. `core/desktop/install-kwin-rule.sh` holds the KDE window rules |
 | Voice | `core/voice/` | `voice_server.py` (Whisper speech recognition), `wake.py` (wake word) |
 | Mail | `core/thunderbird/` | A Thunderbird add-on plus a native-messaging host; Thunderbird keeps your accounts and logins |
 | Phone | `android/` | Kotlin + Compose; pairs with a one-time code and talks to Core over Tailscale |
