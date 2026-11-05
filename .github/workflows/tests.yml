@@ -44,6 +44,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6  # keeps Gradle between runs and retries its download
       - name: Build the phone app
         working-directory: android
         run: ./gradlew --no-daemon assembleRelease --warning-mode all
