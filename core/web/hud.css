@@ -609,3 +609,16 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .quit svg { display: block; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .quit:hover { color: var(--ink); background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 14px rgba(var(--a),.45); }
 .quit[hidden] { display: none; }
+
+/* the first start */
+.setup { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 60px 24px 24px; background: var(--deck, #05101A); overflow: auto; }
+.setup-in { width: min(620px, 100%); }
+.setup h2 { font: 500 20px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--text); margin: 0 0 16px; }
+.setup .acts { margin-top: 16px; }
+.setup-bad { color: #F2A65A; }
+.setup-bad:empty { display: none; }
+.setup-bar { height: 6px; border: 1px solid var(--line-hi); }
+.setup-bar i { display: block; height: 100%; background: var(--text); transition: width .4s; }
+.setup-picks { display: grid; gap: 8px; }
+.setup-pick { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-hi); color: var(--text); cursor: pointer; line-height: 1.45; }
+.setup-pick em { font-style: normal; opacity: .7; }

@@ -18,7 +18,7 @@ mkdir -p "$OUT"
 (cd core/desktop-tauri
  npx --yes @tauri-apps/cli@2.12.4 icon icons/icon.png --output icons >/dev/null
  CARGO_TARGET_DIR="$ROOT/.tauri-build/target" npx --yes @tauri-apps/cli@2.12.4 build --bundles app \
-   --config '{"bundle":{"active":true,"icon":["icons/icon.icns","icons/icon.png"],"macOS":{"minimumSystemVersion":"12.0"}}}' -- --locked)
+   --config '{"app":{"macOSPrivateApi":true},"bundle":{"active":true,"icon":["icons/icon.icns","icons/icon.png"],"macOS":{"minimumSystemVersion":"12.0"}}}' -- --locked)
 APP="$OUT/Amadeus.app"
 rm -rf "$APP"
 cp -R .tauri-build/target/release/bundle/macos/Amadeus.app "$APP"

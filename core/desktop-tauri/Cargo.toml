@@ -18,6 +18,9 @@ open = "5"
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }  # see-through windows
+
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"
 ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }

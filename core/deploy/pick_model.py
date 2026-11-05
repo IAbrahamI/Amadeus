@@ -49,7 +49,18 @@ def model_folder():
     return os.path.expanduser("~")
 
 
+def _mac_hardware():
+    """Apple Silicon: one memory for everything. About 70% of it can hold a model while the desktop keeps working."""
+    def read(key):
+        return subprocess.run(["sysctl", "-n", key], capture_output=True, text=True, timeout=5).stdout.strip()
+    ram = int(read("hw.memsize") or 0) / 2 ** 30
+    return {"gpu_gb": round(ram * 0.7, 1), "gpu": read("machdep.cpu.brand_string") or "Apple Silicon", "ram_gb": round(ram, 1), "cores": os.cpu_count() or 1,
+            "disk_gb": round(shutil.disk_usage(model_folder()).free / 2 ** 30, 1)}
+
+
 def hardware():
+    if sys.platform == "darwin":
+        return _mac_hardware()
     gpu, name = 0.0, ""
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=memory.total,name", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10).stdout

@@ -35,6 +35,9 @@ window.amadeusBridge = { postMessage: (msg) => window.__TAURI_INTERNALS__.invoke
 addEventListener("error", (e) => console.error("JS error: " + e.message + " @" + e.lineno));
 addEventListener("unhandledrejection", (e) => console.error("JS rejection: " + e.reason));
 "#;
+/// Where the system has no way to watch the mouse from outside the page, the page says where you pressed.
+#[cfg(not(target_os = "linux"))]
+const PRESS: &str = r#"addEventListener("mousedown", (e) => { if (e.button === 0) window.amadeusBridge.postMessage(`press:${e.clientX},${e.clientY},${e.detail}`); }, true);"#;
 const SVG_NORMAL: &str = include_str!("../../web/tray/amadeus-tray.svg");
 const SVG_CALL: &str = include_str!("../../web/tray/amadeus-tray-call.svg");
 const SVG_SPEAKING: &str = include_str!("../../web/tray/amadeus-tray-speaking.svg");
@@ -102,7 +105,7 @@ fn login(path: &str) -> WebviewUrl {
 }
 
 fn window<'a>(app: &'a AppHandle, label: &str, title: &str, path: &str) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
-    WebviewWindowBuilder::new(app, label, login(path))
+    let builder = WebviewWindowBuilder::new(app, label, login(path))
         .title(title)
         .decorations(false)
         .user_agent(UA)
@@ -119,7 +122,10 @@ fn window<'a>(app: &'a AppHandle, label: &str, title: &str, path: &str) -> Webvi
         .on_new_window(|url, _| {
             let _ = open::that_detached(url.as_str());
             tauri::webview::NewWindowResponse::Deny
-        })
+        });
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.initialization_script(PRESS);
+    builder
 }
 
 fn show_mini(app: &AppHandle, call: bool) -> tauri::Result<()> {
@@ -358,6 +364,19 @@ fn bring_dash_forward(center: Option<(f64, f64)>) {
     ), 0.3);
 }
 
+/// Holding the mini core here moves it: not on the sphere (click and hold talks) and not on its buttons and bubbles.
+fn mini_moves_at(height: f64, x: f64, y: f64, zones: &[[f64; 4]]) -> bool {
+    let top = if height == MH_TALL { 150.0 } else { 10.0 }; // web/mini.css
+    let (cx, cy, r) = (MW / 2.0, top + 140.0, 280.0 / 2.0 / 1.5 * 1.15);
+    let on_sphere = (x - cx).powi(2) + (y - cy).powi(2) <= r * r;
+    !on_sphere && !zones.iter().any(|z| x >= z[0] && x <= z[0] + z[2] && y >= z[1] && y <= z[1] + z[3])
+}
+
+/// The top bar of the dashboard (52 px, right of the rail, left of the clock and X) moves it.
+fn dash_moves_at(width: f64, x: f64, y: f64) -> bool {
+    x > 64.0 && x < width - 170.0 && y < 52.0
+}
+
 /// What only this system can do: the microphone and speaking without a click first, reloading a crashed page, moving
 /// the windows by their edge or top bar.
 #[cfg(target_os = "linux")]
@@ -401,11 +420,7 @@ fn prepare(w: &WebviewWindow) -> tauri::Result<()> {
             let gw2 = gw.clone();
             view.connect_button_press_event(move |_, ev| {
                 let (x, y) = ev.position();
-                let top = if gw2.allocated_height() as f64 == MH_TALL { 150.0 } else { 10.0 }; // web/mini.css
-                let (cx, cy, r) = (MW / 2.0, top + 140.0, 280.0 / 2.0 / 1.5 * 1.15); // the sphere: click and hold
-                let on_sphere = (x - cx).powi(2) + (y - cy).powi(2) <= r * r;
-                let on_zone = zones.lock().unwrap().iter().any(|z| x >= z[0] && x <= z[0] + z[2] && y >= z[1] && y <= z[1] + z[3]);
-                if ev.button() != 1 || ev.event_type() != EventType::ButtonPress || on_sphere || on_zone {
+                if ev.button() != 1 || ev.event_type() != EventType::ButtonPress || !mini_moves_at(gw2.allocated_height() as f64, x, y, &zones.lock().unwrap()) {
                     return Propagation::Proceed;
                 }
                 let (rx, ry) = ev.root();
@@ -416,7 +431,7 @@ fn prepare(w: &WebviewWindow) -> tauri::Result<()> {
             // the top bar (52 px, right of the rail, left of the clock and X) moves it; a double click maximizes
             view.connect_button_press_event(move |_, ev| {
                 let (x, y) = ev.position();
-                if ev.button() != 1 || !(x > 64.0 && x < gw.allocated_width() as f64 - 170.0 && y < 52.0) {
+                if ev.button() != 1 || !dash_moves_at(gw.allocated_width() as f64, x, y) {
                     return Propagation::Proceed;
                 }
                 match ev.event_type() {
@@ -456,8 +471,70 @@ fn set_shape(w: &WebviewWindow, rects: &[[f64; 4]]) {
     }
 }
 
+/// Linux watches the mouse in prepare().
+#[cfg(target_os = "linux")]
+fn press(_w: &WebviewWindow, _at: &str) -> tauri::Result<()> {
+    Ok(())
+}
+
+/// You pressed the mouse at x,y in this window: move the window, if that's a spot for it. A double click on the
+/// dashboard's top bar maximizes it.
 #[cfg(not(target_os = "linux"))]
-fn set_shape(_w: &WebviewWindow, _rects: &[[f64; 4]]) {}
+fn press(w: &WebviewWindow, at: &str) -> tauri::Result<()> {
+    let n: Vec<f64> = at.split(',').filter_map(|v| v.parse().ok()).collect();
+    let [x, y, clicks] = n[..] else { return Ok(()) };
+    let size = w.inner_size()?.to_logical::<f64>(w.scale_factor()?);
+    match w.label() {
+        "mini" => {
+            let zones = w.state::<Shared>().zones.clone();
+            let moves = mini_moves_at(size.height, x, y, &zones.lock().unwrap());
+            if moves {
+                w.start_dragging()?;
+            }
+        }
+        "dash" if dash_moves_at(size.width, x, y) => {
+            if clicks >= 2.0 {
+                if w.is_maximized()? {
+                    w.unmaximize()?;
+                } else {
+                    w.maximize()?;
+                }
+            } else {
+                w.start_dragging()?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+static SHAPE: Mutex<Vec<[f64; 4]>> = Mutex::new(Vec::new());
+
+#[cfg(not(target_os = "linux"))]
+fn set_shape(_w: &WebviewWindow, rects: &[[f64; 4]]) {
+    *SHAPE.lock().unwrap() = rects.to_vec();
+}
+
+/// The mini core takes clicks only where something is drawn. This system can't cut a window to a shape, so the window
+/// lets clicks through whenever the pointer isn't on one of those spots.
+#[cfg(not(target_os = "linux"))]
+fn watch_pointer(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut through = false;
+        loop {
+            std::thread::sleep(Duration::from_millis(50));
+            let Some(w) = app.get_webview_window("mini") else { continue };
+            let (Ok(pointer), Ok(corner), Ok(scale)) = (app.cursor_position(), w.outer_position(), w.scale_factor()) else { continue };
+            let (x, y) = ((pointer.x - corner.x as f64) / scale, (pointer.y - corner.y as f64) / scale);
+            let rects = SHAPE.lock().unwrap().clone();
+            let on_it = rects.is_empty() || rects.iter().any(|r| x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3]);
+            if through == on_it && w.set_ignore_cursor_events(!on_it).is_ok() {
+                through = !on_it;
+            }
+        }
+    });
+}
 
 /// Drawing without the GPU (the slow, CPU-only way) is only for graphics drivers where WebKit's GPU drawing crashes:
 /// "gpu_rendering": false in the config, or automatically after the page crashed a few times in a row (this marker
@@ -502,6 +579,8 @@ fn native(app: AppHandle, window: WebviewWindow, msg: String) {
         } else if let Some(html) = m.strip_prefix("bubble:") {
             set_bubble(&a, html);
             Ok(())
+        } else if let Some(at) = m.strip_prefix("press:") {
+            press(&w, at)
         } else if m == "calling:1" || m == "calling:0" {
             CALLING.store(m.ends_with('1'), Ordering::Relaxed);
             Ok(())
@@ -976,6 +1055,8 @@ fn main() {
             }
             #[cfg(target_os = "macos")]
             mac_services(&h);
+            #[cfg(not(target_os = "linux"))]
+            watch_pointer(h.clone());
             let arg = std::env::args().nth(1);
             if arg.is_some() {
                 handle(&h, arg.as_ref());

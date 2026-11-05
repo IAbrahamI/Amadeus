@@ -70,6 +70,7 @@ setTimeout(zones, 300);
 // the app tells us when the bottom of this window is off the screen (the core is at the bottom)
 window.amadeusPillTop = (on) => { document.body.classList.toggle("pilltop", on); shape(); setTimeout(zones, 50); };
 native("pill?");
+api("/api/setup").then((s) => { if (s.needed) native("dash:/#home"); }).catch(() => {});  // nothing to talk with yet: the first start
 $("#cls").onclick = () => { stopAll(); native("close"); };
 
 // ---------- bubbles: only what is being said right now ----------

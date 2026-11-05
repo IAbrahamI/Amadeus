@@ -203,6 +203,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"mode": db.get_setting("speak_mini" if mini else "speak_replies", "always" if mini else "voice"), "voice": voices.selected()})
         if p == "/api/theme":  # the dashboard's main colour (Settings): blue (default), purple or red
             return self._json({"theme": db.get_setting("theme", "blue")})
+        if p == "/api/setup":  # the first start of the Mac app
+            from . import firstrun
+            return self._json(firstrun.status())
         if p == "/api/models":
             return self._json({"models": llm.list_models(), "info": llm.model_info(), "default": CFG["default_model"],
                                "chat": db.get_setting("chat_model", "") or CFG["default_model"]})
@@ -538,6 +541,14 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/conversations/(\w+)/messages", p)
         if m:
             return self._chat(m.group(1), b)
+        if p == "/api/setup":
+            from . import firstrun
+            if self._tailnet():
+                return self._json({"error": "Only on this computer."}, 403)
+            try:
+                return self._json(firstrun.act(b.get("action", ""), b))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
         if p == "/api/models":  # the model picker: the model for today's chat and the next ones (memory jobs keep theirs)
             from . import quickchat
             m = str(b.get("model", ""))
