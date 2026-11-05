@@ -6,6 +6,7 @@ if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != dumb ]]; then
 else
   C_OK=""; C_WARN=""; C_ERR=""; C_HEAD=""; C_BOLD=""; C_DIM=""; C_OFF=""; C_PICK=""; FANCY=0
 fi
+(( ! FANCY )) || trap 'printf "\e[?25h"' EXIT  # the cursor comes back, even after Ctrl+C
 ERRORS=0; WARNINGS=0; PROBLEMS=(); NOTES=(); STEP_LABEL=""; VERBOSE="${VERBOSE:-0}"
 ui_width() { local w="${COLUMNS:-}"; [[ -n "$w" ]] || w="$(tput cols 2>/dev/null || echo 80)"; (( w > 84 )) && w=84; echo "$w"; }
 
@@ -38,7 +39,8 @@ box() {  # box colour title line...: stands out without shouting
   done
 }
 
-# ---------- quiet progress: long commands show one line; everything they print goes to the log ----------
+# ---------- progress: long commands show what they run and their latest lines; all of it also goes to the log ----------
+PROGRESS_LINES="${PROGRESS_LINES:-5}"
 LOG="${AMADEUS_LOG:-$HOME/.local/share/amadeus/install.log}"
 label_of() {
   case "$*" in
@@ -78,25 +80,40 @@ run() {
   [[ "$1" != sudo ]] || sudo -v  # asked here, in the open, not hidden behind the progress line
   mkdir -p "$(dirname "$LOG")"
   printf '\n--- %s: %s\n' "$(date '+%F %T')" "$*" >>"$LOG"
-  "$@" >>"$LOG" 2>&1 </dev/null &
-  local pid=$! n=0 start=$SECONDS frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  local cmd_text="$*" now; now="$(mktemp)"
+  (( ${#cmd_text} <= $(ui_width) - 8 )) || cmd_text="${cmd_text:0:$(( $(ui_width) - 11 ))}..."
+  "$@" >"$now" 2>&1 </dev/null &
+  local pid=$! n=0 start=$SECONDS frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' shown=0 width line i
+  width=$(( $(ui_width) - 8 ))
   if (( FANCY )); then
+    # the command, then its latest lines live under a progress line. They fold away when it's done.
+    say "${C_DIM}→${C_OFF}" "${C_DIM}${cmd_text}${C_OFF}"
+    printf '\e[?25l'
     while kill -0 "$pid" 2>/dev/null; do
-      printf '\r  %s%s%s %s %s%ss%s\e[K' "$C_HEAD" "${frames:n++%10:1}" "$C_OFF" "$label" "$C_DIM" "$((SECONDS-start))" "$C_OFF"
+      (( shown == 0 )) || printf '\e[%dA' "$shown"
+      printf '\r  %s%s%s %s %s%ss%s\e[K\n' "$C_HEAD" "${frames:n++%10:1}" "$C_OFF" "$label" "$C_DIM" "$((SECONDS-start))" "$C_OFF"
+      shown=1; i=0
+      while IFS= read -r line; do
+        printf '    %s│ %s%s\e[K\n' "$C_DIM" "$line" "$C_OFF"; shown=$((shown+1)); i=$((i+1))
+      done < <(tail -n "$PROGRESS_LINES" "$now" 2>/dev/null | tr -d '\r' | sed -E 's/\x1b\[[0-9;?]*[A-Za-z]//g' | cut -c1-"$width")
+      printf '\e[J'
       sleep 0.12
     done
-    printf '\r\e[K'
+    (( shown == 0 )) || printf '\e[%dA\e[J' "$shown"
+    printf '\e[?25h'
   else
-    printf '  · %s\n' "$label"
+    printf '  · %s\n    %s\n' "$label" "$*"
   fi
   wait "$pid" || rc=$?
+  cat "$now" >>"$LOG"
   if (( rc == 0 )); then
-    ok "$label" | sed -E 's/ \((a few minutes|the first time[^)]*)\)//'
+    ok "$(sed -E 's/ \((a few minutes|the first time[^)]*)\)//' <<<"$label")  ${C_DIM}$((SECONDS-start))s${C_OFF}"
   else
     err "That didn't work: $label"
-    tail -n 12 "$LOG" | cut -c1-$(( $(ui_width) - 6 )) | sed "s/^/    ${C_DIM}/; s/\$/${C_OFF}/"
+    tail -n 12 "$now" | tr -d '\r' | cut -c1-"$width" | sed "s/^/    ${C_DIM}/; s/\$/${C_OFF}/"
     info "The full output is in $LOG"
   fi
+  rm -f "$now"
   return "$rc"
 }
 
