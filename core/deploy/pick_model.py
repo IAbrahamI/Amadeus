@@ -52,7 +52,7 @@ def model_folder():
 def _mac_hardware():
     """Apple Silicon: one memory for everything. About 70% of it can hold a model while the desktop keeps working."""
     def read(key):
-        return subprocess.run(["sysctl", "-n", key], capture_output=True, text=True, timeout=5).stdout.strip()
+        return subprocess.run(["/usr/sbin/sysctl", "-n", key], capture_output=True, text=True, timeout=5).stdout.strip()
     ram = int(read("hw.memsize") or 0) / 2 ** 30
     return {"gpu_gb": round(ram * 0.7, 1), "gpu": read("machdep.cpu.brand_string") or "Apple Silicon", "ram_gb": round(ram, 1), "cores": os.cpu_count() or 1,
             "disk_gb": round(shutil.disk_usage(model_folder()).free / 2 ** 30, 1)}

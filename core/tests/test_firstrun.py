@@ -61,6 +61,13 @@ class FirstStart(unittest.TestCase):
         with self.assertRaises(ValueError):
             firstrun.act("begin", {"model": "something-else"})
 
+    def test_the_page_gets_an_answer_on_a_mac(self):
+        with mock.patch.object(firstrun, "ollama_state", return_value="missing"), mock.patch.object(firstrun.system, "MAC", True), \
+                mock.patch.object(firstrun.pick_model, "hardware", return_value={"ram_gb": 16}):
+            s = firstrun.status()
+        self.assertTrue(s["needed"])
+        self.assertEqual(s["ollama"], "missing")
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])

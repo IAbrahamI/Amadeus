@@ -93,7 +93,7 @@ def _start_ollama():
     if system.MAC:
         app = next((a for a in OLLAMA_APPS if os.path.isdir(a)), None)
         if app:
-            subprocess.run(["open", "-g", app], capture_output=True, timeout=20)
+            subprocess.run(["/usr/bin/open", "-g", app], capture_output=True, timeout=20)
     for _ in range(45):
         if ollama_state() == "running":
             return
@@ -115,9 +115,9 @@ def _install_ollama():
                 got += len(chunk)
                 _say("Downloading Ollama", got * 100 // total if total else None)
         _say("Checking Ollama's signature")
-        subprocess.run(["ditto", "-x", "-k", zipped, tmp], check=True, capture_output=True, timeout=300)
+        subprocess.run(["/usr/bin/ditto", "-x", "-k", zipped, tmp], check=True, capture_output=True, timeout=300)
         app = os.path.join(tmp, "Ollama.app")
-        if subprocess.run(["spctl", "--assess", "--type", "execute", app], capture_output=True, timeout=120).returncode:
+        if subprocess.run(["/usr/sbin/spctl", "--assess", "--type", "execute", app], capture_output=True, timeout=120).returncode:
             raise ValueError("macOS couldn't confirm that download is really Ollama, so I didn't install it. You can get it from ollama.com.")
         for target in OLLAMA_APPS:
             try:

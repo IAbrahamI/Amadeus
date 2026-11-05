@@ -1006,7 +1006,7 @@ fn mac_services(app: &AppHandle) {
 <key>Label</key><string>{label}</string>
 <key>ProgramArguments</key><array>{args}</array>
 <key>WorkingDirectory</key><string>{}</string>
-<key>EnvironmentVariables</key><dict><key>PYTHONDONTWRITEBYTECODE</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
+<key>EnvironmentVariables</key><dict><key>PYTHONDONTWRITEBYTECODE</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><{keep_alive}/>
 <key>LimitLoadToSessionType</key><string>Aqua</string>
