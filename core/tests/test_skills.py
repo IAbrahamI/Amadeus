@@ -1,8 +1,7 @@
 import os
 import unittest
 
-from . import HOME
-from amadeus_core import agent
+from amadeus_core import agent, paths
 
 
 class Skills(unittest.TestCase):
@@ -15,7 +14,7 @@ class Skills(unittest.TestCase):
         self.assertFalse(s["calendar"]["body"].startswith("---"))
 
     def test_a_dropped_in_skill_without_triggers_loads_by_its_name(self):
-        d = os.path.join(HOME, ".local", "share", "amadeus", "core", "skills", "arxiv-search")
+        d = os.path.join(paths.DATA, "skills", "arxiv-search")
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, "SKILL.md"), "w") as f:
             f.write("---\nname: arxiv-search\ndescription: Find papers.\n---\nSearch papers carefully.\n")

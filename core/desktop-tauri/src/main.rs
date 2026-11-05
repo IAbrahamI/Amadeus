@@ -12,7 +12,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(target_os = "linux")]
+use std::time::Instant;
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
@@ -87,6 +89,7 @@ static PILL_TOP: AtomicBool = AtomicBool::new(false); // the core is so low that
 #[derive(Default)]
 struct Shared {
     zones: Arc<Mutex<Vec<[f64; 4]>>>, // the mini core's buttons and bubbles: clicks there aren't a drag
+    #[cfg(target_os = "linux")]
     crashes: Mutex<Vec<Instant>>,
 }
 
