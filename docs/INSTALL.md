@@ -10,7 +10,7 @@ Install the packages from [What you need](#1-what-you-need) first. Then:
 ```bash
 git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 ./install.sh --check     # what's there and what's missing (changes nothing)
-./install.sh             # asks four questions, then sets everything up
+./install.sh             # installs what's missing after asking, asks three questions, then sets everything up
 amadeus                  # opens it
 ```
 

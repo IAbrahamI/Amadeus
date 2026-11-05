@@ -247,6 +247,7 @@ phase_prereqs() {
 
   if (( ERRORS > 0 )); then
     [[ "$MODE" == install ]] && die "Fix the prerequisites above, then run this script again."
+    [[ "$MODE" == check && -n "$PKG" ]] && info "./install.sh offers to install what's missing here (it asks before using sudo)."
     warn "Prerequisites are incomplete; later phases may show as missing."
   fi
 }
@@ -597,7 +598,7 @@ phase_voice() {
 phase_app() {
   head_ "The assistant: services, window, tray"
   if ! pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
-    err "GTK 3 with WebKit2GTK 4.1 is missing, or its development files (see docs/INSTALL.md, What you need)"; return
+    err "GTK 3 with WebKit2GTK 4.1 is missing, or its development files (./install.sh offers to install them; see also docs/INSTALL.md, What you need)"; return
   fi
   if [[ "$MODE" != install ]]; then "$SCRIPT_DIR/core/deploy/install.sh" --dry-run | sed 's/^/  /'; return; fi
   "$SCRIPT_DIR/core/deploy/install.sh" | sed 's/^/  /'
@@ -626,8 +627,8 @@ if ! have python3 && [[ "$MODE" != check && -n "$PKG" ]]; then
   case "$PKG" in pacman) py=python ;; *) py=python3 ;; esac
   if offer "$py" "the $PKG package"; then pkg_install "$py"; fi
 fi
+phase_deps    # what's missing comes first: installing Docker can restart this script
 phase_setup
-phase_deps
 phase_prereqs
 want ollama    && phase_ollama
 want secrets   && phase_secrets
