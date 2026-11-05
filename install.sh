@@ -152,8 +152,8 @@ offer() {  # offer "what" "commands shown": yes in a real install when you agree
 phase_deps() {
   [[ "$MODE" != check ]] || return 0
   [[ -n "$PKG" ]] || { info "Unknown package manager: install what's reported below by hand (docs/INSTALL.md)."; return 0; }
-  # the desktop app's system packages
-  if want app; then
+  # the desktop app's system packages (a package brings the app ready-built)
+  if want app && [[ -f "$SCRIPT_DIR/core/desktop-tauri/src/main.rs" ]]; then
     local need=()
     have python3 && python3 -c 'import venv, ensurepip' 2>/dev/null || need+=(python)
     have gcc && have pkg-config || need+=(build)

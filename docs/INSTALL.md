@@ -294,7 +294,7 @@ sudo tee /etc/yum.repos.d/amadeus.repo <<'R'
 name=Amadeus
 baseurl=https://iabrahami.github.io/Amadeus/rpm
 repo_gpgcheck=1
-gpgcheck=0
+gpgcheck=1
 gpgkey=https://iabrahami.github.io/Amadeus/amadeus-repo.gpg
 R
 sudo dnf install amadeus

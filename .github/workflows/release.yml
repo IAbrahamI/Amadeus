@@ -39,12 +39,17 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/.tauri-build/target
         run: cargo build --release --locked
       - name: Build the packages
+        env:
+          REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+          REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
         run: |
           curl -fsSL -o nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
           echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  nfpm.tgz" | sha256sum -c -
           sudo tar xzf nfpm.tgz -C /usr/local/bin nfpm
           rm nfpm.tgz
-          packaging/build.sh
+          (umask 077; printf '%s' "$REPO_GPG_PRIVATE_KEY" > "$RUNNER_TEMP/key.asc")
+          RPM_KEY="$RUNNER_TEMP/key.asc" NFPM_RPM_PASSPHRASE="$REPO_GPG_PASSPHRASE" packaging/build.sh
+          rm -f "$RUNNER_TEMP/key.asc"
       - name: Keep the packages with this run
         uses: actions/upload-artifact@v7
         with:

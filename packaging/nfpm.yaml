@@ -13,6 +13,9 @@ contents:
   - src: dist/amadeus
     dst: /usr/bin/amadeus
     file_info: { mode: 0755 }
+rpm:
+  signature:
+    key_file: ${RPM_KEY}
 scripts:
   postinstall: packaging/postinstall.sh
 overrides:

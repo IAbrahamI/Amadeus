@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import threading
 import re
+import shutil
 import time
 import urllib.request
 
@@ -33,7 +34,7 @@ def idle_stop():
         idle = now - os.path.getmtime(PRESIDIO_STAMP) > IDLE_SEC
     except OSError:
         idle = True
-    if idle:
+    if idle and shutil.which("docker"):
         r = subprocess.run(["docker", "ps", "-q", "--filter", "name=presidio-"], capture_output=True, text=True, timeout=30)
         if r.stdout.strip():
             subprocess.run(["docker", "stop", "presidio-analyzer", "presidio-anonymizer"], capture_output=True, timeout=120)
@@ -90,7 +91,6 @@ _apps = {}
 def keep_apps():
     """Thunderbird must run for Amadeus to see mail: if it was closed, start it again hidden after a minute (so a quick restart by you isn't interrupted). After Thunderbird comes back,
     check the mail that came in meanwhile."""
-    import shutil
     from . import mailbridge
     if not mailbridge.thunderbird_set_up():
         return

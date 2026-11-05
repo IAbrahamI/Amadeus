@@ -5,6 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export VERSION; VERSION="$(cat VERSION)"
+export RPM_KEY="${RPM_KEY:-}"  # the signing key for the .rpm: without it, it's unsigned
 BIN=.tauri-build/target/release/amadeus-desktop
 [ -x "$BIN" ] || { echo "Build the desktop app first: $BIN is missing"; exit 1; }
 rm -rf dist; mkdir -p dist/stage
