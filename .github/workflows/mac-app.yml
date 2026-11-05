@@ -10,11 +10,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-15, macos-15-intel]  # Apple Silicon, Intel
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15  # Apple Silicon: Macs with an M1 or newer are the ones Amadeus supports
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
@@ -42,7 +38,7 @@ jobs:
           codesign --verify --deep --strict dist/macos/Amadeus.app
       - uses: actions/upload-artifact@v7
         with:
-          name: amadeus-${{ matrix.runner }}
+          name: amadeus-macos
           path: dist/macos/*.dmg
           retention-days: 14
           if-no-files-found: error

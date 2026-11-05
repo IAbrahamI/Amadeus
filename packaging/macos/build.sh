@@ -7,13 +7,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 [ "$(uname -s)" = Darwin ] || { echo "This builds the Mac app, on a Mac." >&2; exit 1; }
 VERSION="$(cat VERSION)"
-ARCH="$(uname -m)"  # arm64 or x86_64
+ARCH="$(uname -m)"
+[ "$ARCH" = arm64 ] || { echo "Amadeus supports Macs with an M1 or newer." >&2; exit 1; }
 PY_RELEASE=20261026 PY_VERSION=3.13.18
-case "$ARCH" in
-  arm64)  PY_ARCH=aarch64; PY_SHA=e5af2fde6a937a0e0c795a0c595c4efb70578d57463a2657c819992b9b9acbac ;;
-  x86_64) PY_ARCH=x86_64;  PY_SHA=708be9e7df297f68bdae589ea9e62a621db5abe7708f79e851c41410347452d1 ;;
-  *) echo "Unknown Mac type: $ARCH" >&2; exit 1 ;;
-esac
+PY_ARCH=aarch64 PY_SHA=e5af2fde6a937a0e0c795a0c595c4efb70578d57463a2657c819992b9b9acbac
 OUT="$ROOT/dist/macos"
 mkdir -p "$OUT"
 
