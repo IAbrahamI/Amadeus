@@ -3,6 +3,7 @@ sort it by the rules in the "mail-watch" skill, and calls you for important mail
 It never starts Thunderbird itself and never marks anything as read."""
 import json
 import os
+from pathlib import Path
 import re
 import threading
 import time
@@ -90,7 +91,7 @@ def _rules():
     for d in SKILL_DIRS:  # the skill as a folder (agentskills.io format) or as one Markdown file
         for f in (os.path.join(d, "mail-watch", "SKILL.md"), os.path.join(d, "mail-watch.md")):
             if os.path.isfile(f):
-                text = open(f).read()
+                text = Path(f).read_text()
                 return text.split("\n---", 1)[1] if text.startswith("---") else text
     return "Important: bills, deadlines, personal messages that need an answer. Not important: newsletters and ads."
 

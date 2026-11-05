@@ -13,6 +13,7 @@ Everything stays local (the database and the local model). Inspired by the playb
 import datetime
 import json
 import os
+from pathlib import Path
 import random
 import re
 import threading
@@ -156,7 +157,7 @@ def test_cases(n=10):
     return cases[:n] + BASICS  # plus a few basics every assistant must keep getting right
 
 
-BASICS = [tuple(c) for c in json.load(open(os.path.join(os.path.dirname(__file__), "learning_tests.json")))]
+BASICS = [tuple(c) for c in json.loads(Path(os.path.join(os.path.dirname(__file__), "learning_tests.json")).read_text())]
 
 
 def evaluate(lesson_items, cases):

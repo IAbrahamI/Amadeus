@@ -1,6 +1,7 @@
 import io
 import json
 import os
+from pathlib import Path
 import unittest
 import urllib.error
 from unittest import mock
@@ -58,6 +59,6 @@ class Updates(unittest.TestCase):
         self.assertFalse(updates.status()["available"])
 
     def test_one_version_everywhere(self):
-        v = open(os.path.join(ROOT, "VERSION")).read().strip()
-        self.assertIn(f'version = "{v}"', open(os.path.join(ROOT, "core/desktop-tauri/Cargo.toml")).read())
-        self.assertEqual(json.load(open(os.path.join(ROOT, "core/desktop-tauri/tauri.conf.json")))["version"], v)
+        v = Path(os.path.join(ROOT, "VERSION")).read_text().strip()
+        self.assertIn(f'version = "{v}"', Path(os.path.join(ROOT, "core/desktop-tauri/Cargo.toml")).read_text())
+        self.assertEqual(json.loads(Path(os.path.join(ROOT, "core/desktop-tauri/tauri.conf.json")).read_text())["version"], v)

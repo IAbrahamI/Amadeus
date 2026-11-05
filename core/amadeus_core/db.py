@@ -1,4 +1,5 @@
 """SQLite storage: conversations, messages, pending approvals, reminders, connector and skill settings."""
+import atexit
 import json
 import os
 import sqlite3
@@ -30,6 +31,7 @@ def conn():
 
 
 _C = conn()
+atexit.register(_C.close)
 with _LOCK:
     _C.executescript(SCHEMA)
     for col in ("feedback TEXT", "revised INTEGER"):  # Adjust on an approval (added later; older databases get the columns here)

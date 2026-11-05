@@ -6,6 +6,7 @@ instructions, figure out the order".
 Skills (core/skills/) stay for how to think and behave in a chat; playbooks are for recipes."""
 import datetime
 import json
+from pathlib import Path
 import re
 import time
 import urllib.request
@@ -320,7 +321,7 @@ def voice_status():
 
 
 def voice_off(cid, text=""):
-    open(_wake_off_file(), "w").close()
+    Path(_wake_off_file()).touch()
     return ("**Voice input is off.** I'm not listening anymore: the microphone is closed, so talking to someone else "
             "won't wake me. Type \"voice on\" (or use the tray menu) when you want me to listen again.")
 

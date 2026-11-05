@@ -5,6 +5,7 @@ regularly merged into the profile. The profile is shown on the Memory page (you 
 conversation so Amadeus can adapt. Mail filing rules are learned from the moves you approve (never mail contents)."""
 import datetime
 import json
+from pathlib import Path
 import time
 import re
 import os
@@ -32,7 +33,7 @@ def _rules():
     for d in SKILL_DIRS:  # the skill as a folder (agentskills.io format) or as one Markdown file
         for f in (os.path.join(d, "memory-curator", "SKILL.md"), os.path.join(d, "memory-curator.md")):
             if os.path.isfile(f):
-                text = open(f).read()
+                text = Path(f).read_text()
                 return text.split("\n---", 1)[1] if text.startswith("---") else text
     return "Keep only lasting facts about the user and how they communicate. Never keep email contents."
 

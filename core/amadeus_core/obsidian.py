@@ -3,6 +3,7 @@ Connecting copies them into an Amadeus/ folder of your vault, never over anythin
 vault snapshots (install.sh --only obsidian). Disconnecting leaves your files in the vault."""
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -26,7 +27,7 @@ def _vault_of(notes):
 def _suggestion():
     """The vault Obsidian itself has open, if any."""
     try:
-        vaults = json.load(open(os.path.join(HOME, ".config", "obsidian", "obsidian.json"))).get("vaults", {})
+        vaults = json.loads(Path(os.path.join(HOME, ".config", "obsidian", "obsidian.json")).read_text()).get("vaults", {})
         return next((v["path"] for v in vaults.values() if v.get("open")), next((v["path"] for v in vaults.values()), ""))
     except (OSError, ValueError, KeyError):
         return ""
@@ -38,10 +39,10 @@ def status():
 
 
 def _config(**change):
-    c = json.load(open(CONFIG_PATH)) if os.path.exists(CONFIG_PATH) else {}
+    c = json.loads(Path(CONFIG_PATH).read_text()) if os.path.exists(CONFIG_PATH) else {}
     c.update(change)
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-    json.dump(c, open(CONFIG_PATH, "w"), indent=2)
+    Path(CONFIG_PATH).write_text(json.dumps(c, indent=2))
 
 
 def _restart():
@@ -90,8 +91,8 @@ def disconnect():
     subprocess.run(["systemctl", "--user", "disable", "--now", "amadeus-vault-snapshot.timer"], capture_output=True, timeout=30)
     env = os.path.join(REPO, "amadeus.env") if os.access(REPO, os.W_OK) else os.path.expanduser("~/.config/amadeus-core/amadeus.env")
     if os.path.exists(env):  # (or the next update connects it again)
-        text = open(env).read()
-        open(env, "w").write(re.sub(r"^OBSIDIAN_VAULT=.*\n?", "", text, flags=re.M))
+        text = Path(env).read_text()
+        Path(env).write_text(re.sub(r"^OBSIDIAN_VAULT=.*\n?", "", text, flags=re.M))
     workguard.install(projects_dir(CFG), "")
     _restart()
     return {"ok": True}

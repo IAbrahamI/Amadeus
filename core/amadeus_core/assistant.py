@@ -5,6 +5,7 @@ import base64
 import glob
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import threading
@@ -20,7 +21,7 @@ DEFAULTS = {"assistant_name": "Amadeus", "persona": "default", "avatar": ""}
 
 def _read_config():
     try:
-        return json.load(open(CONFIG_PATH))
+        return json.loads(Path(CONFIG_PATH).read_text())
     except (OSError, ValueError):
         return {}
 
@@ -48,7 +49,7 @@ def get():
     persona = c.get("persona", CFG.get("persona", "default"))
     f = _persona_file(persona) if persona else ""
     return {"name": c.get("assistant_name", CFG["assistant_name"]), "persona": persona, "personas": personas(),
-            "persona_text": open(f).read() if f else "", "persona_is_yours": f.startswith(PERSONA_DIRS[0]),
+            "persona_text": Path(f).read_text() if f else "", "persona_is_yours": f.startswith(PERSONA_DIRS[0]),
             "avatar": c.get("avatar", CFG.get("avatar", "")), "avatars": avatar_sets()}
 
 

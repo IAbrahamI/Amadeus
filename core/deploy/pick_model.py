@@ -7,6 +7,7 @@ the built-in list below is used."""
 import glob
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -44,13 +45,13 @@ def hardware():
     except (OSError, ValueError, IndexError, subprocess.SubprocessError):
         for f in glob.glob("/sys/class/drm/card*/device/mem_info_vram_total"):  # AMD
             try:
-                gpu = max(gpu, int(open(f).read()) / 2 ** 30)
+                gpu = max(gpu, int(Path(f).read_text()) / 2 ** 30)
                 name = "AMD graphics card"
             except (OSError, ValueError):
                 pass
     ram = 0.0
     try:
-        ram = next(int(l.split()[1]) for l in open("/proc/meminfo") if l.startswith("MemTotal")) / 2 ** 20
+        ram = next(int(l.split()[1]) for l in Path("/proc/meminfo").read_text().splitlines() if l.startswith("MemTotal")) / 2 ** 20
     except (OSError, StopIteration, ValueError):
         pass
     return {"gpu_gb": round(gpu, 1), "gpu": name, "ram_gb": round(ram, 1), "cores": os.cpu_count() or 1,

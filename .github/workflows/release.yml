@@ -18,7 +18,7 @@ jobs:
     needs: tests
     runs-on: ubuntu-22.04  # the oldest supported: the app then runs on newer systems too
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: The tag matches the VERSION file
         if: github.ref_type == 'tag'
         run: test "${GITHUB_REF_NAME#v}" = "$(cat VERSION)"
@@ -37,7 +37,7 @@ jobs:
           rm nfpm.tgz
           packaging/build.sh
       - name: Keep the packages with this run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages
           path: dist/

@@ -4,6 +4,7 @@ import datetime
 import glob
 import json
 import os
+from pathlib import Path
 import re
 import threading
 import time
@@ -84,7 +85,7 @@ def skills():
     out = {}
     for d in SKILLS_DIRS:
         for f in sorted(glob.glob(os.path.join(d, "*", "SKILL.md"))):
-            meta, body = _frontmatter(open(f).read())
+            meta, body = _frontmatter(Path(f).read_text())
             name = meta.get("name") or os.path.basename(os.path.dirname(f))
             extra = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
             triggers = [t.strip().lower() for t in extra.get("triggers", "").split(",") if t.strip()] or \
@@ -92,7 +93,7 @@ def skills():
             out[name] = {"name": name, "description": meta.get("description", ""), "body": body, "triggers": triggers,
                          "mode": extra.get("mode") or "auto"}
         for f in sorted(glob.glob(os.path.join(d, "*.md"))):
-            text = open(f).read()
+            text = Path(f).read_text()
             name = os.path.basename(f)[:-3]
             lines = text.splitlines()
             desc = next((l[2:].strip() for l in lines if l.startswith("> ")), "")
@@ -158,7 +159,7 @@ def persona():
     for d in PERSONA_DIRS:
         f = os.path.join(d, os.path.basename(name) + ".md")
         if name and os.path.isfile(f):
-            return "\n".join(l for l in open(f).read().splitlines() if not l.startswith("> ")).strip()
+            return "\n".join(l for l in Path(f).read_text().splitlines() if not l.startswith("> ")).strip()
     return ""
 
 

@@ -2,6 +2,7 @@
 import datetime
 import json
 import os
+from pathlib import Path
 import subprocess
 import threading
 import re
@@ -127,7 +128,7 @@ def clean_reports():
     base = os.path.join(CFG["data_dir"], "reports")
     log = os.path.join(base, "logs", "leak-scan.md")
     if os.path.exists(log):
-        lines = open(log).read().splitlines()
+        lines = Path(log).read_text().splitlines()
         entries = [i for i, l in enumerate(lines) if l.startswith("- 20")]
         keep = CFG.get("leak_scan_days", 30)
         if len(entries) > keep:

@@ -12,6 +12,7 @@ Secrets (~/.local/share/amadeus/secrets, created by install.sh): canaries.json (
 and denylist.txt (one term per line)."""
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import time
@@ -99,8 +100,7 @@ def ensure_presidio():
     """Presidio runs on demand: start the containers if they are stopped (Amadeus stops them when idle).
     Either container sometimes hangs on a cold start (gunicorn without a worker): restart that one."""
     os.makedirs(os.path.dirname(LAST_USED), exist_ok=True)
-    open(LAST_USED, "a").close()
-    os.utime(LAST_USED)
+    Path(LAST_USED).touch()
     services = {"presidio-analyzer": ANALYZER.rsplit("/", 1)[0] + "/health",
                 "presidio-anonymizer": ANONYMIZER.rsplit("/", 1)[0] + "/health"}
 

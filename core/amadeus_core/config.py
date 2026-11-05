@@ -1,6 +1,7 @@
 """Settings. Defaults fit a single-user Linux desktop; override in ~/.config/amadeus-core/config.json."""
 import json
 import os
+from pathlib import Path
 import secrets
 
 HOME = os.path.expanduser("~")
@@ -38,7 +39,7 @@ def projects_dir(cfg):
 
 
 def load():
-    cfg, own = dict(DEFAULTS), json.load(open(CONFIG_PATH)) if os.path.exists(CONFIG_PATH) else {}
+    cfg, own = dict(DEFAULTS), json.loads(Path(CONFIG_PATH).read_text()) if os.path.exists(CONFIG_PATH) else {}
     cfg.update(own)
     older = os.path.join(HOME, "Documents", "Obsidian Vault", "Amadeus")  # where older installs have them without saying so
     if "vault_dir" not in own and os.path.isdir(older):
@@ -51,7 +52,7 @@ def load():
         with open(token_path, "w") as f:
             f.write(secrets.token_urlsafe(32))
         os.chmod(token_path, 0o600)
-    cfg["token"] = open(token_path).read().strip()
+    cfg["token"] = Path(token_path).read_text().strip()
     return cfg
 
 

@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
@@ -29,15 +30,15 @@ class Obsidian(unittest.TestCase):
         self.assertFalse(obsidian.status()["connected"])
 
     def test_connect_copies_notes_and_keeps_what_is_there(self):
-        open(os.path.join(self.notes, "ToDo.md"), "w").write("mine here\n")
-        open(os.path.join(self.notes, "Notes.md"), "w").write("from amadeus\n")
+        Path(os.path.join(self.notes, "ToDo.md")).write_text("mine here\n")
+        Path(os.path.join(self.notes, "Notes.md")).write_text("from amadeus\n")
         os.makedirs(os.path.join(self.vault, "Amadeus"))
-        open(os.path.join(self.vault, "Amadeus", "Notes.md"), "w").write("already in the vault\n")
+        Path(os.path.join(self.vault, "Amadeus", "Notes.md")).write_text("already in the vault\n")
         r = obsidian.connect(self.vault)
         self.assertEqual(r["kept"], ["Notes.md"])
-        self.assertEqual(open(os.path.join(self.vault, "Amadeus", "ToDo.md")).read(), "mine here\n")
-        self.assertEqual(open(os.path.join(self.vault, "Amadeus", "Notes.md")).read(), "already in the vault\n")
-        self.assertEqual(open(os.path.join(self.notes, "ToDo.md")).read(), "mine here\n")
+        self.assertEqual(Path(os.path.join(self.vault, "Amadeus", "ToDo.md")).read_text(), "mine here\n")
+        self.assertEqual(Path(os.path.join(self.vault, "Amadeus", "Notes.md")).read_text(), "already in the vault\n")
+        self.assertEqual(Path(os.path.join(self.notes, "ToDo.md")).read_text(), "mine here\n")
         args, kw = self.run.call_args
         self.assertEqual(args[0][1:], ["--only", "obsidian"])
         self.assertEqual(kw["env"]["OBSIDIAN_VAULT"], os.path.realpath(self.vault))
@@ -54,11 +55,11 @@ class Obsidian(unittest.TestCase):
 
     def test_disconnect_goes_back_and_leaves_the_files(self):
         os.makedirs(os.path.join(self.vault, "Amadeus"))
-        open(os.path.join(self.vault, "Amadeus", "ToDo.md"), "w").write("x\n")
+        Path(os.path.join(self.vault, "Amadeus", "ToDo.md")).write_text("x\n")
         with mock.patch.dict(CFG, {"vault_dir": os.path.join(self.vault, "Amadeus")}):
             self.assertTrue(obsidian.status()["connected"])
             obsidian.disconnect()
-        self.assertEqual(json.load(open(CONFIG_PATH))["vault_dir"], DEFAULTS["vault_dir"])
+        self.assertEqual(json.loads(Path(CONFIG_PATH).read_text())["vault_dir"], DEFAULTS["vault_dir"])
         self.assertTrue(os.path.exists(os.path.join(self.vault, "Amadeus", "ToDo.md")))
 
 

@@ -5,11 +5,12 @@ older Python than the voice service. Local only (127.0.0.1:8897); bearer token =
 POST /normalize {"text", "lang"} -> {"text"}. Amadeus Core (speech.py) falls back to its own rules when this is off."""
 import json
 import os
+from pathlib import Path
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOME = os.path.expanduser("~")
-TOKEN = open(os.path.join(HOME, ".local/share/amadeus/core/token")).read().strip()
+TOKEN = Path(os.path.join(HOME, ".local/share/amadeus/core/token")).read_text().strip()
 CACHE = os.path.join(HOME, ".local/share/amadeus/voice/models/tn-cache")
 PORT = 8897
 LANGS = ("en", "de", "es")

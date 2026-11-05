@@ -3,6 +3,7 @@
 never reads your vault, Amadeus's data, keys or mail. Written by install.sh, and again when you pick another folder."""
 import json
 import os
+from pathlib import Path
 import shlex
 import stat
 
@@ -17,7 +18,7 @@ def files(projects, vault=""):
     """What goes into the guard folder: {name: (text, mode)}."""
     projects = os.path.realpath(os.path.expanduser(projects))
     vault = os.path.realpath(os.path.expanduser(vault)) if vault else ""
-    guard = open(TEMPLATE).read().replace('"@PROJECTS@"', json.dumps(projects))
+    guard = Path(TEMPLATE).read_text().replace('"@PROJECTS@"', json.dumps(projects))
     guard = guard.replace('"@VAULT@"', json.dumps(vault))
     deny = [f"Edit(/{GUARD}/**)"]
     if vault and os.path.isdir(vault):
@@ -42,7 +43,7 @@ def install(projects, vault=""):
     wrote = []
     for name, (text, mode) in files(projects, vault).items():
         p = os.path.join(GUARD, name)
-        if os.path.exists(p) and open(p).read() == text:
+        if os.path.exists(p) and Path(p).read_text() == text:
             continue
         if os.path.exists(p):
             os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)
@@ -64,7 +65,7 @@ if __name__ == "__main__":  # install.sh: python3 workguard.py <projects> [<vaul
     args = [a for a in sys.argv[1:] if a != "--check"]
     if "--check" in sys.argv:
         want = files(*args)
-        stale = [n for n, (t, _) in want.items() if not os.path.exists(os.path.join(GUARD, n)) or open(os.path.join(GUARD, n)).read() != t]
+        stale = [n for n, (t, _) in want.items() if not os.path.exists(os.path.join(GUARD, n)) or Path(os.path.join(GUARD, n)).read_text() != t]
         print("  → would write: " + ", ".join(stale) if stale else "  ✓ work-run guard up to date")
     else:
         w = install(*args)

@@ -4,6 +4,7 @@ pushes to Android) never sees your mail, messages or calendar. Signed with this 
 import base64
 import json
 import os
+from pathlib import Path
 import threading
 import time
 import urllib.parse
@@ -28,7 +29,7 @@ def _key():
         fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.write(fd, k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
         os.close(fd)
-    return serialization.load_pem_private_key(open(KEY_FILE, "rb").read(), None)
+    return serialization.load_pem_private_key(Path(KEY_FILE).read_bytes(), None)
 
 
 def public_key():
@@ -63,6 +64,7 @@ def _send_all():
         try:
             urllib.request.urlopen(req, timeout=15).read()
         except urllib.error.HTTPError as e:
+            e.close()
             if e.code in (404, 410):  # the phone unsubscribed or reinstalled the app
                 db.q("DELETE FROM push_subs WHERE endpoint=?", (ep,))
             else:

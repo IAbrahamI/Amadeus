@@ -8,6 +8,7 @@ where you ask for it (e.g. "Listen" on the morning brief), and only if a Piper v
 import io
 import json
 import os
+from pathlib import Path
 import subprocess
 import threading
 import wave
@@ -20,7 +21,7 @@ CFG_FILE = os.path.join(HOME, ".config/amadeus-core/config.json")
 WORDS_FILE = os.path.join(HOME, ".local/share/amadeus/core/stt-words.json")  # words the assistant added when you asked
 os.environ.setdefault("HF_HOME", os.path.join(MODELS, "hf"))  # Whisper small lives in this cache
 os.environ.setdefault("HF_HUB_OFFLINE", "1")                   # never download at runtime
-TOKEN = open(os.path.join(HOME, ".local/share/amadeus/core/token")).read().strip()
+TOKEN = Path(os.path.join(HOME, ".local/share/amadeus/core/token")).read_text().strip()
 PORT = 8896
 LANGS = {"en", "de", "es"}
 
@@ -30,7 +31,7 @@ _m = {}
 
 def _cfg():
     try:
-        return json.load(open(CFG_FILE))
+        return json.loads(Path(CFG_FILE).read_text())
     except Exception:
         return {}
 
@@ -111,7 +112,7 @@ PROMPTS = {
 
 def _prompt(lang):
     try:
-        words = json.load(open(WORDS_FILE))
+        words = json.loads(Path(WORDS_FILE).read_text())
     except Exception:
         words = []
     extra = " ".join(x for x in [_cfg().get("stt_words", ""), ", ".join(words)] if x)

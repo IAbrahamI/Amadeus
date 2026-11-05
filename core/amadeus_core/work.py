@@ -11,6 +11,7 @@ session (continue_project). Every run is a normal Claude Code session, so you ca
 `cd "<projects folder>/<Name>" && claude --resume <session>`."""
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -226,7 +227,7 @@ def project(name):
     files.sort(key=lambda f: f["path"].lower())
     overview = ""
     if os.path.isfile(os.path.join(path, "Overview.md")):
-        overview = open(os.path.join(path, "Overview.md"), errors="replace").read()[:20000]
+        overview = Path(os.path.join(path, "Overview.md")).read_text(errors="replace")[:20000]
     runs = db.q("SELECT id, status, created, finished, task, summary, cost FROM work_jobs WHERE lower(project)=lower(?) "
                 "ORDER BY created", (name,))
     cid = project_chat(name, create=False)
@@ -243,7 +244,7 @@ def project_file(name, rel):
         raise ValueError("File not found")
     if os.path.getsize(full) > 2_000_000:
         raise ValueError("Too large to show here; open it in an editor.")
-    data = open(full, "rb").read()
+    data = Path(full).read_bytes()
     try:
         return {"path": rel, "text": data.decode("utf-8")}
     except UnicodeDecodeError:
@@ -305,7 +306,7 @@ def set_folder(path, move=False):
             if os.path.isdir(s_old) and not os.path.exists(s_new):
                 os.rename(s_old, s_new)
             moved.append(n)
-    c = json.load(open(CONFIG_PATH)) if os.path.exists(CONFIG_PATH) else {}
+    c = json.loads(Path(CONFIG_PATH).read_text()) if os.path.exists(CONFIG_PATH) else {}
     c["projects_dir"] = new
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     with open(CONFIG_PATH, "w") as f:

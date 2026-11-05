@@ -10,6 +10,7 @@ Paused while ~/.local/share/amadeus/core/wake-off exists (tray: Stop listening /
 import io
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import time
@@ -32,7 +33,7 @@ GREETINGS = ["hey", "okay", "ok", "hi"]
 
 def _cfg():
     try:
-        return json.load(open(CFG_FILE))
+        return json.loads(Path(CFG_FILE).read_text())
     except Exception:
         return {}
 
@@ -44,7 +45,7 @@ def _words():
 
 
 def _token():
-    return open(os.path.join(DATA, "token")).read().strip()
+    return Path(os.path.join(DATA, "token")).read_text().strip()
 
 
 def _post(url, body, ctype="application/json", timeout=60):

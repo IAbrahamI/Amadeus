@@ -51,6 +51,7 @@ class Server:
             q = self.replies.get(msg.get("id"))
             if q is not None:
                 q.put(msg)
+        self.proc.stdout.close()
 
     def _send(self, msg):
         self.proc.stdin.write(json.dumps(msg) + "\n")
@@ -97,6 +98,17 @@ class Server:
     def stop(self):
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
+        if self.proc:
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait()
+            if self.proc.stdin:
+                try:
+                    self.proc.stdin.close()
+                except OSError:
+                    pass
 
 
 def _server(name):

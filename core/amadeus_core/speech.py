@@ -4,6 +4,7 @@ cut short, and for a long answer only the start, with a pointer to the chat. Rul
 it's instant and always matches what the chat shows."""
 import datetime
 import re
+import urllib.error
 
 MONTHS = {"en": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
           "de": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
@@ -50,6 +51,9 @@ def _normalize(t, lang):
                                      {"content-type": "application/json", "authorization": f"Bearer {CFG['token']}"})
         with urllib.request.urlopen(req, timeout=3) as r:
             return json.load(r).get("text") or t
+    except urllib.error.HTTPError as e:
+        e.close()
+        return text
     except Exception:
         return t
 

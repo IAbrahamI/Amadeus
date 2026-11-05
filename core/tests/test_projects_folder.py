@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import unittest
@@ -19,7 +20,7 @@ class ProjectsFolder(unittest.TestCase):
     def test_move_out_of_the_vault(self):
         old = os.path.join(CFG["vault_dir"], "Projects", "Demo")
         os.makedirs(old, exist_ok=True)
-        open(os.path.join(old, "Overview.md"), "w").write("# Demo\n")
+        Path(os.path.join(old, "Overview.md")).write_text("# Demo\n")
         sess = os.path.join(HOME, ".claude", "projects", "".join(c if c.isalnum() else "-" for c in os.path.realpath(old)))
         os.makedirs(sess, exist_ok=True)
         self.assertTrue(work.folder_info()["in_vault"])
@@ -43,7 +44,7 @@ class ProjectsFolder(unittest.TestCase):
         vault = os.path.dirname(CFG["vault_dir"])
         os.makedirs(os.path.join(HOME, "g"), exist_ok=True)
         g = os.path.join(HOME, "g", "guard.py")  # its own folder, like the real guard (it protects that folder)
-        open(g, "w").write(workguard.files(projects, vault)["work-guard.py"][0])
+        Path(g).write_text(workguard.files(projects, vault)["work-guard.py"][0])
         def allowed(tool, path):
             r = subprocess.run([sys.executable, g], input=json.dumps({"tool_name": tool, "tool_input": {"file_path": path}, "cwd": projects}),
                                capture_output=True, text=True)

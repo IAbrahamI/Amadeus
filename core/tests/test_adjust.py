@@ -12,19 +12,19 @@ class Adjust(unittest.TestCase):
     def setUp(self):
         self.cid, self.aid = db.new_id(), db.new_id()
         db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (self.cid, "t", "m", 1, 1))
-        args = {"text": "Call Anna", "when": "2026-11-05 15:00"}
+        args = {"text": "Call Anna", "when": "2099-11-05 15:00"}
         db.q("INSERT INTO approvals(id,conversation_id,tool,args,summary,status,created) VALUES(?,?,?,?,?,?,?)",
              (self.aid, self.cid, "create_reminder", json.dumps(args), "old", "pending", 1))
         db.add_message(self.cid, "approval", "old", {"approval_id": self.aid, "tool": "create_reminder"})
 
     def test_redraft_stays_pending_and_keeps_your_note(self):
-        new = {"text": "Call Anna", "when": "2026-11-05 16:00", "extra": "dropped"}
+        new = {"text": "Call Anna", "when": "2099-11-05 16:00", "extra": "dropped"}
         with mock.patch.object(llm, "complete", return_value=json.dumps(new)):
             r = agent.revise(self.aid, "make it 16:00")
         self.assertTrue(r["revised"])
         a = db.q("SELECT * FROM approvals WHERE id=?", (self.aid,), one=True)
         self.assertEqual(a["status"], "pending")
-        self.assertEqual(json.loads(a["args"])["when"], "2026-11-05 16:00")
+        self.assertEqual(json.loads(a["args"])["when"], "2099-11-05 16:00")
         self.assertNotIn("extra", json.loads(a["args"]))
         self.assertEqual(a["feedback"], "make it 16:00")
         msgs = db.messages(self.cid)

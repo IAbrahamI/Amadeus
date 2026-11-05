@@ -4,6 +4,7 @@ import http.cookies
 import json
 import mimetypes
 import os
+from pathlib import Path
 import re
 import urllib.parse
 import urllib.request
@@ -72,7 +73,7 @@ class Handler(BaseHTTPRequestHandler):
         f = os.path.realpath(os.path.join(WEB, path.lstrip("/") or "index.html"))
         if not f.startswith(os.path.realpath(WEB)) or not os.path.isfile(f):
             f = os.path.join(WEB, "index.html")
-        data = open(f, "rb").read()
+        data = Path(f).read_bytes()
         self.send_response(200)
         self.send_header("content-type", mimetypes.guess_type(f)[0] or "application/octet-stream")
         if f.endswith((".html", ".js", ".css")):  # checked every time, so an update shows without clearing a cache
@@ -94,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
                                  "android", "app", "build", "outputs", "apk", "release", "app-release.apk")
                 if not os.path.isfile(f):
                     return self._json({"error": "The app isn't built yet."}, 404)
-                data = open(f, "rb").read()
+                data = Path(f).read_bytes()
                 self.send_response(200)
                 self.send_header("content-type", "application/vnd.android.package-archive")
                 self.send_header("content-disposition", 'attachment; filename="Amadeus.apk"')
@@ -132,7 +133,7 @@ class Handler(BaseHTTPRequestHandler):
                 f = calm if os.path.isfile(calm) else f
             if not f.startswith(base + os.sep) or not os.path.isfile(f):
                 return self._json({"error": "not found"}, 404)
-            data = open(f, "rb").read()
+            data = Path(f).read_bytes()
             self.send_response(200)
             self.send_header("content-type", "image/png")
             self.send_header("cache-control", "private, max-age=86400")

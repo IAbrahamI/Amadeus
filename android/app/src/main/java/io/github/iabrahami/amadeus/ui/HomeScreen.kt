@@ -100,7 +100,7 @@ fun HomeScreen(nav: Nav) {
     // the Quick chat: a fresh one after a quiet break (it keeps a recap of the earlier ones); checked whenever you come back
     var opened by remember { mutableIntStateOf(0) }
     var newChat by remember { mutableStateOf(false) }
-    val owner0 = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val owner0 = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(owner0) {
         val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) opened++ }
         owner0.lifecycle.addObserver(obs)
@@ -167,7 +167,7 @@ fun HomeScreen(nav: Nav) {
 
         // Android 14+: its calls only ring full screen (like a phone call) after you allow it once
         var fullScreenOk by remember { mutableStateOf(Notifications.canRingFullScreen(ctx)) }
-        val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+        val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
         DisposableEffect(owner) {
             val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) fullScreenOk = Notifications.canRingFullScreen(ctx) }
             owner.lifecycle.addObserver(obs)

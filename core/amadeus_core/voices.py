@@ -6,6 +6,7 @@ voice files. Everything is downloaded once into ~/.local/share/amadeus/voice/mod
 import glob
 import json
 import os
+from pathlib import Path
 import random
 import re
 import time
@@ -87,7 +88,7 @@ def _make_line(text, voice_id):
         with open(f + ".tmp", "wb") as out:
             out.write(data)
         os.replace(f + ".tmp", f)
-    return open(f, "rb").read()
+    return Path(f).read_bytes()
 
 
 def line(kind):

@@ -2,6 +2,7 @@
 that off (Settings → Assistant). The notes are only ever shown to you as text, never given to the model."""
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import threading
@@ -18,7 +19,7 @@ DAY = 86400
 
 def _version_file():
     try:
-        return open(os.path.join(ROOT, "VERSION")).read().strip()
+        return Path(os.path.join(ROOT, "VERSION")).read_text().strip()
     except OSError:
         return ""
 
@@ -56,6 +57,7 @@ def check(now=None):
     try:
         r = json.load(urllib.request.urlopen(req, timeout=15))
     except urllib.error.HTTPError as e:
+        e.close()
         if e.code == 404:  # nothing released yet
             db.set_setting("update_latest", {})
         return

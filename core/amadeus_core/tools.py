@@ -4,6 +4,7 @@ import datetime
 import glob
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -28,7 +29,7 @@ def _inside_vault(path):
 
 # ---------- memory (Hindsight, private bank) ----------
 def _hs(path, body):
-    key = json.load(open(CFG["hindsight_key_file"]))[CFG["hindsight_key_name"]]
+    key = json.loads(Path(CFG["hindsight_key_file"]).read_text())[CFG["hindsight_key_name"]]
     bank = urllib.parse.quote(CFG["hindsight_bank"], safe="")
     req = urllib.request.Request(f"{CFG['hindsight_url']}/v1/default/banks/{bank}{path}", json.dumps(body).encode(),
                                  {"content-type": "application/json", "authorization": f"Bearer {key}"})
@@ -84,7 +85,7 @@ def core_stats():
 
 
 def _hs_get(path):
-    key = json.load(open(CFG["hindsight_key_file"]))[CFG["hindsight_key_name"]]
+    key = json.loads(Path(CFG["hindsight_key_file"]).read_text())[CFG["hindsight_key_name"]]
     bank = urllib.parse.quote(CFG["hindsight_bank"], safe="")
     req = urllib.request.Request(f"{CFG['hindsight_url']}/v1/default/banks/{bank}{path}", headers={"authorization": f"Bearer {key}"})
     return json.load(urllib.request.urlopen(req, timeout=60))
@@ -106,7 +107,7 @@ def search_notes(text):
     hits = []
     for f in glob.glob(os.path.join(VAULT, "**", "*.md"), recursive=True):
         try:
-            for i, line in enumerate(open(f, errors="replace")):
+            for i, line in enumerate(Path(f).read_text(errors="replace").splitlines()):
                 if text.lower() in line.lower():
                     hits.append(f"{os.path.relpath(f, VAULT)}:{i + 1}: {line.strip()[:160]}")
         except OSError:
@@ -115,7 +116,7 @@ def search_notes(text):
 
 
 def read_note(path):
-    return open(_inside_vault(path), errors="replace").read()[:8000]
+    return Path(_inside_vault(path)).read_text(errors="replace")[:8000]
 
 
 def write_note(path, content):
@@ -129,7 +130,7 @@ def write_note(path, content):
 # ---------- the user's ToDo.md and Notes.md (theirs; Amadeus adds or removes only with approval) ----------
 def _lines(name):
     path = os.path.join(VAULT, name)
-    return path, (open(path, errors="replace").read().splitlines() if os.path.exists(path) else [f"# {name[:-3]}", ""])
+    return path, (Path(path).read_text(errors="replace").splitlines() if os.path.exists(path) else [f"# {name[:-3]}", ""])
 
 
 def todo_list():
@@ -1024,7 +1025,7 @@ def _apps():
         for f in sorted(glob.glob(os.path.join(d, "*.desktop"))):
             info, section = {}, ""
             try:
-                for line in open(f, errors="replace"):
+                for line in Path(f).read_text(errors="replace").splitlines():
                     line = line.strip()
                     if line.startswith("["):
                         section = line
@@ -1216,7 +1217,7 @@ WORDS_FILE = os.path.join(CFG["data_dir"], "stt-words.json")
 
 def _words():
     try:
-        return json.load(open(WORDS_FILE))
+        return json.loads(Path(WORDS_FILE).read_text())
     except Exception:
         return []
 
