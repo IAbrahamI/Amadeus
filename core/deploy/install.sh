@@ -16,12 +16,12 @@ put() {  # put <template> <target>: fill in the paths and write the file
   echo "wrote $2"
 }
 if [ "$DRY" = "--uninstall" ]; then
-  units="amadeus-core amadeus-desktop amadeus-tray amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan.timer amadeus-vault-snapshot.timer"
+  units="amadeus-core amadeus-desktop amadeus-tray amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan.timer amadeus-notes-snapshot.timer amadeus-vault-snapshot.timer"
   systemctl --user disable --now $units 2>/dev/null || true
   for f in amadeus-core.service amadeus-desktop.service amadeus-tray.service amadeus-voice.service amadeus-wake.service amadeus-tn.service amadeus-leak-scan.service \
-           amadeus-leak-scan.timer amadeus-vault-snapshot.service amadeus-vault-snapshot.timer; do rm -fv "$HOME/.config/systemd/user/$f"; done
+           amadeus-leak-scan.timer amadeus-notes-snapshot.service amadeus-notes-snapshot.timer amadeus-vault-snapshot.service amadeus-vault-snapshot.timer; do rm -fv "$HOME/.config/systemd/user/$f"; done
   systemctl --user daemon-reload
-  rm -fv "$BIN/amadeus" "$BIN/amadeus-mail-start" "$BIN/amadeus-leak-scan" "$BIN/amadeus-vault-snapshot" \
+  rm -fv "$BIN/amadeus" "$BIN/amadeus-mail-start" "$BIN/amadeus-leak-scan" "$BIN/amadeus-notes-snapshot" "$BIN/amadeus-vault-snapshot" \
     "$HOME/.local/share/applications/amadeus.desktop" "$HOME/.config/autostart/amadeus-thunderbird.desktop" \
     "$HOME/.config/autostart/amadeus.desktop" "$HOME/.local/share/amadeus/kwin/minimize-thunderbird.js" \
     "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" "$HOME/.mozilla/native-messaging-hosts/amadeus_bridge.json"
@@ -39,18 +39,21 @@ if [ "$DRY" = "--uninstall" ]; then
   echo "Removed. Your data in ~/.local/share/amadeus/ and the containers are still there (see docs/INSTALL.md, Uninstall)."
   exit 0
 fi
-for u in amadeus-core amadeus-desktop amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan; do put "$HERE/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"; done
-put "$HERE/systemd/amadeus-leak-scan.timer" "$HOME/.config/systemd/user/amadeus-leak-scan.timer"
+for u in amadeus-core amadeus-desktop amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan amadeus-notes-snapshot; do put "$HERE/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"; done
+for t in amadeus-leak-scan amadeus-notes-snapshot; do put "$HERE/systemd/$t.timer" "$HOME/.config/systemd/user/$t.timer"; done
 put "$HERE/bin/amadeus" "$BIN/amadeus"
 put "$HERE/bin/amadeus-leak-scan" "$BIN/amadeus-leak-scan"
+put "$HERE/bin/amadeus-notes-snapshot" "$BIN/amadeus-notes-snapshot"
 put "$HERE/autostart/amadeus.desktop" "$HOME/.local/share/applications/amadeus.desktop"
 [ "$DRY" = "--dry-run" ] && exit 0
-chmod +x "$BIN/amadeus" "$BIN/amadeus-leak-scan"
+chmod +x "$BIN/amadeus" "$BIN/amadeus-leak-scan" "$BIN/amadeus-notes-snapshot"
 "$REPO/core/desktop-tauri/build.sh"
 systemctl --user disable --now amadeus-tray 2>/dev/null || true  # the older tray icon: now part of the desktop app
 rm -f "$HOME/.config/systemd/user/amadeus-tray.service"
+systemctl --user disable --now amadeus-vault-snapshot.timer 2>/dev/null || true  # its earlier name
+rm -f "$HOME/.config/systemd/user/amadeus-vault-snapshot.service" "$HOME/.config/systemd/user/amadeus-vault-snapshot.timer" "$BIN/amadeus-vault-snapshot"
 systemctl --user daemon-reload
-systemctl --user enable --now amadeus-core amadeus-desktop amadeus-leak-scan.timer
+systemctl --user enable --now amadeus-core amadeus-desktop amadeus-leak-scan.timer amadeus-notes-snapshot.timer
 if [ -x "$HOME/.local/share/amadeus/voice/venv-lite/bin/python" ]; then
   systemctl --user enable --now amadeus-voice
   [ -d "$HOME/.local/share/amadeus/voice/models/vosk-model-small-en-us-0.15" ] && command -v parec >/dev/null && systemctl --user enable --now amadeus-wake

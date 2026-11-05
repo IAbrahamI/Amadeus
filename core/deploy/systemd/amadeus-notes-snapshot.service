@@ -1,0 +1,6 @@
+[Unit]
+Description=Snapshot your Amadeus notes, so any change can be undone
+
+[Service]
+Type=oneshot
+ExecStart=@BIN@/amadeus-notes-snapshot

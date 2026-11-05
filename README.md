@@ -63,7 +63,7 @@ flowchart LR
     core --> llm["Ollama<br/>local model"]
     core --> mem["Hindsight<br/>memory"]
     core --> tb["Mail<br/>direct or Thunderbird"]
-    core --> vault["Notes · to-dos<br/>(optional: Obsidian)"]
+    core --> vault["Notes · to-dos<br/>(plain files in your folder)"]
     core -- "send to work" --> filter["Privacy filter<br/>Presidio"]
     filter --> ok{"your<br/>approval"}
     ok --> cc["Claude Code<br/>one run per task"]
@@ -123,7 +123,7 @@ my private life and cloud models. That led to a few decisions:
 - **Anonymise, don't pseudonymise.** Text for Claude Code gets fixed labels like `[PERSON]`, never a mapping that
   could be reversed, and you see the exact text before it leaves. The filter is best effort; your approval is the gate.
 - **Guarded work runs.** Each Claude Code run is one task in one project folder, in a projects folder you choose
-  outside your vault. A hook and Claude Code's sandbox keep it from writing anywhere else or reading your notes.
+  apart from your notes. A hook and Claude Code's sandbox keep it from writing anywhere else or reading your notes.
 - **It learns without retraining.** Your 👍 / 👎 become short lessons overnight, and a lesson is kept only if a test
   on your own past requests doesn't get worse.
 
@@ -135,7 +135,6 @@ More, including the limits of the privacy filter: [docs/ARCHITECTURE.md](docs/AR
 |---|---|
 | `core/` | The assistant: server, web UI, desktop window and tray, voice, Thunderbird bridge, privacy filter, skills, personas |
 | `android/` | The phone app |
-| `obsidian/` | The optional Obsidian connector: hourly vault snapshots and the README for Amadeus's folder in your vault |
 | `install.sh` | Sets up the local services |
 | `docs/` | [Install guide](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [features and settings](docs/FEATURES.md) |
 

@@ -21,8 +21,8 @@ import urllib.request
 from .config import CFG
 
 PATTERNS = [
-    # paths inside your vault, also with spaces in them (the general path rule below stops at a space)
-    ("PATH", re.compile(r"(?:/home/[^/\s]+|~)/" + re.escape(os.path.relpath(os.path.dirname(CFG["vault_dir"]), os.path.expanduser("~")))
+    # paths inside your notes, also with spaces in them (the general path rule below stops at a space)
+    ("PATH", re.compile(r"(?:/home/[^/\s]+|~)/" + re.escape(os.path.relpath(CFG["notes_root"], os.path.expanduser("~")))
                         + r"(?:/[^\n\"'`]*?\.\w{1,5}\b|/[^\n\"'`]*)?")),
     ("EMAIL", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
     ("KEY", re.compile(r"\b(?:sk|pk|ghp|gho|xox[abp]|AKIA|AIza)[A-Za-z0-9_\-]{12,}\b")),
@@ -39,7 +39,7 @@ PATTERNS = [
 ANALYZER = CFG["presidio_analyzer"]
 ANONYMIZER = CFG["presidio_anonymizer"]
 NER_TYPES = {"PERSON", "LOCATION", "ORGANIZATION", "NRP"}
-ALLOW = {"amadeus", "claude", "anthropic", "obsidian", "hindsight", "ollama", "qwen", "presidio", "github", "linux",
+ALLOW = {"amadeus", "claude", "anthropic", "hindsight", "ollama", "qwen", "presidio", "github", "linux",
          "docker", "nas"}
 DE_WORDS = {"und", "der", "die", "das", "nicht", "mit", "ist", "ein", "eine", "ich", "wir", "am", "im", "zu", "von", "für",
             "auf", "wegen", "bitte", "noch", "auch", "mein", "meine"}

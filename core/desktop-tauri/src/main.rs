@@ -180,8 +180,10 @@ fn tell_pill(app: &AppHandle) {
 }
 
 /// The KWin script below calls this when the core goes too low for the pill under it.
+#[cfg(target_os = "linux")]
 struct KwinBridge(AppHandle);
 
+#[cfg(target_os = "linux")]
 #[zbus::interface(name = "com.amadeus.Desktop")]
 impl KwinBridge {
     #[zbus(name = "PillOnTop")]
@@ -193,6 +195,7 @@ impl KwinBridge {
 }
 
 /// Keeps the name on the session bus while the app runs.
+#[cfg(target_os = "linux")]
 fn serve_kwin_bridge(app: AppHandle) {
     std::thread::spawn(move || {
         let conn = zbus::blocking::connection::Builder::session()
@@ -214,6 +217,7 @@ fn serve_kwin_bridge(app: AppHandle) {
 
 /// Stays loaded while the app runs: places the bubble the moment it opens, before you can see it, and moves it along
 /// when you drag the core.
+#[cfg(target_os = "linux")]
 fn load_bubble_script() {
     let file = data_dir().join("place-bubble.js");
     let script = format!(
@@ -886,6 +890,7 @@ fn main() {
         .setup(|app| {
             let h = app.handle().clone();
             tray(&h)?;
+            #[cfg(target_os = "linux")]
             if kde() {
                 serve_kwin_bridge(h.clone());
             }

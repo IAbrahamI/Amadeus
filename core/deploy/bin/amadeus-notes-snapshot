@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Hourly snapshot of your notes, so any change Amadeus makes can be undone.
+# Keeps 48 hourly + 30 daily archives. Asks where your notes are each time, so changing the folder just works.
+set -euo pipefail
+NOTES=$(python3 "@REPO@/core/amadeus_core/folders.py" | sed -n 3p)
+[ -d "$NOTES" ] || exit 0
+DEST="${XDG_DATA_HOME:-$HOME/.local/share}/amadeus/notes-snapshots"
+mkdir -p "$DEST/hourly" "$DEST/daily"
+stamp=$(date +%Y-%m-%d_%H%M)
+tar --zstd -C "$(dirname "$NOTES")" --exclude='.obsidian/plugins/*/node_modules' -cf "$DEST/hourly/notes_$stamp.tar.zst" "$(basename "$NOTES")"
+today="$DEST/daily/notes_$(date +%Y-%m-%d).tar.zst"
+[ -e "$today" ] || cp "$DEST/hourly/notes_$stamp.tar.zst" "$today"
+ls -1t "$DEST"/hourly/*.tar.zst | tail -n +49 | xargs -r rm --
+ls -1t "$DEST"/daily/*.tar.zst | tail -n +31 | xargs -r rm --

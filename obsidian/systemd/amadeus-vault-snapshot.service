@@ -1,6 +1,0 @@
-[Unit]
-Description=Snapshot the Obsidian vault for Amadeus undo
-
-[Service]
-Type=oneshot
-ExecStart=%h/.local/bin/amadeus-vault-snapshot

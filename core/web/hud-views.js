@@ -166,9 +166,9 @@ async function renderProjects() {
       return `<button class="row pick ps ${c}" data-act="proj" data-p="${esc(p.name)}"><span class="k">▸</span><div class="t"><b>${esc(p.name)}</b><span>${p.files} file${p.files === 1 ? "" : "s"} · changed ${ago(p.updated)}${p.last_run ? " · last run " + ago(p.last_run) : ""}</span></div><span class="chip st ${c}">${l}</span></button>`; }).join("") + "</div>" +
     '<div class="stlegend"><span class="st-wait">Needs you</span><span class="st-active">Active</span><span class="st-idle">Idle</span><span class="st-done">Done</span></div>';
 }
-// where the projects live: shown on top, changed here (or with ./install.sh --setup); amber while still in the vault
-const folderBar = (fo) => fo.in_vault
-  ? `<div class="pfolder warn"><b>Your projects are still inside your Obsidian vault.</b><span>Give them their own folder, so a work run never sees your notes.</span>${folderForm(fo, "~/Amadeus/Projects")}</div>`
+// where the projects live: shown on top, changed here (or with ./install.sh --setup); amber while still among your notes
+const folderBar = (fo) => fo.in_notes
+  ? `<div class="pfolder warn"><b>Your projects are still among your notes.</b><span>Give them their own folder, so a work run never sees your notes.</span>${folderForm(fo, "~/Amadeus/Projects")}</div>`
   : `<div class="pfolder"><span class="k">Folder</span><code>${esc(fo.path)}</code><button class="btn" data-act="pfchange">Change</button><div id="pfForm"></div></div>`;
 const folderForm = (fo, suggest) => `<form class="pform pfform" id="pfSet"><div class="calrow"><label>New folder<input id="pfPath" value="${esc(suggest || fo.path)}" autocomplete="off"></label></div>
   ${fo.projects.length ? `<label class="chk"><input type="checkbox" id="pfMove" checked> Move my ${fo.projects.length} project${fo.projects.length === 1 ? "" : "s"} there (${fo.projects.map(esc).join(", ")})</label>` : ""}
@@ -284,7 +284,7 @@ body().addEventListener("click", async (e) => {
   if (act === "projfile") {
     const f = await api(`/api/projects/${encodeURIComponent(proj.d.name)}/file?path=${encodeURIComponent(a.dataset.f)}`);
     $("#projFile").innerHTML = `<div class="filebox"><div class="phead"><b>${esc(a.dataset.f)}</b><span class="grow"></span><button class="btn" data-act="projfileclose">Close</button></div>` +
-      (f.error ? note("That didn't work: " + esc(f.error)) : f.binary ? note("Not a text file: open it in Obsidian or the file manager.") : /\.md$/i.test(a.dataset.f) ? `<div class="md">${md(f.text)}</div>` : `<pre>${esc(f.text)}</pre>`) + "</div>";
+      (f.error ? note("That didn't work: " + esc(f.error)) : f.binary ? note("Not a text file: open it in the file manager.") : /\.md$/i.test(a.dataset.f) ? `<div class="md">${md(f.text)}</div>` : `<pre>${esc(f.text)}</pre>`) + "</div>";
   }
   if (act === "projfileclose") $("#projFile").innerHTML = "";
   if (act === "to") { proj.to = a.dataset.who; proj.preview = null; const keep = $("#projText").value; await renderProject(); $("#projText").value = keep; $("#projText").focus(); }

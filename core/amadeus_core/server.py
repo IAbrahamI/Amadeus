@@ -233,9 +233,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/update":  # a new version? (Settings → Assistant, the top bar and the tray)
             from . import updates
             return self._json(updates.status())
-        if p == "/api/obsidian":  # Settings → Connectors: is a vault connected, and which one Obsidian knows about
-            from . import obsidian
-            return self._json(obsidian.status())
+        if p == "/api/folder":  # Settings → Connectors: where your notes and projects are
+            from . import notesfolder
+            return self._json(notesfolder.status())
         if p == "/api/connectors":
             from . import mcp
             on = tools.enabled_connectors()
@@ -287,7 +287,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/projects":  # the Projects page: one folder each in your projects folder
             from . import work
             return self._json(work.projects())
-        if p == "/api/projects/folder":  # where the projects live, and whether that's (still) inside the vault
+        if p == "/api/projects/folder":  # where the projects live, and whether that's (still) among your notes
             from . import work
             return self._json(work.folder_info())
         m = re.fullmatch(r"/api/projects/([^/]+)(/file)?", p)
@@ -525,7 +525,7 @@ class Handler(BaseHTTPRequestHandler):
             last = work.last_session(name)
             r = work.start(name, clean, work.project_chat(name), resume=last["session_id"] if last else None)
             return self._json({"error": r} if isinstance(r, str) else {"ok": True, "resumed": bool(last)})
-        if p == "/api/todo/add":  # you added an item on the ToDo page (your own action, like in Obsidian)
+        if p == "/api/todo/add":  # you added an item on the ToDo page (your own action, like in any notes app)
             items = [str(i).strip()[:300] for i in b.get("items", []) if str(i).strip()][:20]
             return self._json({"text": tools.todo_add(items) if items else "", "items": phoneapp.todo()})
         if p == "/api/todo/done":  # you ticked an item off in the phone app
@@ -614,12 +614,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(updates.run() if p.endswith("/run") else updates.restart() if p.endswith("/restart") else updates.set_enabled(bool(b.get("on"))))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
-        if p in ("/api/obsidian/connect", "/api/obsidian/disconnect"):
-            from . import obsidian
+        if p == "/api/folder":
+            from . import notesfolder
             if self._tailnet():
                 return self._json({"error": "Only on the PC."}, 403)
             try:
-                return self._json(obsidian.connect(b.get("vault", "")) if p.endswith("/connect") else obsidian.disconnect())
+                return self._json(notesfolder.set_notes(b.get("notes", "")))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
         if p == "/api/connectors/add":  # your own connector: an MCP server (a local command)

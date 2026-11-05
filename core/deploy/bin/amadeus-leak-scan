@@ -4,7 +4,7 @@
 set -uo pipefail
 S="$HOME/.local/share/amadeus/secrets"
 LOG="$HOME/.local/share/amadeus/core/reports/logs/leak-scan.md"
-PROJECTS=$(python3 -c "import json,os;p=os.path.expanduser('~/.config/amadeus-core/config.json');c=json.load(open(p)) if os.path.exists(p) else {};v=c.get('vault_dir',os.path.expanduser('~/Documents/Obsidian Vault/Amadeus'));print(os.path.realpath(os.path.expanduser(c.get('projects_dir') or os.path.join(v,'Projects'))))")
+PROJECTS=$(python3 "@REPO@/core/amadeus_core/folders.py" | sed -n 4p)
 RUNKEY=$(printf '%s' "$PROJECTS" | sed 's|[^A-Za-z0-9]|-|g')  # how Claude Code names a folder's sessions
 RUNS="$HOME/.claude/projects"
 mkdir -p "$(dirname "$LOG")"

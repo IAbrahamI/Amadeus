@@ -80,7 +80,7 @@ private fun toolLabel(tool: String) = when {
     else -> tool.replace('_', ' ').replaceFirstChar { it.uppercase() }
 }
 
-/** Your day: the week, the calendar, your ToDo (ToDo.md in Obsidian), and "plan my day" with the assistant. */
+/** Your day: the week, the calendar, your ToDo (ToDo.md in your notes), and "plan my day" with the assistant. */
 @Composable
 fun TodayScreen(nav: Nav) {
     val ctx = LocalContext.current

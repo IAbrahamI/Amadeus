@@ -29,7 +29,7 @@ def todo():
 
 
 def todo_done(item):
-    """You ticked an item off on the phone: it's removed from ToDo.md (your own action, like in Obsidian)."""
+    """You ticked an item off on the phone: it's removed from ToDo.md (your own action, like in any notes app)."""
     return tools.todo_done([item])
 
 

@@ -30,7 +30,7 @@ flowchart TB
       hindsight["Hindsight<br/>long-term memory"]
       presidio["Presidio<br/>privacy filter<br/>(Docker, no internet)"]
       tb["Thunderbird<br/>+ Amadeus Bridge add-on"]
-      vault["To-dos and notes<br/>(optional: Obsidian vault)"]
+      vault["To-dos and notes<br/>(plain files in your folder)"]
     end
 
     cc["Claude Code<br/>one run per approved task"]
@@ -45,7 +45,7 @@ flowchart TB
     agent --> vault
     agent -- "send to work" --> presidio
     presidio -- "filtered text,<br/>after your approval" --> cc
-    cc -- "works only in" --> projects["your projects folder<br/>(outside the vault)"]
+    cc -- "works only in" --> projects["your projects folder<br/>(apart from your notes)"]
 ```
 
 | Part | Where | Notes |
@@ -58,7 +58,7 @@ flowchart TB
 | Phone | `android/` | Kotlin + Compose; pairs with a one-time code and talks to Core over Tailscale |
 | Memory extension | `core/hindsight_ext/` | Makes every Hindsight request need your local key |
 | Your own connectors | `core/amadeus_core/mcp.py` | A small MCP client (stdio): the servers you add on Settings → Connectors, their tools always need approval |
-| Work guard | `core/amadeus_core/workguard.py`, `core/deploy/work-guard.py` | Hook, deny rules and sandbox settings that keep Claude Code inside your projects folder and out of your vault |
+| Work guard | `core/amadeus_core/workguard.py`, `core/deploy/work-guard.py` | Hook, deny rules and sandbox settings that keep Claude Code inside your projects folder and out of your notes |
 
 ## A request, end to end
 
@@ -147,9 +147,9 @@ than good disappears by itself. The lessons are listed under Settings → Memory
 ## The work side
 
 A work run is one `claude -p` call in `<projects folder>/<Name>/`, on your own Claude subscription. You choose
-the projects folder (`./install.sh` asks, or **Change** on the Projects page), and it's never inside your vault.
+the projects folder (`./install.sh` asks, or **Change** on the Projects page), and it's never among your notes.
 The guard (a pre-tool hook, deny rules and Claude Code's sandbox, rewritten whenever the folder changes) lets a run
-write only in that folder and keeps it out of your vault, Amadeus's data and your keys. If a run ends with questions, your answers continue the same session. The project page has an
+write only in that folder and keeps it out of your notes, Amadeus's data and your keys. If a run ends with questions, your answers continue the same session. The project page has an
 **Open in Claude Code** button that opens the session in a terminal.
 
 ## Where data lives
@@ -160,7 +160,7 @@ write only in that folder and keeps it out of your vault, Amadeus's data and you
 | Memory | Docker volume `hindsight-data` | never |
 | Keys, canary markers, deny-list | `~/.local/share/amadeus/secrets/` (mode 700) | never |
 | Your settings | `~/.config/amadeus-core/config.json` | never |
-| Notes, to-dos | `~/.local/share/amadeus/notes/`, or your Obsidian vault's `Amadeus/` folder once connected | never |
+| Notes, to-dos | `Notes/` in your folder (suggested `~/Amadeus`; shown and changed under Settings → Connectors) | never |
 | Work projects | the projects folder you chose (e.g. `~/Amadeus/Projects`) | only the approved text of each run |
 | Your own skills, playbooks and connectors | `~/.local/share/amadeus/core/skills/`, the database | never |
 | Your persona, avatar sprites | `~/.local/share/amadeus/core/personas/`, `…/core/avatar/` | never |

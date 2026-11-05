@@ -9,7 +9,7 @@ export RPM_KEY="${RPM_KEY:-}"  # the signing key for the .rpm: without it, it's 
 BIN=.tauri-build/target/release/amadeus-desktop
 [ -x "$BIN" ] || { echo "Build the desktop app first: $BIN is missing"; exit 1; }
 rm -rf dist; mkdir -p dist/stage
-git archive HEAD core obsidian install.sh amadeus.env.example VERSION LICENSE | tar -x -C dist/stage
+git archive HEAD core install.sh amadeus.env.example VERSION LICENSE | tar -x -C dist/stage
 rm -rf dist/stage/core/tests
 find dist/stage/core/desktop-tauri -mindepth 1 -not -name build.sh -delete
 mkdir -p dist/stage/.tauri-build/target/release

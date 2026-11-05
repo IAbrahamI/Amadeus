@@ -1,7 +1,7 @@
 # Installing Amadeus
 
 Amadeus runs as a few user services on your own Linux PC. Everything it knows is stored on that PC
-(`~/.local/share/amadeus/`, `~/.config/amadeus-core/`, and your Obsidian vault if you connect one) and never in this repository.
+(`~/.local/share/amadeus/`, `~/.config/amadeus-core/`, and the folder you choose for your notes and projects) and never in this repository.
 
 ## Quick install
 
@@ -47,7 +47,7 @@ opens as a normal window instead of sitting in the corner (on X11 it is still pl
 **Needed:** Ollama (the local model), Docker (memory and the privacy filter) and the packages below. On Arch, Debian/Ubuntu
 and Fedora the installer offers to install whatever is missing (it shows what and asks before using `sudo`), so you
 normally don't need to do this by hand. **Everything else
-is optional and can be added later:** Thunderbird (mail), Obsidian (notes in your vault), Claude Code (work runs),
+is optional and can be added later:** Thunderbird (mail), Claude Code (work runs),
 Tailscale (the phone app), KDE Plasma (window placement) and an NVIDIA GPU (speed). Without one of them, only that part
 stays off, and Settings → Connectors says what it needs.
 
@@ -57,12 +57,12 @@ stays off, and Settings → Connectors says what it needs.
 | memory and the privacy filter | `docker` | `docker.io` | `moby-engine` |
 | the assistant, its window and tray (the installer builds the app, and fetches Rust for that into the repo folder) | `base-devel gtk3 webkit2gtk-4.1 pkgconf` | `build-essential libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config` | `gcc gtk3-devel webkit2gtk4.1-devel pkgconf` |
 | sound and voice | `gst-plugins-good ffmpeg` | `gstreamer1.0-plugins-good ffmpeg` | `gstreamer1-plugins-good ffmpeg-free` |
-| the installer, snapshots if you connect Obsidian | `curl zstd` | `curl zstd` | `curl zstd` |
+| the installer, hourly snapshots of your notes | `curl zstd` | `curl zstd` | `curl zstd` |
 
 Enable Ollama and Docker (`sudo systemctl enable --now ollama docker`) and add yourself to the `docker` group.
 An NVIDIA GPU with ~12 GB is recommended; without one the model runs slowly on the CPU.
 
-Optional: `obsidian` (notes and work projects), `thunderbird` from your distribution, not Flatpak (mail),
+Optional: `thunderbird` from your distribution, not Flatpak (mail),
 `tailscale` (phone), `claude` with `bubblewrap` and `socat` (work runs).
 
 ## 2. What install.sh does
@@ -78,16 +78,17 @@ It sets up, in this order:
    on an internal Docker network without internet access. Amadeus starts them when it needs them.
 4. **Memory.** A Hindsight container that only answers requests carrying your key, with its data in the Docker
    volume `hindsight-data`. The first start downloads embedding models and can take a few minutes.
-5. **Obsidian is not part of the install.** Your to-dos and notes start in `~/.local/share/amadeus/notes/`. To keep
-   them in a vault, use **Settings → Connectors → Obsidian**: it copies them into an `Amadeus/` folder there (nothing
-   of yours is overwritten) and sets up an hourly snapshot of the vault. Scripted installs can set `OBSIDIAN_VAULT`.
+5. **One folder for your files.** The install asks where (suggested `~/Amadeus`). `Notes/` holds your to-dos and notes
+   as plain Markdown, so Obsidian or any other notes app can open it, with nothing to connect. `Projects/` holds Claude
+   Code's work, kept apart so a work run never sees your notes. An hourly snapshot of `Notes/` lets you undo any change.
+   Scripted installs can set `AMADEUS_FOLDER`.
 6. **The projects folder and the guard for work runs:** writes the guard for the folder you chose (see
    [work runs](#7-optional-work-runs-with-claude-code)).
 7. **Voice** (if you said yes): speech recognition and the wake word, see [Optional: voice](#5-optional-voice).
 8. **The assistant itself** (`core/deploy/install.sh`), see below.
 9. **The mail bridge** (if you said yes), see [Optional: mail](#4-optional-mail).
 
-Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|obsidian|work|voice|app|mail`.
+Run a single step with `./install.sh --only ollama|secrets|presidio|hindsight|folder|work|voice|app|mail`.
 
 ## 3. The assistant itself
 
@@ -321,4 +322,4 @@ docker rm -f hindsight presidio-analyzer presidio-anonymizer
 ```
 
 Then remove the Amadeus Bridge add-on in Thunderbird (Add-ons and Themes). That removes the programs and keeps your data. The desktop app and Rust stay in `.tauri-build/` until you delete the repo folder. Deleting the data (`~/.local/share/amadeus/`, the
-`hindsight-data` volume and, if you connected one, the vault's `Amadeus/` folder) is permanent, so back it up first.
+`hindsight-data` volume and your folder) is permanent, so back it up first.

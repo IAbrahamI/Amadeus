@@ -16,13 +16,13 @@ from . import agenda, db, mailbridge, system
 from .config import CFG, NAME
 
 
-VAULT = os.path.realpath(CFG["vault_dir"])
+NOTES = os.path.realpath(CFG["notes_dir"])
 CURRENT_CID = None  # set by the agent so work results can come back to the right chat
 
 
-def _inside_vault(path):
-    real = os.path.realpath(os.path.join(VAULT, path))
-    if real != VAULT and not real.startswith(VAULT + os.sep):
+def _inside_notes(path):
+    real = os.path.realpath(os.path.join(NOTES, path))
+    if real != NOTES and not real.startswith(NOTES + os.sep):
         raise ValueError("Only notes inside the Amadeus folder are allowed.")
     return real
 
@@ -96,40 +96,40 @@ def remember(fact):
     return "Saved to memory."
 
 
-# ---------- notes (vault Amadeus/ only) ----------
+# ---------- notes (your Notes folder only) ----------
 def list_notes(folder=""):
-    base = _inside_vault(folder)
+    base = _inside_notes(folder)
     files = sorted(glob.glob(os.path.join(base, "**", "*.md"), recursive=True))
-    return "\n".join(os.path.relpath(f, VAULT) for f in files[:200]) or "No notes."
+    return "\n".join(os.path.relpath(f, NOTES) for f in files[:200]) or "No notes."
 
 
 def search_notes(text):
     hits = []
-    for f in glob.glob(os.path.join(VAULT, "**", "*.md"), recursive=True):
+    for f in glob.glob(os.path.join(NOTES, "**", "*.md"), recursive=True):
         try:
             for i, line in enumerate(Path(f).read_text(errors="replace").splitlines()):
                 if text.lower() in line.lower():
-                    hits.append(f"{os.path.relpath(f, VAULT)}:{i + 1}: {line.strip()[:160]}")
+                    hits.append(f"{os.path.relpath(f, NOTES)}:{i + 1}: {line.strip()[:160]}")
         except OSError:
             pass
     return "\n".join(hits[:40]) or "No matches."
 
 
 def read_note(path):
-    return Path(_inside_vault(path)).read_text(errors="replace")[:8000]
+    return Path(_inside_notes(path)).read_text(errors="replace")[:8000]
 
 
 def write_note(path, content):
-    real = _inside_vault(path if path.endswith(".md") else path + ".md")
+    real = _inside_notes(path if path.endswith(".md") else path + ".md")
     os.makedirs(os.path.dirname(real), exist_ok=True)
     with open(real, "w") as f:
         f.write(content)
-    return f"Saved note {os.path.relpath(real, VAULT)}."
+    return f"Saved note {os.path.relpath(real, NOTES)}."
 
 
 # ---------- the user's ToDo.md and Notes.md (theirs; Amadeus adds or removes only with approval) ----------
 def _lines(name):
-    path = os.path.join(VAULT, name)
+    path = os.path.join(NOTES, name)
     return path, (Path(path).read_text(errors="replace").splitlines() if os.path.exists(path) else [f"# {name[:-3]}", ""])
 
 
@@ -1262,7 +1262,7 @@ TOOLS = [
     T("remember", "Save a durable fact about the user to long-term memory.", {"fact": S}, ["fact"], remember, "memory"),
     T("memory_overview", "List EVERYTHING stored about the user in long-term memory. Use it for questions like "
       "'what do you know about me'.", {}, [], memory_overview, "memory"),
-    T("todo_list", "Show the open items on the user's ToDo (ToDo.md in their vault).", {}, [], todo_list, "notes"),
+    T("todo_list", "Show the open items on the user's ToDo (ToDo.md in their notes).", {}, [], todo_list, "notes"),
     T("todo_add", "Add items to the user's ToDo when they ask ('put X on my todo').", {"items": {"type": "array", "items": S}},
       ["items"], todo_add, "notes", True, lambda a: "Add to your ToDo:\n" + "\n".join(f"- {i}" for i in a.get("items", []))),
     T("todo_done", "Remove items from the user's ToDo, ONLY when the user said they are done.",
@@ -1432,7 +1432,7 @@ TOOLS = [
 BY_NAME = {t["name"]: t for t in TOOLS}
 CONNECTORS = {
     "memory": "Long-term private memory (Hindsight)",
-    "notes": "Your to-dos and notes (in Amadeus' own folder, or your Obsidian vault once connected)",
+    "notes": "Your to-dos and notes, plain files in your folder",
     "reminders": "Reminders and schedules",
     "calendar": "Your calendar (shared with the assistant; it asks before changing it)",
     "mail": "Your mail, connected directly or through Thunderbird: read, search, organize, drafts; every change and every send only after your approval",

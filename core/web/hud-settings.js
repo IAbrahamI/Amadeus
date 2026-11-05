@@ -62,12 +62,10 @@ const PAGES = {
         <div class="acts"><input type="file" id="skFile" accept=".md"><span class="grow"></span><button class="btn go">Add skill</button></div>${info("skInfo")}</form>`;
   },
   async connectors() {
-    const [list, ob] = await Promise.all([api("/api/connectors"), api("/api/obsidian")]);
+    const [list, fo] = await Promise.all([api("/api/connectors"), api("/api/folder")]);
     body().innerHTML = head("Connectors", "What it may use. Anything that changes something always asks you first.") +
-      `<h3>Obsidian</h3>` + (ob.connected
-        ? `${note(`Your to-dos and notes live in the Amadeus folder of your vault: ${esc(ob.vault)}. Every hour a snapshot is saved, so any change can be undone.`)}<div class="acts"><span class="grow"></span><button class="btn" data-act="obsoff">Disconnect</button></div>${info("obsInfo")}`
-        : `${note("Optional. Keeps your to-dos and notes in an Amadeus folder of your Obsidian vault, with an hourly snapshot so any change can be undone. Right now they live in Amadeus' own folder.")}
-           <form class="pform" id="obsForm">${field("Your vault folder", `<input id="obsVault" value="${esc(ob.suggestion)}" placeholder="~/Documents/My Vault" autocomplete="off">`)}<div class="acts"><span class="grow"></span><button class="btn go">Connect</button></div>${info("obsInfo")}</form>`) +
+      `<h3>Your folder</h3>${note(`Your to-dos and notes are plain Markdown files in this folder, so you can open it in Obsidian or any other notes app. Every hour a snapshot is saved, so any change can be undone. Your projects are in ${esc(fo.projects)}.`)}
+       <form class="pform" id="folderForm">${field("Your notes", `<input id="folderNotes" value="${esc(fo.notes)}" autocomplete="off" spellcheck="false">`)}<div class="acts"><span class="grow"></span><button class="btn go">Use this folder</button></div>${info("folderInfo")}</form>` +
       `<h3 style="margin-top:22px">What it may use</h3>` +
       rows(list.map((c) => `<div class="row"><span class="k">${c.own ? "yours" : ""}</span><div class="t"><b>${esc(c.own ? c.name : c.id)}</b><span class="wrap">${esc(c.description)}${c.tools.length ? " · " + c.tools.map((t) => esc(t) + (c.approval_tools.includes(t) ? " (asks)" : "")).join(", ") : ""}${c.missing ? " · " + esc(c.missing) : ""}</span></div>
         <div class="acts">${c.own ? `<button class="btn" data-act="connrm" data-n="${esc(c.name)}">Remove</button>` : ""}${onoff(c.enabled, `data-act="conntoggle" data-id="${esc(c.id)}" data-on="${c.enabled ? 1 : 0}"`)}</div></div>`)) +
@@ -166,12 +164,6 @@ body().addEventListener("click", async (e) => {
     if (r.error) say("updInfo", "That didn't work: " + r.error);
   }
   if (act === "updrestart") { say("updInfo", "Restarting…"); await post("/api/update/restart", {}); }
-  if (act === "obsoff") {
-    if (!confirm("Disconnect Obsidian? Your files stay in the vault. New to-dos and notes go to Amadeus' own folder.")) return;
-    const r = await post("/api/obsidian/disconnect", {});
-    say("obsInfo", r.error ? "That didn't work: " + r.error : "Disconnected. Restarting…");
-    if (!r.error) setTimeout(() => PAGES.connectors(), 5000);
-  }
   if (act === "conntoggle") { await post("/api/connectors", { id: d.id, enabled: d.on !== "1" }); PAGES.connectors(); }
   if (act === "connrm") { if (!confirm(`Remove the connector "${d.n}"?`)) return; await post("/api/connectors/remove", { name: d.n }); PAGES.connectors(); }
   if (act === "pbrm") { if (!confirm("Remove this playbook?")) return; await post("/api/playbooks/remove", { id: d.id }); PAGES.playbooks(); }
@@ -207,11 +199,11 @@ body().addEventListener("submit", async (e) => {
       if (r.error) return say("asInfo", "That didn't work: " + r.error);
       restarted();
     },
-    async obsForm() {
-      say("obsInfo", "Connecting…");
-      const r = await post("/api/obsidian/connect", { vault: $("#obsVault").value });
-      if (r.error) return say("obsInfo", "That didn't work: " + r.error);
-      say("obsInfo", (r.kept.length ? `Connected. These were already in your vault, so yours stayed and the ones in Amadeus' folder weren't copied: ${r.kept.join(", ")}. ` : "Connected. ") + "Restarting…");
+    async folderForm() {
+      say("folderInfo", "Moving over…");
+      const r = await post("/api/folder", { notes: $("#folderNotes").value });
+      if (r.error) return say("folderInfo", "That didn't work: " + r.error);
+      say("folderInfo", (r.kept.length ? `Done. These were already there, so those stayed and yours weren't copied: ${r.kept.join(", ")}. ` : "Done. ") + "Restarting…");
       setTimeout(() => PAGES.connectors(), 5000);
     },
     async voiceAdd() { const v = $("#voiceName").value.trim(); if (!v) return; const r = await post("/api/voice/voices/download", { id: v }); say("voiceInfo", r.error ? "That didn't work: " + r.error : "Downloading… it shows in the list when it's ready."); if (!r.error) setTimeout(PAGES.voice, 800); },

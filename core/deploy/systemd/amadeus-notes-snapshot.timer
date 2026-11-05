@@ -1,5 +1,5 @@
 [Unit]
-Description=Hourly Obsidian vault snapshot
+Description=Hourly snapshot of your Amadeus notes
 
 [Timer]
 OnCalendar=hourly

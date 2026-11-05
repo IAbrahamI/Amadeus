@@ -20,8 +20,8 @@ scripts:
   postinstall: packaging/postinstall.sh
 overrides:
   deb:
-    depends: [python3, python3-venv, curl, libwebkit2gtk-4.1-0, libgtk-3-0]
+    depends: [python3, python3-venv, curl, zstd, libwebkit2gtk-4.1-0, libgtk-3-0]
   rpm:
-    depends: [python3, curl, webkit2gtk4.1, gtk3]
+    depends: [python3, curl, zstd, webkit2gtk4.1, gtk3]
   archlinux:
-    depends: [python, curl, webkit2gtk-4.1, gtk3]
+    depends: [python, curl, zstd, webkit2gtk-4.1, gtk3]

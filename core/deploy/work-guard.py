@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """PreToolUse guard for the work runs (Claude Code started by Amadeus, see core/amadeus_core/work.py).
 - Writing only inside your projects folder (one subfolder per project: docs, blueprints, images, code).
-- Your Obsidian vault is off-limits completely (read and write), unless an older install keeps the projects in it.
+- Your notes are off-limits completely (read and write), unless an older install keeps the projects in them.
 - Never this guard or its settings, Amadeus's own data, secrets, SSH keys, mail or service configs.
-core/amadeus_core/workguard.py fills in @PROJECTS@ and @VAULT@. Exit 2 blocks the tool call."""
+core/amadeus_core/workguard.py fills in @PROJECTS@ and @NOTES@. Exit 2 blocks the tool call."""
 import json, os, sys
 
 PROJECTS = os.path.realpath("@PROJECTS@")
-VAULT = "@VAULT@"
-VAULT = os.path.realpath(VAULT) if VAULT else ""
+NOTES = "@NOTES@"
+NOTES = os.path.realpath(NOTES) if NOTES else ""
 HOME = os.path.realpath(os.path.expanduser("~"))  # a linked home folder (always on macOS for /tmp and /var) must not slip past these
 GUARD = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
 SECRET_DIRS = [os.path.join(HOME, p) for p in (
@@ -39,7 +39,7 @@ if any(inside(real, d) for d in SECRET_DIRS) or base == ".env" or base.startswit
     block(f"{real} holds secrets or private data and is off-limits for work runs.")
 if tool in WRITE_TOOLS and (inside(real, GUARD) or real.endswith(os.path.join(".claude", "settings.json"))):
     block(f"{real} is protected configuration.")
-if inside(real, VAULT) and not inside(real, PROJECTS):
+if inside(real, NOTES) and not inside(real, PROJECTS):
     block(f"{real} is in the user's private notes. Anything from the user comes through Amadeus.")
 if tool in WRITE_TOOLS and not inside(real, PROJECTS):
     block(f"Work runs may only write inside {PROJECTS} (one folder per project).")

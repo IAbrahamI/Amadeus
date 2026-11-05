@@ -1,11 +1,11 @@
 """Work in the cloud, the light way: one Claude Code run per task.
 
 Amadeus filters the task and you approve it (tools.send_to_work / the new-project playbook); then one `claude -p` run
-works in the project's folder (<your projects folder>/<Name>/, outside your vault), on your Claude subscription. No coordinator, no agents
+works in the project's folder (<your projects folder>/<Name>/, outside your notes), on your Claude subscription. No coordinator, no agents
 waking each other. When it finishes the assistant tells you (a notification, and the result in the chat it came from).
 
 Guard rails (~/.local/share/amadeus/work-guard, read-only, see workguard.py): the run may write only in your projects
-folder (PreToolUse hook + Claude Code's sandbox for shell commands), and never reads your vault, Amadeus's own data,
+folder (PreToolUse hook + Claude Code's sandbox for shell commands), and never reads your notes, Amadeus's own data,
 mail, chats or keys. It can't ask you mid-run: missing facts come back as "## Questions"; your answers continue the same
 session (continue_project). Every run is a normal Claude Code session, so you can also resume it yourself:
 `cd "<projects folder>/<Name>" && claude --resume <session>`."""
@@ -265,15 +265,15 @@ def new_project(name, goal=""):
 
 
 # ---------- where the projects live (you choose it in the Projects view or with ./install.sh --setup) ----------
-def _vault():
-    v = os.path.realpath(CFG["vault_dir"])
-    return os.path.dirname(v) if os.path.isdir(v) else ""
+def _private():
+    v = os.path.realpath(CFG["notes_root"])
+    return v if os.path.isdir(v) else ""
 
 
 def folder_info():
-    root, vault = projects_dir(CFG), _vault()
+    root, private = projects_dir(CFG), _private()
     names = [n for n in os.listdir(root) if os.path.isdir(os.path.join(root, n)) and not n.startswith(".")] if os.path.isdir(root) else []
-    return {"path": root, "in_vault": bool(vault) and (root + os.sep).startswith(vault + os.sep), "projects": sorted(names, key=str.lower)}
+    return {"path": root, "in_notes": bool(private) and (root + os.sep).startswith(private + os.sep), "projects": sorted(names, key=str.lower)}
 
 
 def set_folder(path, move=False):
@@ -282,11 +282,11 @@ def set_folder(path, move=False):
     from . import workguard
     from .config import CONFIG_PATH
     new = os.path.realpath(os.path.expanduser(str(path or "").strip()))
-    vault, old, home = _vault(), projects_dir(CFG), os.path.realpath(os.path.expanduser("~"))
+    private, old, home = _private(), projects_dir(CFG), os.path.realpath(os.path.expanduser("~"))
     if not str(path or "").strip() or new in ("/", home) or not (new + os.sep).startswith(home + os.sep):
         raise ValueError("Pick a folder inside your home folder, for example ~/Amadeus/Projects.")
-    if vault and (new + os.sep).startswith(vault + os.sep):
-        raise ValueError("That's inside your Obsidian vault. Projects get their own folder, so a work run never sees your notes.")
+    if private and (new + os.sep).startswith(private + os.sep):
+        raise ValueError("That's inside your notes. Projects get their own folder, so a work run never sees your notes.")
     if any(f["status"] == "running" for f in running()):
         raise ValueError("A work run is still going. Change the folder when it's done.")
     os.makedirs(new, exist_ok=True)
@@ -311,6 +311,6 @@ def set_folder(path, move=False):
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(c, f, indent=2)
-    CFG["projects_dir"] = new
-    workguard.install(new, vault)
+    CFG["projects"] = new
+    workguard.install(new, private)
     return {**folder_info(), "moved": moved}
