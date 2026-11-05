@@ -6,7 +6,7 @@ which answers. Saying only the name makes it greet you and listen for the reques
 
 Light by design: the microphone is only checked for loudness; the word spotter (Vosk, small English model, limited
 to the wake words) runs only while someone speaks, Whisper only for a request. Audio is never stored or sent anywhere.
-Paused while ~/.local/share/amadeus/core/wake-off exists (tray: Wake word on/off)."""
+Paused while ~/.local/share/amadeus/core/wake-off exists (tray: Stop listening / Start listening)."""
 import io
 import json
 import os
@@ -165,6 +165,9 @@ def handle(mic, word, phrase_audio):
         text = strip_name(heard) if strip_name(heard) is not None else heard
     if len(re.sub(r"\W", "", text)) < 2:
         tell_window(stage="cancel")
+        return
+    if os.path.exists(OFF):  # you switched it off while it was still listening: what it heard is dropped
+        tell_window(stage="cancel", quiet=True)
         return
     print(f"wake request: {len(text.split())} words", flush=True)
     tell_window(stage="text", word=word, text=text)

@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use tauri::image::Image;
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
@@ -620,7 +620,9 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     let dash = MenuItem::with_id(app, "dash", "Open dashboard", true, None::<&str>)?;
     let appr = MenuItem::with_id(app, "approvals", "Approvals", true, None::<&str>)?;
     let rem = MenuItem::with_id(app, "reminders", "Reminders", true, None::<&str>)?;
-    let wake = CheckMenuItem::with_id(app, "wake", "Wake word", true, !off_file.exists(), None::<&str>)?;
+    // the microphone: off closes it completely, so she can't jump in while you talk with others
+    let listen_text = |off: bool| if off { "Start listening" } else { "Stop listening" };
+    let wake = MenuItem::with_id(app, "wake", listen_text(off_file.exists()), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let line = PredefinedMenuItem::separator(app)?;
     let line2 = PredefinedMenuItem::separator(app)?;
@@ -630,7 +632,7 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     let t = TrayIconBuilder::with_id("main")
         .icon(icon)
         .tooltip("Amadeus")
-        .menu(&Menu::with_items(app, &[&toggle, &dash, &appr, &rem, &line, &wake, &line2, &quit])?)
+        .menu(&Menu::with_items(app, &[&toggle, &wake, &line, &dash, &appr, &rem, &line2, &quit])?)
         .on_menu_event(move |app, ev| match ev.id.as_ref() {
             "toggle" => {
                 if app.get_webview_window("mini").is_some() {
@@ -643,7 +645,8 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
             "approvals" => drop(show_dash(app, "/#approvals")),
             "reminders" => drop(show_dash(app, "/#reminders")),
             "wake" => {
-                let _ = if wake2.is_checked().unwrap_or(true) { fs::remove_file(&off) } else { fs::write(&off, "") };
+                let _ = if off.exists() { fs::remove_file(&off) } else { fs::write(&off, "") };
+                let _ = wake2.set_text(listen_text(off.exists()));
             }
             "quit" => app.exit(0),
             _ => {}
@@ -654,7 +657,7 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
         let (mut theme, mut beat, mut shown, mut tick) = ("blue".to_string(), false, (String::new(), ""), 0);
         loop {
             if tick % 5 == 0 {
-                let _ = wake.set_checked(!off_file.exists()); // it may have been switched by voice or chat ("voice off")
+                let _ = wake.set_text(listen_text(off_file.exists())); // it may have been switched by voice or chat ("voice off")
                 if let Some(t) = api("/api/theme").call().ok().and_then(|r| r.into_json::<Value>().ok()) {
                     theme = t["theme"].as_str().unwrap_or("blue").to_string();
                 }
