@@ -85,3 +85,11 @@ class Changing(unittest.TestCase):
                 notesfolder.set_notes(bad)
         with mock.patch.dict(CFG, {"projects": os.path.join(self.new, "Projects")}), self.assertRaises(ValueError):
             notesfolder.set_notes(self.new)
+
+
+class OwnData(unittest.TestCase):
+    def test_in_the_right_place_for_this_system(self):
+        from amadeus_core import paths
+        import sys
+        self.assertEqual(paths.CONFIG_FILE.startswith(os.path.join(HOME, "Library")), sys.platform == "darwin")
+        self.assertTrue(paths.DATA.startswith(HOME))

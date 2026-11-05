@@ -1,5 +1,5 @@
 """What differs between the systems Amadeus runs on: its services, notifications, and opening apps and pages. Everything
-else in the core just calls this. Data stays in ~/.local/share/amadeus and ~/.config/amadeus-core on every Unix system."""
+else in the core just calls this. Where the data lives is in paths.py."""
 import glob
 import os
 import re

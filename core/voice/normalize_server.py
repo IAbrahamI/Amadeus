@@ -9,9 +9,10 @@ from pathlib import Path
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-HOME = os.path.expanduser("~")
-TOKEN = Path(os.path.join(HOME, ".local/share/amadeus/core/token")).read_text().strip()
-CACHE = os.path.join(HOME, ".local/share/amadeus/voice/models/tn-cache")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from amadeus_core import paths  # noqa: E402
+TOKEN = Path(paths.DATA, "token").read_text().strip()
+CACHE = os.path.join(paths.VOICE, "models", "tn-cache")
 PORT = 8897
 LANGS = ("en", "de", "es")
 _n, _lock = {}, threading.Lock()

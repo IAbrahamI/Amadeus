@@ -13,6 +13,8 @@ HOME = os.path.realpath(os.path.expanduser("~"))  # a linked home folder (always
 GUARD = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
 SECRET_DIRS = [os.path.join(HOME, p) for p in (
     ".local/share/amadeus/core", ".local/share/amadeus/secrets", ".local/share/amadeus/backup", ".config/amadeus-core",
+    "Library/Application Support/Amadeus/core", "Library/Application Support/Amadeus/secrets", "Library/Application Support/Amadeus/backup",
+    "Library/Application Support/Amadeus/config", "Library/Application Support/Amadeus/work-guard", "Library/Thunderbird", "Library/Keychains",
     ".thunderbird", ".claude/.credentials.json", ".ssh", ".gnupg", ".aws", ".ollama")]
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 

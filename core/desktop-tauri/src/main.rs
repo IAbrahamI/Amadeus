@@ -38,15 +38,27 @@ const SVG_CALL: &str = include_str!("../../web/tray/amadeus-tray-call.svg");
 const SVG_SPEAKING: &str = include_str!("../../web/tray/amadeus-tray-speaking.svg");
 const SVG_VOICE_OFF: &str = include_str!("../../web/tray/amadeus-tray-voice-off.svg");
 
+/// Where Amadeus keeps its data: the same places as core/amadeus_core/paths.py.
+fn home_path(path: &str) -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(path)
+}
+#[cfg(target_os = "macos")]
+const CONFIG_FILE: &str = "Library/Application Support/Amadeus/config/config.json";
+#[cfg(not(target_os = "macos"))]
+const CONFIG_FILE: &str = ".config/amadeus-core/config.json";
+#[cfg(target_os = "macos")]
+const DATA_DIR: &str = "Library/Application Support/Amadeus/core";
+#[cfg(not(target_os = "macos"))]
+const DATA_DIR: &str = ".local/share/amadeus/core";
+
 fn config() -> Value {
-    let home = std::env::var("HOME").unwrap_or_default();
-    fs::read_to_string(PathBuf::from(home).join(".config/amadeus-core/config.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({}))
+    fs::read_to_string(home_path(CONFIG_FILE)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({}))
 }
 
 fn data_dir() -> PathBuf {
     match config()["data_dir"].as_str() {
         Some(d) => PathBuf::from(d),
-        None => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share/amadeus/core"),
+        None => home_path(DATA_DIR),
     }
 }
 

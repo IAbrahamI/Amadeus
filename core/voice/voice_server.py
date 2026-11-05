@@ -10,18 +10,20 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import threading
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-HOME = os.path.expanduser("~")
-VOICE = os.path.join(HOME, ".local/share/amadeus/voice")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from amadeus_core import paths  # noqa: E402
+VOICE = paths.VOICE
 MODELS = os.path.join(VOICE, "models")
-CFG_FILE = os.path.join(HOME, ".config/amadeus-core/config.json")
-WORDS_FILE = os.path.join(HOME, ".local/share/amadeus/core/stt-words.json")  # words the assistant added when you asked
+CFG_FILE = paths.CONFIG_FILE
+WORDS_FILE = os.path.join(paths.DATA, "stt-words.json")  # words the assistant added when you asked
 os.environ.setdefault("HF_HOME", os.path.join(MODELS, "hf"))  # Whisper small lives in this cache
 os.environ.setdefault("HF_HUB_OFFLINE", "1")                   # never download at runtime
-TOKEN = Path(os.path.join(HOME, ".local/share/amadeus/core/token")).read_text().strip()
+TOKEN = Path(paths.DATA, "token").read_text().strip()
 PORT = 8896
 LANGS = {"en", "de", "es"}
 

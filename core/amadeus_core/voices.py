@@ -14,10 +14,10 @@ import urllib.request
 import subprocess
 import threading
 
-from . import db, system
+from . import db, paths, system
 from .config import CFG
 
-VOICE_DIR = os.path.expanduser("~/.local/share/amadeus/voice")
+VOICE_DIR = paths.VOICE
 PIPER_DIR = os.path.join(VOICE_DIR, "models", "piper")
 KOKORO_DIR = os.path.join(VOICE_DIR, "models", "kokoro")
 KOKORO_FILES = {"kokoro-v1.0.onnx": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",

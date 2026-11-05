@@ -4,6 +4,11 @@ import json
 import os
 import sys
 
+try:
+    from . import paths as places
+except ImportError:  # run directly by install.sh and the snapshots
+    import paths as places
+
 
 def paths(own, home):
     """{folder, notes, notes_root, projects} from your config. notes_root is what work runs are kept out of."""
@@ -25,8 +30,7 @@ def paths(own, home):
 
 
 if __name__ == "__main__":
-    home = os.path.expanduser("~")
-    config = os.path.join(home, ".config", "amadeus-core", "config.json")
+    home, config = places.HOME, places.CONFIG_FILE
     with_own = {}
     if os.path.exists(config):
         with open(config) as f:

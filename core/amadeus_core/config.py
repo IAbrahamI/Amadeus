@@ -1,26 +1,26 @@
-"""Settings. Defaults fit a single-user desktop; override in ~/.config/amadeus-core/config.json."""
+"""Settings. Defaults fit a single-user desktop; override in config.json (see paths.py)."""
 import json
 import os
 from pathlib import Path
 import secrets
 
-from . import folders
+from . import folders, paths
 
 HOME = os.path.expanduser("~")
-CONFIG_PATH = os.path.join(HOME, ".config", "amadeus-core", "config.json")
+CONFIG_PATH = paths.CONFIG_FILE
 
 DEFAULTS = {
     "host": "127.0.0.1",
     "port": 8095,
-    "data_dir": os.path.join(HOME, ".local", "share", "amadeus", "core"),
+    "data_dir": paths.DATA,
     "ollama_url": "http://127.0.0.1:11434",
     "default_model": "qwen3.5-9b-48k",
     "folder": "",                 # your folder, with Notes/ and Projects/ in it; "" = ~/Amadeus (see folders.py)
     "ms_client_id": "",           # the app's registration at Microsoft, for signing in to Outlook directly (not a secret)
     "hindsight_url": "http://127.0.0.1:8888",
     "hindsight_bank": "amadeus-private",
-    "secrets_dir": os.path.join(HOME, ".local", "share", "amadeus", "secrets"),  # created by install.sh, never in git
-    "hindsight_key_file": os.path.join(HOME, ".local", "share", "amadeus", "secrets", "hindsight-keys.json"),
+    "secrets_dir": paths.SECRETS,  # created by install.sh, never in git
+    "hindsight_key_file": os.path.join(paths.SECRETS, "hindsight-keys.json"),
     "hindsight_key_name": "amadeus",
     "presidio_analyzer": "http://172.30.77.10:3000/analyze",    # on the private Docker network install.sh creates
     "presidio_anonymizer": "http://172.30.77.11:3000/anonymize",

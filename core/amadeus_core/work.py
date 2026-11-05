@@ -19,6 +19,7 @@ import threading
 import time
 
 from . import db, events
+from . import paths
 from .config import CFG, projects_dir
 
 db.q("""CREATE TABLE IF NOT EXISTS work_jobs (id TEXT PRIMARY KEY, project TEXT, folder TEXT, session_id TEXT, status TEXT,
@@ -33,7 +34,7 @@ for _col in ("task",):  # added later: what was asked in each run (shown in the 
 db.q("UPDATE work_jobs SET status='stopped', summary=coalesce(summary, 'Stopped: Amadeus restarted while it ran.') "
      "WHERE status='running'")
 
-GUARD = os.path.expanduser("~/.local/share/amadeus/work-guard")
+GUARD = paths.GUARD
 MODEL = CFG.get("work_model", "claude-sonnet-5-5")
 EFFORT = CFG.get("work_effort", "medium")
 TIMEOUT = CFG.get("work_timeout_min", 120) * 60

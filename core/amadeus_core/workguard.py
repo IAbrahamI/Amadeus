@@ -7,11 +7,15 @@ from pathlib import Path
 import shlex
 import stat
 
-GUARD = os.path.expanduser("~/.local/share/amadeus/work-guard")
+try:
+    from . import paths
+except ImportError:  # run directly by install.sh
+    import paths
+
+GUARD = paths.GUARD
 TEMPLATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deploy", "work-guard.py")
-PRIVATE = ["~/.ssh", "~/.gnupg", "~/.aws", "~/.ollama", "~/.thunderbird", "~/.config/amadeus-core", "~/.local/share/amadeus/core",
-           "~/.local/share/amadeus/secrets", "~/.local/share/amadeus/backup", "~/.local/share/amadeus/work-guard",
-           "~/.claude/.credentials.json"]
+PRIVATE = ["~/.ssh", "~/.gnupg", "~/.aws", "~/.ollama", "~/.thunderbird", "~/Library/Thunderbird", "~/Library/Keychains", paths.CONFIG, paths.DATA,
+           paths.SECRETS, paths.BACKUP, paths.GUARD, "~/.claude/.credentials.json"]
 
 
 def files(projects, notes=""):

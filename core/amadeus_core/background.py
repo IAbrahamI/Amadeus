@@ -11,6 +11,7 @@ import time
 import urllib.request
 
 from . import agenda, db, digest, events, learning, llm, mailwatch, system, quickchat, tools
+from . import paths
 from .config import CFG
 
 
@@ -24,7 +25,7 @@ def check_reminders():
 
 
 IDLE_SEC = 15 * 60
-PRESIDIO_STAMP = os.path.expanduser("~/.local/share/amadeus/presidio-last-used")
+PRESIDIO_STAMP = os.path.join(paths.ROOT, "presidio-last-used")
 
 
 def idle_stop():

@@ -9,8 +9,10 @@ import struct
 import sys
 import threading
 
-SOCK = os.path.expanduser("~/.local/share/amadeus/core/mail.sock")
-NEW_MAIL = os.path.expanduser("~/.local/share/amadeus/core/mail-new")  # touched when Thunderbird gets new mail
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from amadeus_core import paths  # noqa: E402
+SOCK = os.path.join(paths.DATA, "mail.sock")
+NEW_MAIL = os.path.join(paths.DATA, "mail-new")  # touched when Thunderbird gets new mail
 _out = threading.Lock()
 _waiting = {}  # request id -> [event, response]
 _next = [0]

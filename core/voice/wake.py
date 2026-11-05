@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 import urllib.request
 import wave
@@ -21,12 +22,12 @@ from collections import deque
 import numpy as np
 import vosk
 
-HOME = os.path.expanduser("~")
-DATA = os.path.join(HOME, ".local/share/amadeus/core")
-VOICE = os.path.join(HOME, ".local/share/amadeus/voice")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from amadeus_core import paths  # noqa: E402
+DATA, VOICE = paths.DATA, paths.VOICE
 MODEL = os.path.join(VOICE, "models/vosk-model-small-en-us-0.15")
 OFF = os.path.join(DATA, "wake-off")
-CFG_FILE = os.path.join(HOME, ".config/amadeus-core/config.json")
+CFG_FILE = paths.CONFIG_FILE
 RATE, CHUNK = 16000, 1600  # 100 ms of 16-bit mono
 GREETINGS = ["hey", "okay", "ok", "hi"]
 
