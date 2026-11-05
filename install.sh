@@ -192,17 +192,17 @@ phase_prereqs() {
   if have nvidia-smi; then
     ok "NVIDIA GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)"
   else
-    warn "nvidia-smi not found. Ollama will fall back to CPU (slow). 12 GB VRAM is the tested target."
+    warn "No NVIDIA graphics card found, so the model runs on the CPU, which is slower. About 12 GB of graphics memory is the tested setup."
   fi
 
   if want ollama || want hindsight; then
     if have ollama; then ok "ollama $(ollama --version 2>/dev/null | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
-    else err "ollama is missing. Install: https://ollama.com/download (or your distro package), then enable it: sudo systemctl enable --now ollama"; fi
+    else err "Ollama is missing. Get it from https://ollama.com/download, then run: sudo systemctl enable --now ollama"; fi
   fi
 
   if want hindsight || want presidio; then
     if ! have docker; then
-      err "docker is missing. Install Docker Engine and run: sudo systemctl enable --now docker"
+      err "Docker is missing. Install Docker Engine, then run: sudo systemctl enable --now docker"
     elif ! docker info >/dev/null 2>&1; then
       err "docker is installed but not usable by $USER. Start it (sudo systemctl enable --now docker) and add yourself to the docker group (sudo usermod -aG docker $USER, then log out and back in)."
     else
@@ -228,7 +228,7 @@ phase_prereqs() {
   if (( ERRORS > 0 )); then
     [[ "$MODE" == install ]] && die "Fix the prerequisites above, then run this script again."
     [[ "$MODE" == check && -n "$PKG" ]] && info "./install.sh offers to install what's missing here (it asks before using sudo)."
-    warn "Prerequisites are incomplete; later phases may show as missing."
+    info "Some of this is missing, so later steps may be skipped."
   fi
 }
 
@@ -263,7 +263,7 @@ PYC
 # ---------------------------------------------------------------- Ollama models
 phase_ollama() {
   head_ "The local model"
-  have ollama || { err "ollama not installed; skipping."; return; }
+  have ollama || { info "Skipped until Ollama is installed."; return; }
 
   if ! curl -fsS --max-time 3 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
     err "Ollama is not answering at $OLLAMA_URL. Start it: sudo systemctl enable --now ollama"
@@ -321,7 +321,7 @@ phase_secrets() {
 # places, groups) and the anonymizer. Amadeus starts them on demand and stops them when idle.
 phase_presidio() {
   head_ "The privacy filter"
-  have docker && docker info >/dev/null 2>&1 || { err "docker not usable; skipping."; return; }
+  have docker && docker info >/dev/null 2>&1 || { info "Skipped until Docker works."; return; }
   if docker network inspect amadeus-private >/dev/null 2>&1; then ok "network amadeus-private exists"
   else run docker network create --internal --subnet 172.30.77.0/24 amadeus-private; fi
   if docker image inspect amadeus/presidio-analyzer:en-de >/dev/null 2>&1; then ok "analyzer image built"
@@ -338,7 +338,7 @@ phase_presidio() {
 # ---------------------------------------------------------------- Hindsight memory
 phase_hindsight() {
   head_ "The memory"
-  have docker && docker info >/dev/null 2>&1 || { err "docker not usable; skipping."; return; }
+  have docker && docker info >/dev/null 2>&1 || { info "Skipped until Docker works."; return; }
 
   if docker container inspect "$HINDSIGHT_CONTAINER" >/dev/null 2>&1; then
     local state; state="$(docker inspect -f '{{.State.Status}}' "$HINDSIGHT_CONTAINER")"
@@ -637,7 +637,7 @@ step app
 step mail
 
 if (( ERRORS > 0 )); then
-  [[ "$MODE" == check ]] && title="This PC still needs a few things" || title="$ERRORS thing(s) need your attention"
+  [[ "$MODE" == check ]] && title="This PC still needs a few things" || title="This needs your attention"
   box "$C_ERR" "$title" "${PROBLEMS[@]/#/✗ }" "${NOTES[@]/#/! }"
   if [[ "$MODE" == check && -n "$PKG" && -t 0 ]]; then
     printf '\n'
