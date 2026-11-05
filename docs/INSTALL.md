@@ -259,8 +259,39 @@ Amadeus asks GitHub once a day whether there's a newer release and sends nothing
 dashboard's top bar, in the tray menu and under Settings → Assistant, where you can also turn the check off. **Update
 now** there, or `amadeus update`, gets the newest release. On a branch other than `main` it pulls that branch instead.
 
-Each release also has `.deb`, `.rpm` and pacman packages with the app ready-built. Installed from one of those, run
-`amadeus setup` once per user. Own package repositories, so that updates arrive through `apt`, `dnf` and `pacman`, come next.
+Each release also has `.deb`, `.rpm` and pacman packages with the app ready-built. Add the repository once, and updates
+then arrive with your system's other updates. Run `amadeus setup` once per user after the first install.
+
+Debian / Ubuntu:
+
+```bash
+curl -fsSL https://iabrahami.github.io/Amadeus/amadeus-repo.gpg | sudo gpg --dearmor -o /usr/share/keyrings/amadeus.gpg
+echo "deb [signed-by=/usr/share/keyrings/amadeus.gpg] https://iabrahami.github.io/Amadeus/apt stable main" | sudo tee /etc/apt/sources.list.d/amadeus.list
+sudo apt update && sudo apt install amadeus
+```
+
+Fedora:
+
+```bash
+sudo tee /etc/yum.repos.d/amadeus.repo <<'R'
+[amadeus]
+name=Amadeus
+baseurl=https://iabrahami.github.io/Amadeus/rpm
+repo_gpgcheck=1
+gpgcheck=0
+gpgkey=https://iabrahami.github.io/Amadeus/amadeus-repo.gpg
+R
+sudo dnf install amadeus
+```
+
+Arch / CachyOS:
+
+```bash
+curl -fsSL https://iabrahami.github.io/Amadeus/amadeus-repo.gpg | sudo pacman-key --add -
+sudo pacman-key --lsign-key 96EE112C59BC2335
+printf '\n[amadeus]\nServer = https://iabrahami.github.io/Amadeus/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Sy amadeus
+```
 
 Maintainers: raise the version in `VERSION`, `core/desktop-tauri/Cargo.toml` and `tauri.conf.json`, then push a tag `vX.Y.Z`.
 The release workflow runs the tests, builds the packages and publishes them.

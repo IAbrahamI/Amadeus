@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   tests:
@@ -41,8 +43,45 @@ jobs:
         with:
           name: packages
           path: dist/
+      - name: Build the signed repositories
+        env:
+          REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+          REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+        run: |
+          sudo apt-get install -y dpkg-dev apt-utils createrepo-c
+          gpg --batch --pinentry-mode loopback --passphrase-fd 3 --import 3<<<"$REPO_GPG_PASSPHRASE" <<<"$REPO_GPG_PRIVATE_KEY"
+          packaging/build-repos.sh
+      - name: Check the signatures against the public key
+        run: |
+          export GNUPGHOME="$(mktemp -d)"
+          gpg --batch --import packaging/amadeus-repo.gpg
+          gpg --batch --verify site/apt/dists/stable/Release.gpg site/apt/dists/stable/Release
+          gpg --batch --verify site/apt/dists/stable/InRelease
+          gpg --batch --verify site/rpm/repodata/repomd.xml.asc site/rpm/repodata/repomd.xml
+          for f in site/arch/x86_64/*.sig; do gpg --batch --verify "$f" "${f%.sig}"; done
+      - name: Keep the repositories with this run
+        uses: actions/upload-artifact@v7
+        with:
+          name: repositories
+          path: site/
       - name: Publish the release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes
+
+  pages:
+    needs: release
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: repositories
+          path: site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - uses: actions/deploy-pages@v5

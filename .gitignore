@@ -18,3 +18,4 @@ core/desktop-tauri/gen/
 
 # Built packages
 dist/
+site/
