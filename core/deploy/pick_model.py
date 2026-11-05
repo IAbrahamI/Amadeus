@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -131,7 +132,8 @@ def suggest_latest(hw, latest, speed=None):
     tuned = suggest(hw, speed)
     if not latest:
         return tuned
-    usable = lambda s: runs_on(s, hw) == "gpu" or (not hw["gpu_gb"] and runs_on(s, hw))  # noqa: E731
+    # no graphics card and nothing measured: stay small, the same as the built-in list
+    usable = lambda s: runs_on(s, hw) == "gpu" or (not hw["gpu_gb"] and runs_on(s, hw) and (speed or s <= 4))  # noqa: E731
     fits = []  # per model the biggest version that fits and stays comfortable, newest model first
     for rank, m in enumerate(latest):
         ok = [(n, s) for n, s in m["versions"] if usable(s) and hw["disk_gb"] >= s + 2 and (estimate(s, speed) or COMFORT) >= COMFORT]
@@ -203,6 +205,20 @@ def pull(model):
     return subprocess.run(["ollama", "pull", model]).returncode == 0
 
 
+class NoDownloads(Exception):
+    """Models can't be downloaded from here."""
+
+
+def registry_reachable():
+    try:
+        urllib.request.urlopen(urllib.request.Request("https://registry.ollama.ai/v2/", headers={"user-agent": "Amadeus installer"}), timeout=15).close()
+    except urllib.error.HTTPError:  # it answered
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def baseline():
     """(tokens per second, size) from what's installed, else from a small model that's removed again afterwards."""
     have = installed()
@@ -230,6 +246,9 @@ def choose(out_file, interactive):
     hw = hardware()
     print(f"  This PC: {hw['gpu'] or 'no dedicated graphics card'}" + (f" with {hw['gpu_gb']:g} GB" if hw["gpu_gb"] else "") +
           f", {hw['ram_gb']:g} GB memory, {hw['cores']} CPU threads, {hw['disk_gb']:g} GB free disk.")
+    if not installed() and not registry_reachable():
+        print("  Can't reach registry.ollama.ai, where models are downloaded from. Check this PC's internet and DNS.")
+        return 3
     speed = baseline()
     print("  Reading the newest models from Ollama's library...")
     latest = latest_models()
@@ -247,7 +266,7 @@ def choose(out_file, interactive):
             m = next((p for p in picks if p["model"].startswith("qwen3.5")), m)
         if m["model"] not in installed() and not pull(m["model"]):
             print(f"  Couldn't download {m['model']}.")
-            return 1
+            return 3
         tps, share = measure(m["model"])
         tools_ok = calls_tools(m["model"])
         print(f"  {m['model']}: {tps:.0f} tokens per second, {share * 100:.0f}% on the graphics card, tools {'work' if tools_ok else 'did NOT work'}.")

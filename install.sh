@@ -260,7 +260,12 @@ phase_pick_model() {
   head_ "Which model fits this PC"
   local out; out="$(mktemp)"
   local auto=(); [[ "$ASSUME_YES" == 1 ]] && auto=(--auto)
-  python3 "$SCRIPT_DIR/core/deploy/pick_model.py" "$out" "${auto[@]}" || { rm -f "$out"; warn "keeping $OLLAMA_MODEL"; return 0; }
+  local rc=0; python3 "$SCRIPT_DIR/core/deploy/pick_model.py" "$out" "${auto[@]}" || rc=$?
+  if (( rc )); then
+    rm -f "$out"; NO_MODEL=1
+    err "No model yet, so Amadeus can't answer. Fix what's shown above, then run: ./install.sh --benchmark"
+    return 0
+  fi
   local pick; mapfile -t pick <"$out"; rm -f "$out"
   OLLAMA_MODEL="${pick[0]}"; OLLAMA_CTX_VARIANT="${pick[1]}"; OLLAMA_NUM_CTX="${pick[2]}"; HINDSIGHT_LLM_MODEL="${pick[1]}"
   env_set OLLAMA_MODEL "$OLLAMA_MODEL"; env_set OLLAMA_CTX_VARIANT "$OLLAMA_CTX_VARIANT"; env_set OLLAMA_NUM_CTX "$OLLAMA_NUM_CTX"; env_set HINDSIGHT_LLM_MODEL "$HINDSIGHT_LLM_MODEL"
@@ -287,12 +292,16 @@ phase_ollama() {
   ok "Ollama API reachable at $OLLAMA_URL"
 
   phase_pick_model
+  [[ "${NO_MODEL:-}" != 1 ]] || return 0
   local models; models="$(ollama list 2>/dev/null | awk 'NR>1 {print $1}')"
   if grep -qx "${OLLAMA_MODEL}:latest\|${OLLAMA_MODEL}" <<<"$models"; then
     ok "model $OLLAMA_MODEL present"
   else
     info "pulling $OLLAMA_MODEL (several GB, this takes a while)"
-    run ollama pull "$OLLAMA_MODEL"
+    if ! run ollama pull "$OLLAMA_MODEL"; then
+      err "Couldn't download $OLLAMA_MODEL. Fix what's shown above, then run: ./install.sh --benchmark"
+      return 0
+    fi
   fi
 
   # the variant Amadeus uses: a larger context, and at most a quarter of the CPU threads (the model runs on the GPU;
@@ -648,6 +657,7 @@ if (( ERRORS > 0 )); then
 fi
 ok "Done with $WARNINGS warning(s)."
 [[ "$MODE" == install ]] || exit 0
+have amadeus || warn "$HOME/.local/bin isn't in your PATH yet: open a new terminal, or run $HOME/.local/bin/amadeus"
 printf '\nOpen it with: %samadeus%s   ·   update later with: %samadeus update%s\n' "$C_HEAD" "$C_OFF" "$C_HEAD" "$C_OFF"
 left=()
 [[ "$AMADEUS_MAIL" == 1 ]] && left+=("Mail: in Thunderbird, Add-ons and Themes → gear icon → Install Add-on From File… → ~/.local/share/amadeus/amadeus-bridge.xpi")

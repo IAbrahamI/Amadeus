@@ -57,5 +57,11 @@ class PickModel(unittest.TestCase):
         names = [m["model"] for m in pm.suggest_latest(hw(12), latest)]
         self.assertEqual(names, ["new:8b", "qwen3.5:9b", "mini"])
 
+    def test_no_card_and_no_speed_test_stays_small(self):
+        latest = [{"name": "big", "versions": [("big:27b", 8.3)]}, {"name": "mini", "versions": [("mini", 1.1)]}]
+        names = [m["model"] for m in pm.suggest_latest(hw(0, 16), latest)]
+        self.assertEqual(names[0], "mini")
+        self.assertNotIn("big:27b", names)
+
     def test_offline_uses_the_built_in_list(self):
         self.assertEqual([m["model"] for m in pm.suggest_latest(hw(12), [])], ["qwen3.5:9b", "qwen3.5:4b", "qwen3.5:2b"])
