@@ -1012,6 +1012,14 @@ fn mac_services(app: &AppHandle) {
             let _ = Command::new("launchctl").args(["bootstrap", &format!("gui/{uid}")]).arg(&file).status();
         }
     }
+    // a new version of the app: the core still running is the old one
+    let stamp = fs::metadata(&exe).and_then(|m| m.modified()).map(|t| format!("{t:?}")).unwrap_or_default();
+    let marker = data_dir().join("app-stamp");
+    if fs::read_to_string(&marker).unwrap_or_default() != stamp {
+        let _ = Command::new("launchctl").args(["kickstart", "-k", &format!("gui/{uid}/com.amadeus.core")]).status();
+        let _ = fs::create_dir_all(data_dir());
+        let _ = fs::write(&marker, stamp);
+    }
 }
 
 fn main() {
