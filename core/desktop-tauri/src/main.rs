@@ -4,7 +4,7 @@
 //!   clicks where nothing is drawn reach the desktop. Clicking the core opens the dashboard.
 //! - The dashboard (web/index.html), opened from the mini core, the tray or the `amadeus` command.
 //! - The tray icon: the "dot shell" in the theme's colour, an amber dot that beats during a call, small bars while she
-//!   speaks, a slashed look when the microphone is off. Its menu has the core, the dashboard, approvals and the wake word.
+//!   speaks, a slashed look when the microphone is off. A left click turns listening on and off. Its menu has the core, the dashboard, approvals and the wake word.
 //! A closed window is really gone, so nothing draws or runs behind it. The core tells this app what to show through a
 //! long-running request (core/amadeus_core/desktop.py), which works the same on every system.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -15,9 +15,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) AmadeusDesktop/1";
@@ -596,8 +593,8 @@ fn listen(app: AppHandle) {
 
 // ---------- the tray icon ----------
 
-/// A tray icon in the theme's main colour (web/themes.js).
-fn tray_icon(svg: &str, theme: &str) -> Option<Image<'static>> {
+/// A tray icon in the theme's main colour (web/themes.js): 64 x 64 RGBA.
+fn tray_pixels(svg: &str, theme: &str) -> Option<Vec<u8>> {
     let colour = match theme {
         "purple" => "#B68CFF",
         "red" => "#FF5260",
@@ -607,81 +604,214 @@ fn tray_icon(svg: &str, theme: &str) -> Option<Image<'static>> {
     let mut pixmap = resvg::tiny_skia::Pixmap::new(64, 64)?;
     let scale = 64.0 / tree.size().width();
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
-    let rgba = pixmap.pixels().iter().flat_map(|p| {
+    Some(pixmap.pixels().iter().flat_map(|p| {
         let c = p.demultiply();
         [c.red(), c.green(), c.blue(), c.alpha()]
-    });
-    Some(Image::new_owned(rgba.collect(), 64, 64))
+    }).collect())
 }
 
+fn listening_off() -> bool {
+    data_dir().join("wake-off").exists()
+}
+
+/// The microphone: off closes it completely, so she can't jump in while you talk with others.
+fn toggle_listening() {
+    let off = data_dir().join("wake-off");
+    let _ = if off.exists() { fs::remove_file(&off) } else { fs::write(&off, "") };
+}
+
+fn toggle_core(app: &AppHandle) {
+    if app.get_webview_window("mini").is_some() {
+        close_mini(app, true);
+    } else {
+        let _ = show_mini(app, false);
+    }
+}
+
+fn tray_look(tick: &mut bool) -> &'static str {
+    if CALLING.load(Ordering::Relaxed) {
+        *tick = !*tick;
+        return if *tick { SVG_CALL } else { SVG_NORMAL }; // the amber dot beats
+    }
+    if SPEAKING.load(Ordering::Relaxed) {
+        SVG_SPEAKING
+    } else if listening_off() {
+        SVG_VOICE_OFF
+    } else {
+        SVG_NORMAL
+    }
+}
+
+fn get_json(path: &str) -> Option<Value> {
+    api(path).call().ok().and_then(|r| r.into_json::<Value>().ok())
+}
+
+/// On Linux the tray speaks the desktop's own protocol directly: Tauri's tray can't tell a left click from opening the menu.
+/// A left click turns listening on and off, a right click opens the menu.
+#[cfg(target_os = "linux")]
+mod linux_tray {
+    use super::*;
+    use ksni::blocking::TrayMethods;
+    use ksni::menu::StandardItem;
+    use ksni::{Icon, MenuItem, ToolTip};
+
+    pub struct AmadeusTray {
+        pub app: AppHandle,
+        pub theme: String,
+        pub svg: &'static str,
+        pub waiting: usize,
+    }
+
+    fn item(label: String, run: fn(&AppHandle)) -> MenuItem<AmadeusTray> {
+        StandardItem {
+            label,
+            activate: Box::new(move |t: &mut AmadeusTray| {
+                let a = t.app.clone();
+                let _ = t.app.run_on_main_thread(move || run(&a));
+            }),
+            ..Default::default()
+        }
+        .into()
+    }
+
+    impl ksni::Tray for AmadeusTray {
+        fn id(&self) -> String {
+            "amadeus".into()
+        }
+        fn title(&self) -> String {
+            "Amadeus".into()
+        }
+        fn tool_tip(&self) -> ToolTip {
+            let title = if listening_off() { "Amadeus: not listening (click to turn on)" } else { "Amadeus: listening (click to turn off)" };
+            ToolTip { title: title.into(), ..Default::default() }
+        }
+        fn icon_pixmap(&self) -> Vec<Icon> {
+            let Some(rgba) = tray_pixels(self.svg, &self.theme) else { return vec![] };
+            let data = rgba.chunks_exact(4).flat_map(|p| [p[3], p[0], p[1], p[2]]).collect(); // the protocol wants ARGB
+            vec![Icon { width: 64, height: 64, data }]
+        }
+        fn activate(&mut self, _x: i32, _y: i32) {
+            toggle_listening();
+            self.svg = tray_look(&mut false);
+        }
+        fn menu(&self) -> Vec<MenuItem<Self>> {
+            let waiting = if self.waiting > 0 { format!("Approvals ({} waiting)", self.waiting) } else { "Approvals".to_string() };
+            vec![
+                item("Show or hide the core".into(), toggle_core),
+                StandardItem {
+                    label: if listening_off() { "Start listening".into() } else { "Stop listening".into() },
+                    activate: Box::new(|t: &mut AmadeusTray| {
+                        toggle_listening();
+                        t.svg = tray_look(&mut false);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                MenuItem::Separator,
+                item("Open dashboard".into(), |a| drop(show_dash(a, "/#home"))),
+                item(waiting, |a| drop(show_dash(a, "/#approvals"))),
+                item("Reminders".into(), |a| drop(show_dash(a, "/#reminders"))),
+                MenuItem::Separator,
+                item("Quit".into(), |a| a.exit(0)),
+            ]
+        }
+    }
+
+    pub fn start(app: &AppHandle) -> tauri::Result<()> {
+        let tray = AmadeusTray { app: app.clone(), theme: "blue".into(), svg: SVG_NORMAL, waiting: 0 };
+        let handle = tray.spawn().map_err(|e| tauri::Error::Io(std::io::Error::other(e.to_string())))?;
+        // every few beats a look at what's going on
+        std::thread::spawn(move || {
+            let (mut beat, mut tick) = (false, 0);
+            let (mut theme, mut waiting) = ("blue".to_string(), 0);
+            let mut shown = (String::new(), "", usize::MAX, !listening_off());
+            loop {
+                if tick % 5 == 0 {
+                    if let Some(t) = get_json("/api/theme") {
+                        theme = t["theme"].as_str().unwrap_or("blue").to_string();
+                    }
+                    waiting = get_json("/api/approvals?status=pending").and_then(|l| l.as_array().map(Vec::len)).unwrap_or(0);
+                }
+                tick += 1;
+                let now = (theme.clone(), tray_look(&mut beat), waiting, listening_off());
+                if now != shown {
+                    shown = now.clone();
+                    handle.update(move |t| {
+                        t.theme = now.0;
+                        t.svg = now.1;
+                        t.waiting = now.2;
+                    });
+                }
+                std::thread::sleep(Duration::from_millis(950));
+            }
+        });
+        Ok(())
+    }
+
+}
+
+#[cfg(target_os = "linux")]
 fn tray(app: &AppHandle) -> tauri::Result<()> {
-    let off_file = data_dir().join("wake-off");
+    linux_tray::start(app)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn tray(app: &AppHandle) -> tauri::Result<()> {
+    use tauri::image::Image;
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    let text = |off: bool| if off { "Start listening" } else { "Stop listening" };
     let toggle = MenuItem::with_id(app, "toggle", "Show or hide the core", true, None::<&str>)?;
+    let wake = MenuItem::with_id(app, "wake", text(listening_off()), true, None::<&str>)?;
     let dash = MenuItem::with_id(app, "dash", "Open dashboard", true, None::<&str>)?;
     let appr = MenuItem::with_id(app, "approvals", "Approvals", true, None::<&str>)?;
     let rem = MenuItem::with_id(app, "reminders", "Reminders", true, None::<&str>)?;
-    // the microphone: off closes it completely, so she can't jump in while you talk with others
-    let listen_text = |off: bool| if off { "Start listening" } else { "Stop listening" };
-    let wake = MenuItem::with_id(app, "wake", listen_text(off_file.exists()), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let line = PredefinedMenuItem::separator(app)?;
-    let line2 = PredefinedMenuItem::separator(app)?;
+    let (line, line2) = (PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?);
+    let image = |svg: &str, theme: &str| tray_pixels(svg, theme).map(|p| Image::new_owned(p, 64, 64));
     let wake2 = wake.clone();
-    let off = off_file.clone();
-    let icon = tray_icon(SVG_NORMAL, "blue").expect("the tray icon");
     let t = TrayIconBuilder::with_id("main")
-        .icon(icon)
+        .icon(image(SVG_NORMAL, "blue").expect("the tray icon"))
         .tooltip("Amadeus")
+        .show_menu_on_left_click(false)
         .menu(&Menu::with_items(app, &[&toggle, &wake, &line, &dash, &appr, &rem, &line2, &quit])?)
-        .on_menu_event(move |app, ev| match ev.id.as_ref() {
-            "toggle" => {
-                if app.get_webview_window("mini").is_some() {
-                    close_mini(app, true);
-                } else {
-                    let _ = show_mini(app, false);
-                }
+        .on_tray_icon_event(|_, ev| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = ev {
+                toggle_listening();
             }
+        })
+        .on_menu_event(move |app, ev| match ev.id.as_ref() {
+            "toggle" => toggle_core(app),
             "dash" => drop(show_dash(app, "/#home")),
             "approvals" => drop(show_dash(app, "/#approvals")),
             "reminders" => drop(show_dash(app, "/#reminders")),
             "wake" => {
-                let _ = if off.exists() { fs::remove_file(&off) } else { fs::write(&off, "") };
-                let _ = wake2.set_text(listen_text(off.exists()));
+                toggle_listening();
+                let _ = wake2.set_text(text(listening_off()));
             }
             "quit" => app.exit(0),
             _ => {}
         })
         .build(app)?;
-    // every few beats a look at what's going on
     std::thread::spawn(move || {
         let (mut theme, mut beat, mut shown, mut tick) = ("blue".to_string(), false, (String::new(), ""), 0);
         loop {
             if tick % 5 == 0 {
-                let _ = wake.set_text(listen_text(off_file.exists())); // it may have been switched by voice or chat ("voice off")
-                if let Some(t) = api("/api/theme").call().ok().and_then(|r| r.into_json::<Value>().ok()) {
+                let _ = wake.set_text(text(listening_off())); // it may have been switched by voice or chat ("voice off")
+                if let Some(t) = get_json("/api/theme") {
                     theme = t["theme"].as_str().unwrap_or("blue").to_string();
                 }
-                let n = api("/api/approvals?status=pending").call().ok().and_then(|r| r.into_json::<Value>().ok()).and_then(|l| l.as_array().map(Vec::len));
+                let n = get_json("/api/approvals?status=pending").and_then(|l| l.as_array().map(Vec::len));
                 let _ = appr.set_text(match n {
                     Some(n) if n > 0 => format!("Approvals ({n} waiting)"),
                     _ => "Approvals".to_string(),
                 });
             }
             tick += 1;
-            let calling = CALLING.load(Ordering::Relaxed);
-            beat = calling && !beat;
-            let svg = if calling {
-                if beat { SVG_CALL } else { SVG_NORMAL } // the amber dot beats
-            } else if SPEAKING.load(Ordering::Relaxed) {
-                SVG_SPEAKING
-            } else if off_file.exists() {
-                SVG_VOICE_OFF
-            } else {
-                SVG_NORMAL
-            };
+            let svg = tray_look(&mut beat);
             if shown != (theme.clone(), svg) {
                 shown = (theme.clone(), svg);
-                let _ = t.set_icon(tray_icon(svg, &theme));
+                let _ = t.set_icon(image(svg, &theme));
             }
             std::thread::sleep(Duration::from_millis(950));
         }
