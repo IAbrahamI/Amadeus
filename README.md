@@ -25,7 +25,7 @@ You decide who your assistant is: its name, its personality, and whether it has 
   everything else, with the assistant as a living core of its memories in the middle. Type or talk (a wake word
   with its name, local speech recognition).
 - **Calendar, reminders, to-dos.** It plans your day, adds and moves appointments, and calls you before they start.
-- **Mail through Thunderbird.** Overviews, verification codes, drafts in your style, filing. Only urgent mail
+- **Your mail, directly or through Thunderbird.** Connect Gmail, Outlook, Yahoo, iCloud, Proton (with its Bridge) and others directly, or use Thunderbird. Overviews, verification codes, drafts in your style, filing. Only urgent mail
   calls you; the rest goes into a short evening summary.
 - **Memory.** A long-term memory (Hindsight) and a profile of how you work and communicate, which it adapts to.
 - **Work runs.** "Send this to work": the text is anonymised, you approve exactly what leaves, and one
@@ -62,7 +62,7 @@ flowchart LR
     ui --> core["Amadeus Core<br/>Python, 127.0.0.1"]
     core --> llm["Ollama<br/>local model"]
     core --> mem["Hindsight<br/>memory"]
-    core --> tb["Thunderbird<br/>mail"]
+    core --> tb["Mail<br/>direct or Thunderbird"]
     core --> vault["Notes · to-dos<br/>(optional: Obsidian)"]
     core -- "send to work" --> filter["Privacy filter<br/>Presidio"]
     filter --> ok{"your<br/>approval"}

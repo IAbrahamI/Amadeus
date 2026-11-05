@@ -253,6 +253,22 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 | A work run fails with a sandbox error | `bubblewrap` or `socat` is missing; the sandbox refuses to run without them |
 | Ollama runs on the CPU | Check `nvidia-smi` and install `ollama-cuda` |
 
+## Mail
+
+Optional. On the Mail page, **+ Add account** gives you two ways, and each account can use either:
+
+| | How | Limits |
+|---|---|---|
+| **Gmail** | Directly, with an [app password](https://myaccount.google.com/apppasswords) | Personal accounts with 2-Step Verification. Workspace accounts don't offer app passwords: use Thunderbird |
+| **Outlook / Hotmail** | Directly, by signing in with Microsoft in your browser | Some work accounts need their admin to allow it |
+| **Yahoo, iCloud, Fastmail, Zoho** | Directly, with an app password from the provider | |
+| **GMX, WEB.DE** | Directly, after turning on IMAP in their mail settings | |
+| **Proton Mail** | Directly, through [Proton Mail Bridge](https://proton.me/mail/bridge) on this PC | Bridge needs a paid Proton plan. Free accounts can't connect any other way |
+| **Any other** | Directly, with its IMAP and SMTP servers | |
+| **Thunderbird** | Add the account in Thunderbird, with its add-on from `./install.sh --setup` | Only while Thunderbird runs, and only what its add-on can reach, so some mail may not work |
+
+Direct logins stay in a file only you can read, in `~/.local/share/amadeus/secrets/`, and only go to that provider's server.
+
 ## Updates
 
 Amadeus asks GitHub once a day whether there's a newer release and sends nothing about you. A new version shows up in the
