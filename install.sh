@@ -238,6 +238,12 @@ phase_prereqs() {
     fi
   fi
 
+  # the model and the container images usually land on the system disk, not next to your home folder
+  local free_gb; free_gb="$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc 0-9)"
+  if [[ -n "$free_gb" ]] && (( free_gb < 20 )); then
+    warn "Only $free_gb GB free on the system disk. Amadeus needs about 17 GB there for the model and containers."
+  fi
+
   if want obsidian && [[ -n "$OBSIDIAN_VAULT" ]]; then
     have zstd && ok "zstd (vault snapshots)" || err "zstd is missing; vault snapshots use tar --zstd."
   fi
@@ -657,7 +663,7 @@ head_ "Summary"
 if (( ERRORS > 0 )); then
   err "$ERRORS problem(s), $WARNINGS warning(s). See the messages above."
   if [[ "$MODE" == check && -n "$PKG" && -t 0 ]] && confirm "Install what's missing now?"; then exec "$0"; fi
-  [[ "$MODE" != install ]] || info "Fix these, then run ./install.sh again: what already worked is skipped. If you see \"no such host\", this PC's DNS isn't working for Ollama and Docker (check /etc/resolv.conf)."
+  [[ "$MODE" != install ]] || info "Fix these, then run ./install.sh again: what already worked is skipped. If you see \"no such host\", this PC's DNS isn't working for Ollama and Docker (check /etc/resolv.conf). If you see \"no space left\", free up the system disk (df -h /)."
   exit 1
 fi
 ok "Done with $WARNINGS warning(s)."

@@ -37,6 +37,15 @@ TOO_SLOW = 8
 PROMPT = "Explain in about one hundred words how a bicycle stays upright while riding."
 
 
+def model_folder():
+    """Where Ollama keeps models, which is often not on the same disk as your home folder."""
+    for d in (os.environ.get("OLLAMA_MODELS"), "/var/lib/ollama", "/usr/share/ollama/.ollama/models", "~/.ollama/models"):
+        d = os.path.expanduser(d or "")
+        if d and os.path.isdir(d):
+            return d
+    return os.path.expanduser("~")
+
+
 def hardware():
     gpu, name = 0.0, ""
     try:
@@ -56,7 +65,7 @@ def hardware():
     except (OSError, StopIteration, ValueError):
         pass
     return {"gpu_gb": round(gpu, 1), "gpu": name, "ram_gb": round(ram, 1), "cores": os.cpu_count() or 1,
-            "disk_gb": round(shutil.disk_usage(os.path.expanduser("~")).free / 2 ** 30, 1)}
+            "disk_gb": round(shutil.disk_usage(model_folder()).free / 2 ** 30, 1)}
 
 
 def runs_on(size, hw):
@@ -245,7 +254,7 @@ def show(picks):
 def choose(out_file, interactive):
     hw = hardware()
     print(f"  This PC: {hw['gpu'] or 'no dedicated graphics card'}" + (f" with {hw['gpu_gb']:g} GB" if hw["gpu_gb"] else "") +
-          f", {hw['ram_gb']:g} GB memory, {hw['cores']} CPU threads, {hw['disk_gb']:g} GB free disk.")
+          f", {hw['ram_gb']:g} GB memory, {hw['cores']} CPU threads, {hw['disk_gb']:g} GB free where models go.")
     if not installed() and not registry_reachable():
         print("  Can't reach registry.ollama.ai, where models are downloaded from. Check this PC's internet and DNS.")
         return 3
