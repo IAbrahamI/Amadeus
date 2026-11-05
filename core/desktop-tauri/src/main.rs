@@ -140,7 +140,7 @@ fn show_mini(app: &AppHandle, call: bool) -> tauri::Result<()> {
     }
     let path = if call { "/mini.html?call=1" } else { "/mini.html" };
     let w = window(app, "mini", MINI_TITLE, path)
-        .inner_size(MW, if kde() { MH } else { MH_TALL })
+        .inner_size(MW, if bubble_apart() { MH } else { MH_TALL })
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
@@ -173,7 +173,7 @@ fn destroy_mini(app: &AppHandle) {
 /// The speech bubble is its own window, ready and hidden, so the core never resizes for it. The KWin script below keeps
 /// it above the core (or below, near the top of the screen).
 fn make_bubble(app: &AppHandle) -> tauri::Result<()> {
-    if !kde() || app.get_webview_window("bubble").is_some() {
+    if !bubble_apart() || app.get_webview_window("bubble").is_some() {
         return Ok(());
     }
     let w = window(app, "bubble", BUBBLE_TITLE, "/bubble.html")
@@ -190,6 +190,8 @@ fn make_bubble(app: &AppHandle) -> tauri::Result<()> {
 
 fn set_bubble(app: &AppHandle, html: &str) {
     let Some(w) = app.get_webview_window("bubble") else { return };
+    #[cfg(not(target_os = "linux"))]
+    place_around_core(app);
     let _ = if html.is_empty() { w.hide() } else { w.show() };
     let _ = w.eval(&format!("window.amadeusSetBubble && window.amadeusSetBubble({})", json!(html)));
 }
@@ -327,6 +329,29 @@ fn close_dash(app: &AppHandle) {
 
 fn kde() -> bool {
     std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_uppercase().contains("KDE")
+}
+
+/// The window fits just the core and the speech bubble is its own window, where something can place that window.
+fn bubble_apart() -> bool {
+    kde() || cfg!(not(target_os = "linux"))
+}
+
+/// Keeps what belongs to the core on screen as you move it: the pill goes over the core's top edge when there's no room
+/// under it, and the bubble sits above the core, or below it near the top of the screen. (KDE: the KWin script does this.)
+#[cfg(not(target_os = "linux"))]
+fn place_around_core(app: &AppHandle) {
+    let Some(core) = app.get_webview_window("mini") else { return };
+    let (Ok(at), Ok(size), Ok(scale), Ok(Some(screen))) = (core.outer_position(), core.outer_size(), core.scale_factor(), core.current_monitor()) else { return };
+    let area = screen.work_area();
+    let low = at.y + size.height as i32 > area.position.y + area.size.height as i32;
+    if PILL_TOP.swap(low, Ordering::Relaxed) != low {
+        tell_pill(app);
+    }
+    let Some(bubble) = app.get_webview_window("bubble") else { return };
+    let tall = (BUBBLE_H * scale) as i32;
+    let up = at.y - area.position.y >= tall;
+    let _ = bubble.set_size(tauri::LogicalSize::new(MW, if up { BUBBLE_H } else { BUBBLE_H + 6.0 }));
+    let _ = bubble.set_position(tauri::PhysicalPosition::new(at.x, if up { at.y - tall } else { at.y + size.height as i32 }));
 }
 
 /// Wayland apps can't place themselves or come to the front: on KDE a short KWin script does. (The mini core also has
@@ -512,8 +537,10 @@ fn press(w: &WebviewWindow, at: &str) -> tauri::Result<()> {
 static SHAPE: Mutex<Vec<[f64; 4]>> = Mutex::new(Vec::new());
 
 #[cfg(not(target_os = "linux"))]
-fn set_shape(_w: &WebviewWindow, rects: &[[f64; 4]]) {
-    *SHAPE.lock().unwrap() = rects.to_vec();
+fn set_shape(w: &WebviewWindow, rects: &[[f64; 4]]) {
+    if w.label() == "mini" {
+        *SHAPE.lock().unwrap() = rects.to_vec();
+    }
 }
 
 /// The mini core takes clicks only where something is drawn. This system can't cut a window to a shape, so the window
@@ -1033,6 +1060,8 @@ fn main() {
         .manage(Shared::default())
         .invoke_handler(tauri::generate_handler![native])
         .on_window_event(|w, ev| match ev {
+            #[cfg(not(target_os = "linux"))]
+            WindowEvent::Moved(_) if w.label() == "mini" => place_around_core(w.app_handle()),
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let app = w.app_handle();

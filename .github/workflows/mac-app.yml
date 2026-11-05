@@ -4,7 +4,7 @@ name: mac-app
 on:
   push:
     branches: [main]
-    paths: ["core/desktop-tauri/**", "packaging/macos/**", ".github/workflows/mac-app.yml"]
+    paths: ["core/**", "packaging/macos/**", ".github/workflows/mac-app.yml"]
   workflow_dispatch:
   workflow_call:
 
@@ -36,6 +36,24 @@ jobs:
           [ "$code" = 403 ]
           test -f "$HOME/Library/Application Support/Amadeus/core/token"
           codesign --verify --deep --strict dist/macos/Amadeus.app
+      - name: Open the real app and look at it
+        run: |
+          DATA="$HOME/Library/Application Support/Amadeus/core"
+          cp -R dist/macos/Amadeus.app /Applications/
+          open /Applications/Amadeus.app
+          sleep 40
+          screencapture -x first-start.png || true
+          launchctl list | grep amadeus || true
+          tail -30 "$HOME"/Library/Logs/Amadeus/*.log || true
+          curl -s -m 20 -H "authorization: Bearer $(cat "$DATA/token")" http://127.0.0.1:8095/api/setup | tee setup.json
+          echo
+          python3 -c "import json; s = json.load(open('setup.json')); assert s['needed'] and s['ollama'] == 'missing', s"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: look
+          path: first-start.png
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v7
         with:
           name: amadeus-macos
