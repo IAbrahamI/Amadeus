@@ -57,7 +57,7 @@ class Changing(unittest.TestCase):
     def setUp(self):
         self.old = tempfile.mkdtemp(dir=HOME, prefix="notes")
         self.new = os.path.join(HOME, os.path.basename(self.old) + "-new")
-        self.projects = os.path.join(HOME, "Projects")
+        self.projects = os.path.realpath(os.path.join(HOME, "Projects"))
         env = mock.patch.dict(CFG, {"notes_dir": self.old, "notes_root": self.old, "projects": self.projects})
         env.start()
         self.addCleanup(env.stop)

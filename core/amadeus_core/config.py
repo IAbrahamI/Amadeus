@@ -37,7 +37,7 @@ DEFAULTS = {
 
 def projects_dir(cfg):
     """The folder with one subfolder per Claude Code project."""
-    return cfg["projects"]
+    return os.path.realpath(cfg["projects"])
 
 
 def load():
