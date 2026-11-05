@@ -9,7 +9,7 @@ import json, os, sys
 PROJECTS = os.path.realpath("@PROJECTS@")
 VAULT = "@VAULT@"
 VAULT = os.path.realpath(VAULT) if VAULT else ""
-HOME = os.path.expanduser("~")
+HOME = os.path.realpath(os.path.expanduser("~"))  # a linked home folder (always on macOS for /tmp and /var) must not slip past these
 GUARD = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
 SECRET_DIRS = [os.path.join(HOME, p) for p in (
     ".local/share/amadeus/core", ".local/share/amadeus/secrets", ".local/share/amadeus/backup", ".config/amadeus-core",

@@ -54,6 +54,19 @@ class ProjectsFolder(unittest.TestCase):
         self.assertFalse(allowed("Read", os.path.join(vault, "Amadeus", "ToDo.md")))
         self.assertFalse(allowed("Read", os.path.join(HOME, ".ssh", "id_ed25519")))
 
+    def test_guard_holds_with_a_linked_home_folder(self):
+        real = os.path.join(HOME, "real-home")
+        os.makedirs(os.path.join(real, ".ssh"), exist_ok=True)
+        link = os.path.join(HOME, "linked-home")
+        if not os.path.islink(link):
+            os.symlink(real, link)
+        g = os.path.join(HOME, "g2", "guard.py")
+        os.makedirs(os.path.dirname(g), exist_ok=True)
+        Path(g).write_text(workguard.files(os.path.join(real, "P"), "")["work-guard.py"][0])
+        r = subprocess.run([sys.executable, g], input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": os.path.join(real, ".ssh", "id_ed25519")}}),
+                           capture_output=True, text=True, env={**os.environ, "HOME": link})
+        self.assertEqual(r.returncode, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -282,7 +282,7 @@ def set_folder(path, move=False):
     from . import workguard
     from .config import CONFIG_PATH
     new = os.path.realpath(os.path.expanduser(str(path or "").strip()))
-    vault, old, home = _vault(), projects_dir(CFG), os.path.expanduser("~")
+    vault, old, home = _vault(), projects_dir(CFG), os.path.realpath(os.path.expanduser("~"))
     if not str(path or "").strip() or new in ("/", home) or not (new + os.sep).startswith(home + os.sep):
         raise ValueError("Pick a folder inside your home folder, for example ~/Amadeus/Projects.")
     if vault and (new + os.sep).startswith(vault + os.sep):

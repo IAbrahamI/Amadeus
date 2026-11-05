@@ -13,7 +13,7 @@ import time
 from . import system, workguard
 from .config import CFG, CONFIG_PATH, DEFAULTS, projects_dir
 
-HOME = os.path.expanduser("~")
+HOME = os.path.realpath(os.path.expanduser("~"))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SHARED = ("ToDo.md", "Notes.md", "_Amadeus")
 
