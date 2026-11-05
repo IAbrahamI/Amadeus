@@ -643,6 +643,7 @@ want mail      && phase_mail
 head_ "Summary"
 if (( ERRORS > 0 )); then
   err "$ERRORS problem(s), $WARNINGS warning(s). See the messages above."
+  if [[ "$MODE" == check && -n "$PKG" && -t 0 ]] && confirm "Install what's missing now?"; then exec "$0"; fi
   exit 1
 fi
 ok "Done with $WARNINGS warning(s)."
