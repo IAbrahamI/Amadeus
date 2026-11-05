@@ -867,6 +867,71 @@ fn handle(app: &AppHandle, arg: Option<&String>) {
     }
 }
 
+/// On a Mac the app brings everything along: it sets up the core and its own start at login as launchd agents, once,
+/// and again when the app has moved or been updated.
+#[cfg(target_os = "macos")]
+fn mac_services(app: &AppHandle) {
+    use std::process::Command;
+    let (Ok(res), Ok(exe)) = (app.path().resource_dir(), std::env::current_exe()) else { return };
+    let python = res.join("python/bin/python3");
+    if !python.exists() {
+        return; // run from a build folder
+    }
+    if let Some(bundle) = res.parent().and_then(|p| p.parent()) {
+        // you approved the app with "Open Anyway"; launchd starts its Python on its own, without that approval
+        let _ = Command::new("xattr").args(["-dr", "com.apple.quarantine"]).arg(bundle).status();
+    }
+    let agents = home_path("Library/LaunchAgents");
+    let logs = home_path("Library/Logs/Amadeus");
+    let _ = fs::create_dir_all(&agents);
+    let _ = fs::create_dir_all(&logs);
+    let uid = Command::new("id").arg("-u").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let xml = |s: &std::path::Path| s.display().to_string().replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let core = res.join("core");
+    let agent = |label: &str, args: &[String], cwd: &std::path::Path, keep_alive: bool, log: &str| {
+        let args: String = args.iter().map(|a| format!("<string>{}</string>", a)).collect();
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>{label}</string>
+<key>ProgramArguments</key><array>{args}</array>
+<key>WorkingDirectory</key><string>{}</string>
+<key>EnvironmentVariables</key><dict><key>PYTHONDONTWRITEBYTECODE</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><{keep_alive}/>
+<key>LimitLoadToSessionType</key><string>Aqua</string>
+<key>StandardOutPath</key><string>{log}</string>
+<key>StandardErrorPath</key><string>{log}</string>
+</dict></plist>
+"#,
+            xml(cwd)
+        )
+    };
+    let items = [
+        ("com.amadeus.core", agent("com.amadeus.core", &[xml(&python), xml(&core.join("run.py"))], &core, true, &xml(&logs.join("core.log")))),
+        ("com.amadeus.desktop", agent("com.amadeus.desktop", &[xml(&exe)], &res, false, &xml(&logs.join("desktop.log")))),
+    ];
+    for (label, plist) in items {
+        let file = agents.join(format!("{label}.plist"));
+        let target = format!("gui/{uid}/{label}");
+        let loaded = Command::new("launchctl").args(["print", &target]).output().map(|o| o.status.success()).unwrap_or(false);
+        if fs::read_to_string(&file).ok().as_deref() == Some(plist.as_str()) && loaded {
+            continue;
+        }
+        if label == "com.amadeus.desktop" && loaded {
+            let _ = fs::write(&file, &plist); // (taken up at the next login: taking it down now would close this window)
+            continue;
+        }
+        if loaded {
+            let _ = Command::new("launchctl").args(["bootout", &target]).status();
+        }
+        if fs::write(&file, &plist).is_ok() {
+            let _ = Command::new("launchctl").args(["bootstrap", &format!("gui/{uid}")]).arg(&file).status();
+        }
+    }
+}
+
 fn main() {
     if config()["gpu_rendering"] == json!(false) || software_flag().exists() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
@@ -906,6 +971,8 @@ fn main() {
             if kde() {
                 serve_kwin_bridge(h.clone());
             }
+            #[cfg(target_os = "macos")]
+            mac_services(&h);
             let arg = std::env::args().nth(1);
             if arg.is_some() {
                 handle(&h, arg.as_ref());

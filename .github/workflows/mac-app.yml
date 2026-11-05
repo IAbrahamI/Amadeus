@@ -1,0 +1,48 @@
+# Builds the Mac app and checks that it starts. The disk image is kept with the run, to try it before it is released.
+name: mac-app
+
+on:
+  push:
+    branches: [main]
+    paths: ["core/desktop-tauri/**", "packaging/macos/**", ".github/workflows/mac-app.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]  # Apple Silicon, Intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Build
+        run: packaging/macos/build.sh
+      - name: The core starts from inside the app, and keeps its data in the Mac folder
+        run: |
+          RES="$PWD/dist/macos/Amadeus.app/Contents/Resources"
+          export HOME="$(mktemp -d)" PYTHONDONTWRITEBYTECODE=1
+          "$RES/python/bin/python3" "$RES/core/run.py" >core.log 2>&1 &
+          PID=$!
+          code=""
+          for _ in $(seq 40); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8095/ || true)"
+            [ "$code" = 403 ] && break  # (the page only opens in the app's own window)
+            sleep 1
+          done
+          kill "$PID" || true
+          cat core.log | tail -20
+          [ "$code" = 403 ]
+          test -f "$HOME/Library/Application Support/Amadeus/core/token"
+          codesign --verify --deep --strict dist/macos/Amadeus.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: amadeus-${{ matrix.runner }}
+          path: dist/macos/*.dmg
+          retention-days: 14
+          if-no-files-found: error
