@@ -53,7 +53,7 @@ def _normalize(t, lang):
             return json.load(r).get("text") or t
     except urllib.error.HTTPError as e:
         e.close()
-        return text
+        return t
     except Exception:
         return t
 
