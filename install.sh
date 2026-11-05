@@ -96,7 +96,9 @@ run() {
     return 0
   fi
   printf '  %s→%s %s\n' "$C_DIM" "$C_OFF" "$*"
-  "$@"
+  local rc=0; "$@" || rc=$?
+  (( rc == 0 )) || err "That didn't work: $1 $2"
+  return "$rc"
 }
 
 confirm() {
@@ -346,7 +348,7 @@ phase_presidio() {
   else run docker network create --internal --subnet 172.30.77.0/24 amadeus-private; fi
   if docker image inspect amadeus/presidio-analyzer:en-de >/dev/null 2>&1; then ok "analyzer image built"
   else info "building the analyzer image with the German model (a few minutes)"
-    run docker build -t amadeus/presidio-analyzer:en-de "$SCRIPT_DIR/core/privacy/presidio"; fi
+    run docker build -t amadeus/presidio-analyzer:en-de "$SCRIPT_DIR/core/privacy/presidio" || return 0; fi
   if docker container inspect presidio-analyzer >/dev/null 2>&1; then ok "container presidio-analyzer exists"
   else run docker create --name presidio-analyzer --restart unless-stopped --network amadeus-private --ip 172.30.77.10 \
     amadeus/presidio-analyzer:en-de; fi
@@ -639,20 +641,23 @@ fi
 phase_deps    # what's missing comes first: installing Docker can restart this script
 phase_setup
 phase_prereqs
-want ollama    && phase_ollama
-want secrets   && phase_secrets
-want presidio  && phase_presidio
-want hindsight && phase_hindsight
-want obsidian  && phase_obsidian
-want work      && phase_work
-want voice     && phase_voice
-want app       && phase_app
-want mail      && phase_mail
+# one step failing doesn't stop the others; the summary lists everything that went wrong
+step() { want "$1" || return 0; "phase_$1" || true; }
+step ollama
+step secrets
+step presidio
+step hindsight
+step obsidian
+step work
+step voice
+step app
+step mail
 
 head_ "Summary"
 if (( ERRORS > 0 )); then
   err "$ERRORS problem(s), $WARNINGS warning(s). See the messages above."
   if [[ "$MODE" == check && -n "$PKG" && -t 0 ]] && confirm "Install what's missing now?"; then exec "$0"; fi
+  [[ "$MODE" != install ]] || info "Fix these, then run ./install.sh again: what already worked is skipped. If you see \"no such host\", this PC's DNS isn't working for Ollama and Docker (check /etc/resolv.conf)."
   exit 1
 fi
 ok "Done with $WARNINGS warning(s)."
