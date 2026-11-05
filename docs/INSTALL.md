@@ -55,7 +55,7 @@ stays off, and Settings → Connectors says what it needs.
 |---|---|---|---|
 | the local model | `ollama` or `ollama-cuda` | [ollama.com/download](https://ollama.com/download) | [ollama.com/download](https://ollama.com/download) |
 | memory and the privacy filter | `docker` | `docker.io` | `moby-engine` |
-| the assistant, its window and tray (the installer builds the app, and fetches Rust for that into the repo folder) | `base-devel gtk3 webkit2gtk-4.1 libappindicator-gtk3 pkgconf` | `build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev pkg-config` | `gcc gtk3-devel webkit2gtk4.1-devel libappindicator-gtk3-devel pkgconf` |
+| the assistant, its window and tray (the installer builds the app, and fetches Rust for that into the repo folder) | `base-devel gtk3 webkit2gtk-4.1 pkgconf` | `build-essential libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config` | `gcc gtk3-devel webkit2gtk4.1-devel pkgconf` |
 | sound and voice | `gst-plugins-good ffmpeg` | `gstreamer1.0-plugins-good ffmpeg` | `gstreamer1-plugins-good ffmpeg-free` |
 | the installer, snapshots if you connect Obsidian | `curl zstd` | `curl zstd` | `curl zstd` |
 
@@ -252,6 +252,18 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 | "Send to work" says the text was held | It contained a deny-list word or a canary, or Presidio couldn't start: `docker start presidio-analyzer presidio-anonymizer` |
 | A work run fails with a sandbox error | `bubblewrap` or `socat` is missing; the sandbox refuses to run without them |
 | Ollama runs on the CPU | Check `nvidia-smi` and install `ollama-cuda` |
+
+## Updates
+
+Amadeus asks GitHub once a day whether there's a newer release and sends nothing about you. A new version shows up in the
+dashboard's top bar, in the tray menu and under Settings → Assistant, where you can also turn the check off. **Update
+now** there, or `amadeus update`, gets the newest release. On a branch other than `main` it pulls that branch instead.
+
+Each release also has `.deb`, `.rpm` and pacman packages with the app ready-built. Installed from one of those, run
+`amadeus setup` once per user. Own package repositories, so that updates arrive through `apt`, `dnf` and `pacman`, come next.
+
+Maintainers: raise the version in `VERSION`, `core/desktop-tauri/Cargo.toml` and `tauri.conf.json`, then push a tag `vX.Y.Z`.
+The release workflow runs the tests, builds the packages and publishes them.
 
 ## Uninstall
 

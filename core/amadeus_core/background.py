@@ -164,10 +164,15 @@ def _week_ahead():
     events.add("job", "Your week ahead is ready.", last[:600], cid=WEEK_CID)
 
 
+def _check_updates():
+    from . import updates
+    updates.check()
+
+
 def loop():
     while True:
         for job in (check_reminders, check_calendar, keep_apps, mailwatch.check, check_jobs,
-                    check_week_ahead, digest.check_morning, digest.check, quickchat.check, learning.check, clean_reports, events.maybe_ring, idle_stop, llm.free_gpu):
+                    check_week_ahead, digest.check_morning, digest.check, quickchat.check, learning.check, clean_reports, events.maybe_ring, idle_stop, llm.free_gpu, _check_updates):
             try:
                 job()
             except Exception as e:

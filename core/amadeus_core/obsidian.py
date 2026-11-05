@@ -88,7 +88,7 @@ def disconnect():
         raise ValueError("No vault is connected.")
     _config(vault_dir=DEFAULTS["vault_dir"])
     subprocess.run(["systemctl", "--user", "disable", "--now", "amadeus-vault-snapshot.timer"], capture_output=True, timeout=30)
-    env = os.path.join(REPO, "amadeus.env")
+    env = os.path.join(REPO, "amadeus.env") if os.access(REPO, os.W_OK) else os.path.expanduser("~/.config/amadeus-core/amadeus.env")
     if os.path.exists(env):  # (or the next update connects it again)
         text = open(env).read()
         open(env, "w").write(re.sub(r"^OBSIDIAN_VAULT=.*\n?", "", text, flags=re.M))

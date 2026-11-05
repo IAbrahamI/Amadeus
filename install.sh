@@ -38,7 +38,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-[[ -f "$SCRIPT_DIR/amadeus.env" ]] && source "$SCRIPT_DIR/amadeus.env"
+ENV_FILE="$SCRIPT_DIR/amadeus.env"  # installed as a package the program's folder is read-only: yours goes in your config
+[[ -w "$SCRIPT_DIR" ]] || ENV_FILE="$HOME/.config/amadeus-core/amadeus.env"
+[[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
 
 MODEL_CHOSEN="${OLLAMA_MODEL:+1}"  # set by you or an earlier run: no need to ask
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
@@ -156,7 +158,6 @@ phase_deps() {
     have python3 && python3 -c 'import venv, ensurepip' 2>/dev/null || need+=(python)
     have gcc && have pkg-config || need+=(build)
     pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null || need+=(gui)
-    pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null || pkg-config --exists appindicator3-0.1 2>/dev/null || need+=(tray)
     have curl || need+=(curl)
     if (( ${#need[@]} )); then
       local pkgs=() n
@@ -164,7 +165,6 @@ phase_deps() {
         pacman:python) pkgs+=(python) ;; apt:python) pkgs+=(python3 python3-venv) ;; dnf:python) pkgs+=(python3) ;;
         pacman:build) pkgs+=(base-devel pkgconf) ;; apt:build) pkgs+=(build-essential pkg-config) ;; dnf:build) pkgs+=(gcc pkgconf) ;;
         pacman:gui) pkgs+=(gtk3 webkit2gtk-4.1) ;; apt:gui) pkgs+=(libgtk-3-dev libwebkit2gtk-4.1-dev) ;; dnf:gui) pkgs+=(gtk3-devel webkit2gtk4.1-devel) ;;
-        pacman:tray) pkgs+=(libappindicator-gtk3) ;; apt:tray) pkgs+=(libayatana-appindicator3-dev) ;; dnf:tray) pkgs+=(libappindicator-gtk3-devel) ;;
         *:curl) pkgs+=(curl) ;;
       esac; done
       if offer "${pkgs[*]}" "the $PKG packages for the window and tray"; then pkg_install "${pkgs[@]}"; fi
@@ -459,7 +459,8 @@ PYC
 
 # ---------------------------------------------------------------- setup questions (first run, or --setup)
 env_set() {  # env_set KEY VALUE: write KEY="VALUE" into amadeus.env, keeping everything else in it
-  local f="$SCRIPT_DIR/amadeus.env"
+  local f="$ENV_FILE"
+  mkdir -p "$(dirname "$f")"
   [[ -f "$f" ]] || cp "$SCRIPT_DIR/amadeus.env.example" "$f"
   python3 - "$f" "$1" "$2" <<'PYS'
 import re, shlex, sys
@@ -480,7 +481,7 @@ ask() {  # ask "question" default -> the answer (Enter = default)
 }
 phase_setup() {
   [[ "$MODE" == install && -t 0 && "$ASSUME_YES" != 1 ]] || return 0
-  [[ "$SETUP" == 1 || ! -f "$SCRIPT_DIR/amadeus.env" ]] || return 0
+  [[ "$SETUP" == 1 || ! -f "$ENV_FILE" ]] || return 0
   head_ "Setup (Enter keeps the suggestion; the answers go into amadeus.env)"
   # (Obsidian is optional and connected later, under Settings → Connectors)
   # 1. where Claude Code projects live: its own folder, never in the vault
@@ -533,13 +534,25 @@ PYW
 # ---------------------------------------------------------------- update (amadeus update)
 phase_update() {
   head_ "Update"
-  if [[ ! -d "$SCRIPT_DIR/.git" ]]; then warn "not a git checkout: download the new version yourself, then run ./install.sh"; return; fi
+  if [[ ! -d "$SCRIPT_DIR/.git" ]]; then
+    [[ -w "$SCRIPT_DIR" ]] && warn "not a git checkout: download the new version yourself, then run ./install.sh" \
+      || info "installed as a package: updates come through your system's package manager"
+    return
+  fi
   if [[ -n "$(git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no)" ]]; then
     warn "you changed files in the repository, so nothing is pulled (git status shows them); installing the version you have"
     return
   fi
   local before; before="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)"
-  run git -C "$SCRIPT_DIR" pull --ff-only --quiet || { warn "git pull failed; installing the version you have"; return; }
+  # on main (or a release already): the newest release; anywhere else you're developing, so just pull
+  local branch tag; branch="$(git -C "$SCRIPT_DIR" branch --show-current)"
+  run git -C "$SCRIPT_DIR" fetch --quiet --tags origin || { warn "git fetch failed; installing the version you have"; return; }
+  tag="$(git -C "$SCRIPT_DIR" tag --list 'v*' --sort=-v:refname | head -1)"
+  if [[ -n "$tag" && ( "$branch" == main || -z "$branch" ) ]]; then
+    run git -C "$SCRIPT_DIR" checkout --quiet --detach "$tag" || { warn "couldn't switch to $tag; installing the version you have"; return; }
+  else
+    run git -C "$SCRIPT_DIR" pull --ff-only --quiet || { warn "git pull failed; installing the version you have"; return; }
+  fi
   local after; after="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)"
   if [[ "$before" == "$after" ]]; then ok "already the latest version ($after)"
   else ok "updated $before → $after"; git -C "$SCRIPT_DIR" log --oneline "$before..$after" | sed 's/^/    /' | head -20
@@ -585,8 +598,6 @@ phase_app() {
   if ! pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
     err "GTK 3 with WebKit2GTK 4.1 is missing, or its development files (see docs/INSTALL.md, What you need)"; return
   fi
-  pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null || pkg-config --exists appindicator3-0.1 2>/dev/null \
-    && ok "AppIndicator (tray icon)" || warn "AppIndicator is missing: the desktop app won't build (see docs/INSTALL.md)"
   if [[ "$MODE" != install ]]; then "$SCRIPT_DIR/core/deploy/install.sh" --dry-run | sed 's/^/  /'; return; fi
   "$SCRIPT_DIR/core/deploy/install.sh" | sed 's/^/  /'
   if [[ "$UPDATE" != 0 ]]; then

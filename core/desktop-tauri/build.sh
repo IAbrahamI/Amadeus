@@ -6,6 +6,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 OUT="$ROOT/.tauri-build"
 export RUSTUP_HOME="$OUT/rustup" CARGO_HOME="$OUT/cargo" CARGO_TARGET_DIR="$OUT/target" PATH="$OUT/cargo/bin:$PATH"
+[ -f "$HERE/src/main.rs" ] || exit 0  # installed as a package: the app comes ready-built
 if [ ! -x "$OUT/cargo/bin/cargo" ]; then
   echo "Installing Rust into $OUT (about 600 MB, only for building)"
   mkdir -p "$OUT"

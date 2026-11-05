@@ -1,0 +1,24 @@
+# The Amadeus package for apt, dnf and pacman. packaging/build.sh fills ${VERSION} and prepares dist/stage.
+name: amadeus
+arch: amd64
+version: ${VERSION}
+maintainer: IAbrahamI <45631927+IAbrahamI@users.noreply.github.com>
+description: Your own private AI assistant, running on your own PC
+homepage: https://github.com/IAbrahamI/Amadeus
+license: See /usr/lib/amadeus/LICENSE
+contents:
+  - src: dist/stage/
+    dst: /usr/lib/amadeus/
+    type: tree
+  - src: dist/amadeus
+    dst: /usr/bin/amadeus
+    file_info: { mode: 0755 }
+scripts:
+  postinstall: packaging/postinstall.sh
+overrides:
+  deb:
+    depends: [python3, python3-venv, curl, libwebkit2gtk-4.1-0, libgtk-3-0]
+  rpm:
+    depends: [python3, curl, webkit2gtk4.1, gtk3]
+  archlinux:
+    depends: [python, curl, webkit2gtk-4.1, gtk3]

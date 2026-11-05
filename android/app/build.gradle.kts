@@ -12,8 +12,9 @@ android {
         applicationId = "io.github.iabrahami.amadeus"
         minSdk = 29          // Android 10+
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.8.0"
+        val version = rootProject.file("../VERSION").readText().trim()  // one version for everything
+        versionCode = version.split(".").fold(0) { code, part -> code * 100 + part.toInt() }
+        versionName = version
     }
     buildTypes {
         release {

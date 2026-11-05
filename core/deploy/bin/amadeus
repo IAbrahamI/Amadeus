@@ -2,6 +2,7 @@
 # Open Amadeus in its window (the dashboard). Optional page: "/#approvals", "/#calendar" or "/#chat".
 # "amadeus update": get the latest version and install it (your data stays).
 if [ "${1:-}" = update ]; then shift; exec @REPO@/install.sh --update "$@"; fi
+if [ "${1:-}" = setup ]; then shift; exec @REPO@/install.sh "$@"; fi  # the first setup, after installing the package
 systemctl --user start amadeus-core 2>/dev/null
 for i in $(seq 1 20); do curl -sf -o /dev/null http://127.0.0.1:8095/favicon.png && break; sleep 0.5; done
 systemctl --user start amadeus-desktop 2>/dev/null

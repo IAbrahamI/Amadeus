@@ -515,6 +515,7 @@ if (!window.amadeusBridge && !(window.webkit && window.webkit.messageHandlers &&
   if (VIEWS[h]) open(h);
   else if (h === "messages") open("chat");
   else if (h === "reminders") { open("settings"); settingsPage("reminders"); }
+  else if (h === "settings=assistant") { open("settings"); settingsPage("assistant"); }
   else if (h === "mail=unread") open("mail");
   else if (/^mail=\d+$/.test(h)) {
     open("mail");
@@ -531,3 +532,14 @@ if (!window.amadeusBridge && !(window.webkit && window.webkit.messageHandlers &&
   }
   if (h) history.replaceState(null, "", "/");
 })();
+
+// ---------- a new version: a small chip in the top bar ----------
+async function checkUpdateChip() {
+  const u = await api("/api/update").catch(() => null), c = $("#updChip");
+  if (!u || !c) return;
+  c.hidden = !(u.enabled && (u.available || u.restart));
+  c.textContent = u.restart ? "Restart to update" : `Update ${u.latest}`;
+}
+$("#updChip").onclick = () => { open("settings"); settingsPage("assistant"); };
+checkUpdateChip();
+setInterval(checkUpdateChip, 3600000);

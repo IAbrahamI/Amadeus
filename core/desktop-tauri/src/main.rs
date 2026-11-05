@@ -660,6 +660,7 @@ mod linux_tray {
         pub theme: String,
         pub svg: &'static str,
         pub waiting: usize,
+        pub update: String,
     }
 
     fn item(label: String, run: fn(&AppHandle)) -> MenuItem<AmadeusTray> {
@@ -696,7 +697,12 @@ mod linux_tray {
         }
         fn menu(&self) -> Vec<MenuItem<Self>> {
             let waiting = if self.waiting > 0 { format!("Approvals ({} waiting)", self.waiting) } else { "Approvals".to_string() };
-            vec![
+            let mut items = vec![];
+            if !self.update.is_empty() {  // a new version: to its place in Settings
+                items.push(item(self.update.clone(), |a| drop(show_dash(a, "/#settings=assistant"))));
+                items.push(MenuItem::Separator);
+            }
+            items.extend(vec![
                 item("Show or hide the core".into(), toggle_core),
                 StandardItem {
                     label: if listening_off() { "Start listening".into() } else { "Stop listening".into() },
@@ -713,33 +719,46 @@ mod linux_tray {
                 item("Reminders".into(), |a| drop(show_dash(a, "/#reminders"))),
                 MenuItem::Separator,
                 item("Quit".into(), |a| a.exit(0)),
-            ]
+            ]);
+            items
         }
     }
 
     pub fn start(app: &AppHandle) -> tauri::Result<()> {
-        let tray = AmadeusTray { app: app.clone(), theme: "blue".into(), svg: SVG_NORMAL, waiting: 0 };
+        let tray = AmadeusTray { app: app.clone(), theme: "blue".into(), svg: SVG_NORMAL, waiting: 0, update: String::new() };
         let handle = tray.spawn().map_err(|e| tauri::Error::Io(std::io::Error::other(e.to_string())))?;
         // every few beats a look at what's going on
         std::thread::spawn(move || {
             let (mut beat, mut tick) = (false, 0);
-            let (mut theme, mut waiting) = ("blue".to_string(), 0);
-            let mut shown = (String::new(), "", usize::MAX, !listening_off());
+            let (mut theme, mut waiting, mut update) = ("blue".to_string(), 0, String::new());
+            let mut shown = (String::new(), "", usize::MAX, !listening_off(), String::new());
             loop {
                 if tick % 5 == 0 {
                     if let Some(t) = get_json("/api/theme") {
                         theme = t["theme"].as_str().unwrap_or("blue").to_string();
                     }
                     waiting = get_json("/api/approvals?status=pending").and_then(|l| l.as_array().map(Vec::len)).unwrap_or(0);
+                    update = get_json("/api/update").map_or(String::new(), |u| {
+                        if u["enabled"] != true {
+                            String::new()
+                        } else if u["restart"] == true {
+                            "Restart to finish the update".to_string()
+                        } else if u["available"] == true {
+                            format!("Update to {}", u["latest"].as_str().unwrap_or("the new version"))
+                        } else {
+                            String::new()
+                        }
+                    });
                 }
                 tick += 1;
-                let now = (theme.clone(), tray_look(&mut beat), waiting, listening_off());
+                let now = (theme.clone(), tray_look(&mut beat), waiting, listening_off(), update.clone());
                 if now != shown {
                     shown = now.clone();
                     handle.update(move |t| {
                         t.theme = now.0;
                         t.svg = now.1;
                         t.waiting = now.2;
+                        t.update = now.4;
                     });
                 }
                 std::thread::sleep(Duration::from_millis(950));

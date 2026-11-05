@@ -14,6 +14,16 @@ async function settingsPage(page) {
   body().scrollTop = 0;
   await (PAGES[page] || loadSettings)();
 }
+// Updates: which version this is, and what's new. Release notes come from GitHub: only ever shown, as plain text.
+async function updatesBox() {
+  const u = await api("/api/update");
+  const news = u.restart ? `${note(`Version ${esc(u.installed)} is installed. Restart to use it.`)}<div class="acts"><span class="grow"></span><button class="btn go" data-act="updrestart">Restart Amadeus</button></div>`
+    : u.available ? `${note(`Version ${esc(u.latest)} is available.`)}<pre class="updnotes">${esc(u.notes)}</pre>` +
+      (u.mode === "git" ? `<div class="acts"><span class="grow"></span><button class="btn go" data-act="updrun">Update now</button></div>` : note("Update it with your system's package manager, like your other apps."))
+    : note(u.latest ? "This is the newest version." : "No newer version known.");
+  return `<h3 style="margin-top:22px">Updates</h3>${note(`This is version ${esc(u.version)}. It asks GitHub once a day whether there's a newer one and sends nothing about you.`)}
+    <div class="acts"><label class="chk"><input type="checkbox" id="updOn" data-act="updset" ${u.enabled ? "checked" : ""}> Check for updates</label></div>${u.enabled ? news : ""}${info("updInfo")}`;
+}
 const PAGES = {
   async assistant() {
     const d = await api("/api/assistant"), own = d.persona === "custom";
@@ -27,7 +37,7 @@ const PAGES = {
           <textarea id="asPersonaText" rows="4" placeholder="A few lines about how it should be: tone, what it cares about…">${own ? esc(d.persona_text) : ""}</textarea></label>
         <label>Face (for calls and the phone app)<div class="avts">${tile("", "/agent.svg", "Default agent")}${d.avatars.map((a) => tile(a, `/avatar/${encodeURIComponent(a)}/${encodeURIComponent(a)}_normal1.png`, a)).join("")}</div></label>
         <div class="acts"><input type="file" id="asFiles" accept="image/png" multiple><button type="button" class="btn" data-act="avup">Upload as my avatar</button></div>
-        <div class="acts"><button type="button" class="btn" data-act="asreset">Use the defaults</button><span class="grow"></span><button class="btn go">Save</button></div>${info("asInfo")}</form>`;
+        <div class="acts"><button type="button" class="btn" data-act="asreset">Use the defaults</button><span class="grow"></span><button class="btn go">Save</button></div>${info("asInfo")}</form>` + await updatesBox();
   },
   async voice() {
     const d = await api("/api/voice/voices");
@@ -149,6 +159,13 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "sktoggle") { await post("/api/skills", { name: d.n, active: d.on !== "1" }); PAGES.skills(); }
   if (act === "skrm") { if (!confirm(`Remove your skill "${d.n}"?`)) return; await post("/api/skills/remove", { name: d.n }); PAGES.skills(); }
+  if (act === "updset") { await post("/api/update/setting", { on: a.checked }); PAGES.assistant(); }
+  if (act === "updrun") {
+    say("updInfo", "Updating. Amadeus restarts by itself when it's done…");
+    const r = await post("/api/update/run", {});
+    if (r.error) say("updInfo", "That didn't work: " + r.error);
+  }
+  if (act === "updrestart") { say("updInfo", "Restarting…"); await post("/api/update/restart", {}); }
   if (act === "obsoff") {
     if (!confirm("Disconnect Obsidian? Your files stay in the vault. New to-dos and notes go to Amadeus' own folder.")) return;
     const r = await post("/api/obsidian/disconnect", {});

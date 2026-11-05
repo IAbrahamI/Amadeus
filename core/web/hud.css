@@ -76,6 +76,8 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--cyan); outl
 .tag b { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
 .top .grow { flex: 1; }
 .state { font: 500 11px var(--display); letter-spacing: .2em; color: var(--cyan); text-transform: uppercase; min-width: 90px; text-align: right; }
+.updchip { font: 600 10.5px var(--display); letter-spacing: .14em; text-transform: uppercase; padding: 4px 9px; border: 1px solid rgba(var(--w),.55); color: var(--amber); border-radius: 3px; }
+.updchip:hover { background: var(--amber); color: #1A1000; }
 .clock { font: 500 13px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* stage */

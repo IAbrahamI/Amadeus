@@ -1,0 +1,48 @@
+# A version tag (v1.2.0) builds and publishes a release, only if the tests pass. Started by hand it only builds, so the
+# packages can be checked without publishing anything.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  release:
+    needs: tests
+    runs-on: ubuntu-22.04  # the oldest supported: the app then runs on newer systems too
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the VERSION file
+        if: github.ref_type == 'tag'
+        run: test "${GITHUB_REF_NAME#v}" = "$(cat VERSION)"
+      - name: Packages the desktop app builds against
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Build the desktop app
+        working-directory: core/desktop-tauri
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.tauri-build/target
+        run: cargo build --release --locked
+      - name: Build the packages
+        run: |
+          curl -fsSL -o nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  nfpm.tgz" | sha256sum -c -
+          sudo tar xzf nfpm.tgz -C /usr/local/bin nfpm
+          rm nfpm.tgz
+          packaging/build.sh
+      - name: Keep the packages with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes
