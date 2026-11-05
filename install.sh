@@ -16,6 +16,7 @@
 #   ./install.sh --dry-run    print what would be done, changes nothing
 #   ./install.sh --benchmark  test this PC's speed again and pick another model
 #   ./install.sh --only ollama|secrets|presidio|hindsight|obsidian|work|voice|app|mail
+#   ./install.sh --verbose    show everything the commands print (it always goes to ~/.local/share/amadeus/install.log)
 #   ./install.sh --help
 #
 # Settings (override with environment variables, or put them in ./amadeus.env):
@@ -74,39 +75,9 @@ ASSUME_YES="${ASSUME_YES:-0}"
 MODE=install   # install | check | dry-run
 ONLY=""; SETUP=0; UPDATE=0
 
-# ---------------------------------------------------------------- output helpers
-if [[ -t 1 ]]; then
-  C_OK=$'\e[32m'; C_WARN=$'\e[33m'; C_ERR=$'\e[31m'; C_HEAD=$'\e[1;36m'; C_DIM=$'\e[2m'; C_OFF=$'\e[0m'
-else
-  C_OK=""; C_WARN=""; C_ERR=""; C_HEAD=""; C_DIM=""; C_OFF=""
-fi
-ERRORS=0; WARNINGS=0
-head_()  { printf '\n%s== %s ==%s\n' "$C_HEAD" "$*" "$C_OFF"; }
-ok()     { printf '  %s✓%s %s\n' "$C_OK" "$C_OFF" "$*"; }
-info()   { printf '  %s·%s %s\n' "$C_DIM" "$C_OFF" "$*"; }
-warn()   { printf '  %s!%s %s\n' "$C_WARN" "$C_OFF" "$*"; WARNINGS=$((WARNINGS+1)); }
-err()    { printf '  %s✗%s %s\n' "$C_ERR" "$C_OFF" "$*"; ERRORS=$((ERRORS+1)); }
-die()    { err "$*"; exit 1; }
-have()   { command -v "$1" >/dev/null 2>&1; }
-
-# run CMD...: execute unless in check/dry-run mode
-run() {
-  if [[ "$MODE" != install ]]; then
-    printf '  %s→ would run:%s %s\n' "$C_DIM" "$C_OFF" "$*"
-    return 0
-  fi
-  printf '  %s→%s %s\n' "$C_DIM" "$C_OFF" "$*"
-  local rc=0; "$@" || rc=$?
-  (( rc == 0 )) || err "That didn't work: $1 $2"
-  return "$rc"
-}
-
-confirm() {
-  [[ "$ASSUME_YES" == 1 ]] && return 0
-  [[ -t 0 ]] || return 1
-  local reply; read -r -p "  ? $* [y/N] " reply
-  [[ "$reply" =~ ^[Yy]$ ]]
-}
+# ---------------------------------------------------------------- how it looks
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/core/deploy/ui.sh"
 
 wait_http() { # url seconds
   local url="$1" secs="${2:-60}" i
@@ -126,6 +97,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run) MODE=dry-run ;;
     --only)    ONLY="${2:-}"; shift ;;
     --setup)   SETUP=1 ;;
+    --verbose) VERBOSE=1 ;;
     --benchmark) ONLY=ollama; MODEL_CHOSEN=""; BENCHMARK=1 ;;
     --update)  UPDATE=1 ;;
     --updated) UPDATE=2 ;;  # internal: the new installer after an update (pull already done)
@@ -147,9 +119,9 @@ pkg_install() {  # pkg_install NAME...: with the distribution's package manager
   esac
 }
 offer() {  # offer "what" "commands shown": yes in a real install when you agree; a dry run just shows it
-  info "$1 is missing. To install it: $2"
+  say "${C_WARN}${C_BOLD}!${C_OFF}" "${C_BOLD}$1${C_OFF} isn't installed yet. To install it: $2"
   [[ "$MODE" == dry-run ]] && return 0
-  [[ "$MODE" == install ]] && confirm "Install $1 now? (uses sudo)"
+  [[ "$MODE" == install ]] && confirm "Install $1 now? (uses sudo)" yes
 }
 phase_deps() {
   [[ "$MODE" != check ]] || return 0
@@ -178,11 +150,11 @@ phase_deps() {
     if [[ "$PKG" == pacman ]]; then
       if offer Ollama "sudo pacman -S $ollama_pkg"; then pkg_install "$ollama_pkg"; run sudo systemctl enable --now ollama; fi
     elif offer Ollama "Ollama's own installer from https://ollama.com/install.sh"; then
-      if [[ "$MODE" == install ]]; then curl -fsSL https://ollama.com/install.sh | sh; else printf '  → would run: curl -fsSL https://ollama.com/install.sh | sh\n'; fi
+      if [[ "$MODE" == install ]]; then curl -fsSL https://ollama.com/install.sh | sh >>"$LOG" 2>&1 || err "Ollama's installer didn't work (see $LOG)"; else printf '  → would run: curl -fsSL https://ollama.com/install.sh | sh\n'; fi
     fi
   fi
   if { want ollama || want hindsight; } && have ollama && [[ "$MODE" == install ]] && ! curl -fsS --max-time 3 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
-    if confirm "Ollama isn't running. Start it now? (uses sudo)"; then run sudo systemctl enable --now ollama; wait_http "$OLLAMA_URL/api/tags" 30 || true; fi
+    if confirm "Ollama isn't running. Start it now? (uses sudo)" yes; then run sudo systemctl enable --now ollama; wait_http "$OLLAMA_URL/api/tags" 30 || true; fi
   fi
   # Docker runs the memory and the privacy filter
   if want hindsight || want presidio; then
@@ -192,7 +164,7 @@ phase_deps() {
         pkg_install "$docker_pkg"; run sudo systemctl enable --now docker; run sudo usermod -aG docker "$USER"
       fi
     elif [[ "$MODE" == install ]] && ! docker info >/dev/null 2>&1; then
-      if confirm "Docker isn't usable by $USER yet. Start it and add you to the docker group? (uses sudo)"; then
+      if confirm "Docker isn't usable by $USER yet. Start it and add you to the docker group? (uses sudo)" yes; then
         run sudo systemctl enable --now docker; run sudo usermod -aG docker "$USER"
       fi
     fi
@@ -206,7 +178,7 @@ phase_deps() {
 
 # ---------------------------------------------------------------- prerequisites
 phase_prereqs() {
-  head_ "Prerequisites"
+  head_ "Checking this PC"
   [[ "$(uname -s)" == Linux ]] || die "Linux is required (tested on Arch/CachyOS; any systemd distro should work)."
   [[ $EUID -ne 0 ]] || die "Run as your normal user, not root. Services are installed per user."
 
@@ -265,7 +237,7 @@ phase_pick_model() {
   [[ -z "$MODEL_CHOSEN" ]] || return 0
   ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${OLLAMA_CTX_VARIANT}:latest\|${OLLAMA_CTX_VARIANT}" && [[ "${BENCHMARK:-}" != 1 ]] && return 0
   if [[ "$MODE" != install ]]; then info "would test this PC's speed and suggest three models"; return 0; fi
-  head_ "Which model fits this PC"
+  info "Finding which model fits this PC"
   local out; out="$(mktemp)"
   local auto=(); [[ "$ASSUME_YES" == 1 ]] && auto=(--auto)
   local rc=0; python3 "$SCRIPT_DIR/core/deploy/pick_model.py" "$out" "${auto[@]}" || rc=$?
@@ -290,7 +262,7 @@ PYC
 
 # ---------------------------------------------------------------- Ollama models
 phase_ollama() {
-  head_ "Local LLM: Ollama"
+  head_ "The local model"
   have ollama || { err "ollama not installed; skipping."; return; }
 
   if ! curl -fsS --max-time 3 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
@@ -330,7 +302,7 @@ phase_ollama() {
 # hindsight-keys.json: the memory's API key; canaries.json: random markers that must never leave the PC
 # (the privacy filter holds any text that contains one); denylist.txt: your own words that must never leave.
 phase_secrets() {
-  head_ "Private keys and markers ($SECRETS)"
+  head_ "Your private keys"
   if [[ "$MODE" != install ]]; then info "would create missing files in $SECRETS"; return; fi
   mkdir -p "$SECRETS"; chmod 700 "$DATA" "$SECRETS" 2>/dev/null || true
   local f="$SECRETS/hindsight-keys.json"
@@ -348,7 +320,7 @@ phase_secrets() {
 # Two containers on a private Docker network without internet access: the analyzer (English + German names,
 # places, groups) and the anonymizer. Amadeus starts them on demand and stops them when idle.
 phase_presidio() {
-  head_ "Privacy filter: Presidio in Docker"
+  head_ "The privacy filter"
   have docker && docker info >/dev/null 2>&1 || { err "docker not usable; skipping."; return; }
   if docker network inspect amadeus-private >/dev/null 2>&1; then ok "network amadeus-private exists"
   else run docker network create --internal --subnet 172.30.77.0/24 amadeus-private; fi
@@ -365,7 +337,7 @@ phase_presidio() {
 
 # ---------------------------------------------------------------- Hindsight memory
 phase_hindsight() {
-  head_ "Memory: Hindsight in Docker"
+  head_ "The memory"
   have docker && docker info >/dev/null 2>&1 || { err "docker not usable; skipping."; return; }
 
   if docker container inspect "$HINDSIGHT_CONTAINER" >/dev/null 2>&1; then
@@ -500,26 +472,24 @@ ask() {  # ask "question" default -> the answer (Enter = default)
 phase_setup() {
   [[ "$MODE" == install && -t 0 && "$ASSUME_YES" != 1 ]] || return 0
   [[ "$SETUP" == 1 || ! -f "$ENV_FILE" ]] || return 0
-  head_ "Setup (Enter keeps the suggestion; the answers go into amadeus.env)"
+  head_ "A few questions"
   # (Obsidian is optional and connected later, under Settings → Connectors)
   # 1. where Claude Code projects live: its own folder, never in the vault
   local cur; cur="$(python3 -c 'import json,os,sys; print(json.load(open(sys.argv[1])).get("projects_dir","") if os.path.exists(sys.argv[1]) else "")' "$HOME/.config/amadeus-core/config.json" 2>/dev/null || true)"
-  info "Claude Code projects get their own folder, so a work run never sees your notes."
+  info "Claude Code projects get their own folder, so a work run never sees your notes. Enter keeps the suggestion."
   local pr; pr="$(ask "Folder for projects" "${AMADEUS_PROJECTS:-${cur:-$HOME/Amadeus/Projects}}")"
-  pr="${pr/#\~/$HOME}"; AMADEUS_PROJECTS="$pr"; env_set AMADEUS_PROJECTS "$pr"; ok "projects: $pr"
+  pr="${pr/#\~/$HOME}"; AMADEUS_PROJECTS="$pr"; env_set AMADEUS_PROJECTS "$pr"
   # 2. mail through Thunderbird
-  local m="n"; have thunderbird && m="y"
+  local m=no; have thunderbird && m=yes
   info "Mail is optional. You can connect accounts directly later (Mail → + Add account), or read them through Thunderbird."
-  m="$(ask "Set up Thunderbird for that? (y/n)" "$m")"
-  [[ "$m" =~ ^[Yy] ]] && AMADEUS_MAIL=1 || AMADEUS_MAIL=0; env_set AMADEUS_MAIL "$AMADEUS_MAIL"
+  if confirm "Set up Thunderbird for that?" "$m"; then AMADEUS_MAIL=1; else AMADEUS_MAIL=0; fi; env_set AMADEUS_MAIL "$AMADEUS_MAIL"
   # 3. voice
-  local s; s="$(ask "Talk to it: speech recognition and wake word, about 1 GB? (y/n)" "y")"
-  [[ "$s" =~ ^[Yy] ]] && AMADEUS_VOICE=1 || AMADEUS_VOICE=0; env_set AMADEUS_VOICE "$AMADEUS_VOICE"
+  if confirm "Talk to it? Speech recognition and wake word, about 1 GB" yes; then AMADEUS_VOICE=1; else AMADEUS_VOICE=0; fi; env_set AMADEUS_VOICE "$AMADEUS_VOICE"
 }
 
 # ---------------------------------------------------------------- the projects folder and the guard for work runs
 phase_work() {
-  head_ "Work runs: the projects folder and its guard"
+  head_ "Claude Code work runs"
   local cfg="$HOME/.config/amadeus-core/config.json"
   if [[ -n "$AMADEUS_PROJECTS" && "$MODE" == install ]]; then  # tell Amadeus (other settings in its config are kept)
     python3 - "$cfg" "$AMADEUS_PROJECTS" <<'PYC'
@@ -581,8 +551,8 @@ phase_update() {
 
 # ---------------------------------------------------------------- voice (optional)
 phase_voice() {
-  head_ "Voice: speech recognition and the wake word"
-  if [[ "$AMADEUS_VOICE" != 1 ]]; then info "off (AMADEUS_VOICE=1 in amadeus.env, or ./install.sh --setup)"; return; fi
+  head_ "Voice"
+  if [[ "$AMADEUS_VOICE" != 1 ]]; then info "Off. You can turn it on later with ./install.sh --setup"; return; fi
   have python3 || { err "python3 is missing"; return; }
   have parec || warn "parec (pulseaudio-utils) is missing: everything works except the wake word, which stays off"
   if [[ -x "$VOICE/venv-lite/bin/python" ]] && "$VOICE/venv-lite/bin/python" -c "import faster_whisper, vosk, soundfile" 2>/dev/null; then
@@ -613,12 +583,12 @@ phase_voice() {
 
 # ---------------------------------------------------------------- the assistant itself
 phase_app() {
-  head_ "The assistant: services, window, tray"
+  head_ "The app"
   if ! pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
     err "GTK 3 with WebKit2GTK 4.1 is missing, or its development files (./install.sh offers to install them; see also docs/INSTALL.md, What you need)"; return
   fi
-  if [[ "$MODE" != install ]]; then "$SCRIPT_DIR/core/deploy/install.sh" --dry-run | sed 's/^/  /'; return; fi
-  "$SCRIPT_DIR/core/deploy/install.sh" | sed 's/^/  /'
+  if [[ "$MODE" != install ]]; then info "would install the services, the amadeus command and the app"; return; fi
+  run "$SCRIPT_DIR/core/deploy/install.sh" || return 0
   if [[ "$UPDATE" != 0 ]]; then
     run systemctl --user restart amadeus-core amadeus-desktop
     systemctl --user is-enabled --quiet amadeus-voice 2>/dev/null && run systemctl --user restart amadeus-voice
@@ -628,15 +598,15 @@ phase_app() {
 
 # ---------------------------------------------------------------- mail (optional)
 phase_mail() {
-  head_ "Mail: the Thunderbird bridge"
-  if [[ "$AMADEUS_MAIL" != 1 ]]; then info "off (AMADEUS_MAIL=1 in amadeus.env, or ./install.sh --setup)"; return; fi
+  head_ "Mail through Thunderbird"
+  if [[ "$AMADEUS_MAIL" != 1 ]]; then info "Off. You can connect mail directly on the Mail page, or set this up with ./install.sh --setup"; return; fi
   have thunderbird || warn "Thunderbird isn't installed: install it from your distribution (not Flatpak) and add your accounts there"
   if [[ "$MODE" != install ]]; then info "would register the bridge and build the add-on"; return; fi
-  "$SCRIPT_DIR/core/thunderbird/install.sh" | sed 's/^/  /'
+  run "$SCRIPT_DIR/core/thunderbird/install.sh" || return 0
 }
 
 # ---------------------------------------------------------------- main
-printf '%sAmadeus installer%s  (mode: %s%s)\n' "$C_HEAD" "$C_OFF" "$MODE" "${ONLY:+, only: $ONLY}"
+case "$MODE" in check) banner "Checking this PC. This changes nothing." ;; dry-run) banner "A dry run: showing what would happen, changing nothing." ;; *) banner "${ONLY:+Only: $ONLY}" ;; esac
 PASSTHRU=(); [[ -n "$ONLY" ]] && PASSTHRU=(--only "$ONLY")
 [[ "$UPDATE" == 1 ]] && phase_update
 # the setup questions and most steps below need Python, so it comes first
@@ -648,7 +618,14 @@ phase_deps    # what's missing comes first: installing Docker can restart this s
 phase_setup
 phase_prereqs
 # one step failing doesn't stop the others; the summary lists everything that went wrong
-step() { want "$1" || return 0; "phase_$1" || true; }
+STEPS=(ollama secrets presidio hindsight work voice app mail); [[ -n "$OBSIDIAN_VAULT" ]] && STEPS+=(obsidian)
+STEP_N=0
+step() {
+  want "$1" || return 0
+  [[ "$1" == obsidian && -z "$OBSIDIAN_VAULT" ]] && return 0
+  STEP_N=$((STEP_N+1)); [[ -n "$ONLY" ]] || STEP_LABEL="$STEP_N/${#STEPS[@]}"
+  "phase_$1" || true
+}
 step ollama
 step secrets
 step presidio
@@ -659,19 +636,29 @@ step voice
 step app
 step mail
 
-head_ "Summary"
 if (( ERRORS > 0 )); then
-  err "$ERRORS problem(s), $WARNINGS warning(s). See the messages above."
-  if [[ "$MODE" == check && -n "$PKG" && -t 0 ]] && confirm "Install what's missing now?"; then exec "$0"; fi
-  [[ "$MODE" != install ]] || info "Fix these, then run ./install.sh again: what already worked is skipped. If you see \"no such host\", this PC's DNS isn't working for Ollama and Docker (check /etc/resolv.conf). If you see \"no space left\", free up the system disk (df -h /)."
+  [[ "$MODE" == check ]] && title="This PC still needs a few things" || title="$ERRORS thing(s) need your attention"
+  box "$C_ERR" "$title" "${PROBLEMS[@]/#/✗ }" "${NOTES[@]/#/! }"
+  if [[ "$MODE" == check && -n "$PKG" && -t 0 ]]; then
+    printf '\n'
+    if confirm "Install what's missing now?" yes; then exec "$0"; fi
+    exit 1
+  fi
+  if [[ "$MODE" == install ]]; then
+    printf '\n'; info "Fix these, then run ./install.sh again: what already worked is skipped. The full output is in $LOG"
+    info "If you see \"no such host\", this PC's DNS isn't working for Ollama and Docker (check /etc/resolv.conf). If you see \"no space left\", free up the system disk (df -h /)."
+  fi
   exit 1
 fi
-ok "Done with $WARNINGS warning(s)."
-[[ "$MODE" == install ]] || exit 0
-have amadeus || warn "$HOME/.local/bin isn't in your PATH yet: open a new terminal, or run $HOME/.local/bin/amadeus"
-printf '\nOpen it with: %samadeus%s   ·   update later with: %samadeus update%s\n' "$C_HEAD" "$C_OFF" "$C_HEAD" "$C_OFF"
+if [[ "$MODE" != install ]]; then
+  box "$C_OK" "All good" "${NOTES[@]/#/! }"
+  exit 0
+fi
+have amadeus || NOTES+=("$HOME/.local/bin isn't in your PATH yet: open a new terminal, or run $HOME/.local/bin/amadeus")
 left=()
 [[ "$AMADEUS_MAIL" == 1 ]] && left+=("Mail: in Thunderbird, Add-ons and Themes → gear icon → Install Add-on From File… → ~/.local/share/amadeus/amadeus-bridge.xpi")
-! have claude && left+=("Work runs (optional): install Claude Code and log in once by running: claude")
-left+=("Phone (optional): see docs/INSTALL.md, The phone app")
-printf '\nStill to do by hand:\n'; printf '  · %s\n' "${left[@]}"
+! have claude && left+=("Work runs: install Claude Code and log in once by running: claude")
+left+=("Phone: see docs/INSTALL.md, The phone app")
+box "$C_OK" "Amadeus is ready" "Open it with:  ${C_BOLD}amadeus${C_OFF}" "Update later:  ${C_BOLD}amadeus update${C_OFF}" "${NOTES[@]/#/! }"
+printf '\n'; info "Optional, whenever you like:"
+for l in "${left[@]}"; do info "$l"; done

@@ -27,7 +27,7 @@ The first run also asks three things:
 2. **Thunderbird for mail?** Optional: you can also connect accounts directly on the Mail page, without Thunderbird. Yes if you use Thunderbird; your logins stay there.
 3. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
 
-The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
+Long steps show one progress line, and their full output goes to `~/.local/share/amadeus/install.log` (`./install.sh --verbose` shows it live). The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
 downloading the local model (about 6.6 GB). Afterwards it lists what's left to do by hand: installing the
 Thunderbird add-on (one click in Thunderbird), logging in to Claude Code for work runs, and the phone app. All three
 are optional.

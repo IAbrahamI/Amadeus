@@ -11,7 +11,10 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import select
 import sys
+import termios
+import tty
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -233,67 +236,130 @@ def baseline():
     have = installed()
     probe, remove = (min(have, key=have.get), False) if have else (PROBE, True)
     if remove:
-        print(f"  Downloading a small test model to measure this PC ({dict((m, s) for m, s, _ in CATALOG)[PROBE]} GB, removed afterwards)...")
+        print(f"  {DIM}· Downloading a small test model to measure this PC ({dict((m, s) for m, s, _ in CATALOG)[PROBE]} GB, removed afterwards){OFF}")
         if not pull(probe):
             return None
     tps, share = measure(probe)
     size = installed().get(probe, 1.0)
-    print(f"  Speed test with {probe}: {tps:.0f} tokens per second, {share * 100:.0f}% on the graphics card.")
+    print(f"  {OK}✓{OFF} Speed test: {tps:.0f} tokens per second, {share * 100:.0f}% on the graphics card")
     if remove:
         subprocess.run(["ollama", "rm", probe], capture_output=True)
     return (tps, size) if tps else None
 
 
+FANCY = sys.stdout.isatty() and sys.stdin.isatty() and not os.environ.get("NO_COLOR") and os.environ.get("TERM", "dumb") != "dumb"
+OK, BAD, HEAD, BOLD, DIM, PICK, OFF = ("\033[38;5;78m", "\033[38;5;203m", "\033[38;5;80m", "\033[1m", "\033[2m", "\033[1;38;5;16;48;5;80m", "\033[0m") if FANCY else ("",) * 7
+
+
+def describe(m, recommended):
+    est = f", about {m['speed']:.0f} tokens/s" if m["speed"] else ""
+    where = "graphics card" if m["on"] == "gpu" else "CPU, slower"
+    return f"{m['model']:<18} {m['size']:>5.1f} GB", f"{m['about']} ({where}{est})" + ("  recommended" if recommended else "")
+
+
+def _key():
+    """One key: up, down, enter, a digit or None."""
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        c = os.read(fd, 1)
+        if c == b"\x1b":
+            r, _, _ = select.select([fd], [], [], 0.05)
+            seq = os.read(fd, 2) if r else b""
+            return {b"[A": "up", b"OA": "up", b"[B": "down", b"OB": "down"}.get(seq)
+        if c == b"\x03":
+            raise KeyboardInterrupt
+        if c == b"\x04":
+            raise EOFError
+        return {b"\r": "enter", b"\n": "enter", b"k": "up", b"j": "down"}.get(c, c.decode("ascii", "ignore"))
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+
+def menu(picks, question="Which model?"):
+    """Choose with the arrow keys or a number, Enter takes it. Without a real terminal: type a number."""
+    rows = [describe(m, i == 0) for i, m in enumerate(picks)]
+    if not FANCY:
+        for i, (left, right) in enumerate(rows, 1):
+            print(f"  {i}. {left}  {right}")
+        reply = input(f"  ? {question} [1] ").strip()
+        return picks[int(reply) - 1] if reply.isdigit() and 1 <= int(reply) <= len(picks) else picks[0]
+    sel, drawn = 0, False
+    print(f"  {HEAD}?{OFF} {BOLD}{question}{OFF}  {DIM}↑ ↓ or a number, Enter to choose{OFF}")
+    while True:
+        if drawn:
+            sys.stdout.write(f"\033[{len(rows) * 2}A")
+        for i, (left, right) in enumerate(rows):
+            mark = f"  {PICK} {left} {OFF}" if i == sel else f"   {left} "
+            sys.stdout.write(f"\r{mark}\033[K\n\r      {DIM}{right}{OFF}\033[K\n")
+        sys.stdout.flush()
+        drawn = True
+        k = _key()
+        if k == "up":
+            sel = (sel - 1) % len(rows)
+        elif k == "down":
+            sel = (sel + 1) % len(rows)
+        elif k == "enter":
+            break
+        elif k and k.isdigit() and 1 <= int(k) <= len(rows):
+            sel = int(k) - 1
+    sys.stdout.write(f"\033[{len(rows) * 2 + 1}A\033[J")
+    print(f"  {HEAD}?{OFF} {question}  {HEAD}{picks[sel]['model']}{OFF}")
+    return picks[sel]
+
+
 def show(picks):
-    for i, m in enumerate(picks, 1):
-        est = f", about {m['speed']:.0f} tokens per second" if m["speed"] else ""
-        where = "on the graphics card" if m["on"] == "gpu" else "on the CPU, slower"
-        print(f"  {i}. {m['model']:<14} {m['size']:>4g} GB  {m['about']} ({where}{est}){'  (recommended)' if i == 1 else ''}")
+    for i, m in enumerate(picks):
+        left, right = describe(m, i == 0)
+        print(f"  {i + 1}. {left}  {right}")
 
 
 def choose(out_file, interactive):
     hw = hardware()
-    print(f"  This PC: {hw['gpu'] or 'no dedicated graphics card'}" + (f" with {hw['gpu_gb']:g} GB" if hw["gpu_gb"] else "") +
+    print(f"  {OK}✓{OFF} This PC: {hw['gpu'] or 'no dedicated graphics card'}" + (f" with {hw['gpu_gb']:g} GB" if hw["gpu_gb"] else "") +
           f", {hw['ram_gb']:g} GB memory, {hw['cores']} CPU threads, {hw['disk_gb']:g} GB free where models go.")
     if not installed() and not registry_reachable():
-        print("  Can't reach registry.ollama.ai, where models are downloaded from. Check this PC's internet and DNS.")
+        print(f"  {BAD}{BOLD}✗ Can't reach registry.ollama.ai, where models are downloaded from. Check this PC's internet and DNS.{OFF}")
         return 3
     speed = baseline()
-    print("  Reading the newest models from Ollama's library...")
+    print(f"  {DIM}· Reading the newest models from Ollama's library{OFF}")
     latest = latest_models()
     if not latest:
-        print("  Couldn't read the library: using the built-in list.")
+        print(f"  {DIM}· Couldn't read the library: using the built-in list{OFF}")
     picks = suggest_latest(hw, latest, speed)
     if not picks:
-        print("  Not enough memory or disk for any model here.")
+        print(f"  {BAD}{BOLD}✗ Not enough memory or disk for any model here.{OFF}")
         return 1
-    show(picks)
+    if not interactive:
+        show(picks)
+    next_pick = None
     while True:
-        reply = input("  ? Which one? [1] ").strip() if interactive else "1"
-        m = picks[int(reply) - 1 if reply in ("1", "2", "3") and int(reply) <= len(picks) else 0]
+        m = next_pick or (menu(picks) if interactive else picks[0])
+        next_pick = None
         if not interactive:  # nobody to ask: the safest, the one Amadeus is tuned on
             m = next((p for p in picks if p["model"].startswith("qwen3.5")), m)
         if m["model"] not in installed() and not pull(m["model"]):
-            print(f"  Couldn't download {m['model']}.")
+            print(f"  {BAD}{BOLD}✗ Couldn't download {m['model']}.{OFF}")
             return 3
         tps, share = measure(m["model"])
         tools_ok = calls_tools(m["model"])
-        print(f"  {m['model']}: {tps:.0f} tokens per second, {share * 100:.0f}% on the graphics card, tools {'work' if tools_ok else 'did NOT work'}.")
+        print(f"  {OK if tools_ok else BAD}{'✓' if tools_ok else '✗'}{OFF} {m['model']}: {tps:.0f} tokens per second, {share * 100:.0f}% on the graphics card, tools {'work' if tools_ok else 'did NOT work'}")
         if not tools_ok:
             rest = [p for p in picks if p is not m]
             if not rest:
-                print("  It can't use tools, so Amadeus couldn't work with it.")
+                print(f"  {BAD}{BOLD}✗ It can't use tools, so Amadeus couldn't work with it.{OFF}")
                 return 1
-            print("  Amadeus needs tools for nearly everything, so this one won't do.")
+            print("  Amadeus needs tools for nearly everything, so this one won't do. Pick another.")
             picks = rest
-            show(picks)
             continue
         if tps >= TOO_SLOW or not interactive or m is picks[-1]:
             break
         print("  That's slow enough to be annoying. Pick a lighter one, or the same to keep it.")
-        if input(f"  ? Keep {m['model']}? [y/N] ").strip().lower().startswith("y"):
+        chosen = menu(picks, "Which one now?")
+        if chosen is m:
             break
-        show(picks)
+        next_pick = chosen
     ctx = context_for(hw, m["size"])
     with open(out_file, "w") as f:
         f.write(f"{m['model']}\n{variant_name(m['model'], ctx)}\n{ctx}\n")
