@@ -1,5 +1,6 @@
 """HTTP server: web UI + JSON API + streamed chat (server-sent events). Local only, token protected."""
 import datetime
+import html
 import http.cookies
 import json
 import mimetypes
@@ -65,6 +66,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _mail_signed_in(self, qs):
+        """Only takes a sign-in this PC started (its one-time state), so no cookie is needed here."""
+        from . import maildirect
+        try:
+            if qs.get("error"):
+                raise ValueError(qs.get("error_description", qs["error"])[0][:300])
+            text = f"Connected {maildirect.ms_finish(qs.get('state', [''])[0], qs.get('code', [''])[0])['email']}. You can close this tab."
+        except (ValueError, OSError, KeyError) as e:
+            text = f"That didn't work: {e}"
+        data = f"<!doctype html><meta charset=utf-8><title>Amadeus</title><p>{html.escape(text)}</p>".encode()
+        self.send_response(200)
+        self.send_header("content-type", "text/html; charset=utf-8")
+        self.send_header("content-length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _body(self):
         n = int(self.headers.get("content-length", 0) or 0)
         return json.loads(self.rfile.read(n) or b"{}") if n else {}
@@ -86,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(u.query)
+        if u.path == "/mail/oauth" and not self._tailnet():  # back from signing in at Microsoft, in your normal browser
+            return self._mail_signed_in(qs)
         if self._tailnet():  # from your phone, through Tailscale
             if u.path in ("/pair", "/pair.html"):
                 return self._static("/pair.html")
@@ -206,6 +225,11 @@ class Handler(BaseHTTPRequestHandler):
                         "ON c.id=a.conversation_id " + ("" if status == "all" else "WHERE a.status=? ") +
                         "ORDER BY a.created DESC LIMIT 200", () if status == "all" else (status,))
             return self._json(rows)
+        if p == "/api/mail/direct":  # Mail → + Add account: the providers, and what's connected this way
+            from . import mailbridge, maildirect
+            return self._json({"providers": {k: {"name": v["name"], "how": v["how"], "link": v.get("link", ""), "auth": v["auth"], "manual": not v["imap"]}
+                                             for k, v in maildirect.PROVIDERS.items()},
+                               "accounts": maildirect.listing(), "microsoft": bool(maildirect.ms_client_id()), "thunderbird": mailbridge.thunderbird_set_up()})
         if p == "/api/update":  # a new version? (Settings → Assistant, the top bar and the tray)
             from . import updates
             return self._json(updates.status())
@@ -457,6 +481,18 @@ class Handler(BaseHTTPRequestHandler):
             (off.discard if b.get("read", True) else off.add)(aid)
             db.set_setting("mail_accounts_off", sorted(off))
             return self._json({"off": sorted(off)})
+        if p in ("/api/mail/direct/add", "/api/mail/direct/remove", "/api/mail/direct/microsoft"):
+            from . import maildirect
+            if self._tailnet():
+                return self._json({"error": "Only on the PC."}, 403)
+            try:
+                if p.endswith("/add"):
+                    return self._json(maildirect.add_account(b.get("provider"), b.get("email"), b.get("password"), b.get("imap"), b.get("smtp")))
+                if p.endswith("/remove"):
+                    return self._json(maildirect.remove_account(str(b.get("id", ""))))
+                return self._json({"url": maildirect.ms_start()})
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
         if p == "/api/mail/thunderbird":  # open Thunderbird (to add an account there: sign-in stays in Thunderbird)
             from .tools import _to_front, launch
             launch(["thunderbird"], "thunderbird")

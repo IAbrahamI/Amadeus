@@ -7,6 +7,7 @@ import subprocess
 import time
 
 from .config import CFG
+from . import maildirect
 
 SOCK = os.path.join(CFG["data_dir"], "mail.sock")
 
@@ -22,14 +23,19 @@ def _connect(timeout):
     return s
 
 
-def configured():
-    """Mail is optional: only with the bridge set up (./install.sh --setup) does anything here touch Thunderbird."""
+def thunderbird_set_up():
+    """Only with the bridge set up (./install.sh --setup) does anything here touch Thunderbird."""
     return os.path.exists(os.path.expanduser("~/.thunderbird/native-messaging-hosts/amadeus_bridge.json"))
+
+
+def configured():
+    """Mail is optional, and connected through Thunderbird, directly, or some accounts each way."""
+    return thunderbird_set_up() or maildirect.has_accounts()
 
 
 def _start_thunderbird():
     """Thunderbird was closed: start it minimized and wait for the bridge (up to ~60 s)."""
-    if not configured():
+    if not thunderbird_set_up():
         return False
     if subprocess.run(["pgrep", "-x", "thunderbird"], capture_output=True).returncode == 0:
         # it runs: maybe it is still starting (the add-on connects a few seconds after the window); wait a bit
@@ -67,8 +73,7 @@ def _hide(op, res, off):
     return res
 
 
-def call(op, timeout=120, autostart=True, all_accounts=False, **args):
-    """all_accounts: also the accounts you switched off (only for the list where you switch them)."""
+def _thunderbird(op, timeout, autostart, args):
     try:
         s = _connect(timeout)
     except OSError:
@@ -84,12 +89,55 @@ def call(op, timeout=120, autostart=True, all_accounts=False, **args):
         resp = json.loads(f.readline() or b'{"ok": false, "error": "no answer from Thunderbird"}')
     if not resp.get("ok"):
         raise RuntimeError(resp.get("error", "mail bridge error"))
+    return resp.get("result")
+
+
+def _route(args):
+    """direct / thunderbird: where the message, folder or account in this request lives. None: it isn't about one."""
+    ids = args.get("ids") or ([args["id"]] if args.get("id") is not None else [])
+    if ids:
+        ours = [maildirect.is_our_message(i) for i in ids]
+        if all(ours):
+            return "direct"
+        if not any(ours):
+            return "thunderbird"
+        raise RuntimeError("These messages are in differently connected accounts: change them one account at a time.")
+    if args.get("replyTo") is not None:
+        return "direct" if maildirect.is_our_message(args["replyTo"]) else "thunderbird"
+    for key in ("folderId", "parentId", "accountId"):
+        if args.get(key):
+            return "direct" if maildirect.is_ours(args[key]) else "thunderbird"
+    return None
+
+
+def call(op, timeout=120, autostart=True, all_accounts=False, **args):
+    """all_accounts: also the accounts you switched off (only for the list where you switch them). Each account is
+    connected either through Thunderbird or directly (maildirect.py); a request goes to the one that has it."""
+    route = _route(args)
+    both = thunderbird_set_up() and maildirect.has_accounts()
+    if route is None and op in ("draft", "send"):  # no account named: the first one
+        route = "direct" if maildirect.has_accounts() else "thunderbird"
+    if route is None and not both:
+        route = "direct" if maildirect.has_accounts() else "thunderbird"
+    if route == "direct":
+        result = maildirect.call(op, **args)
+    elif route == "thunderbird":
+        result = _thunderbird(op, timeout, autostart, args)
+    else:  # about everything: both ways together. Thunderbird being closed doesn't hide the direct accounts.
+        result = maildirect.call(op, **args)
+        if op != "ping" and isinstance(result, list):
+            try:
+                result = _thunderbird(op, timeout, autostart, args) + result
+            except (NotRunning, RuntimeError, OSError) as e:
+                print("mail: only the direct accounts:", str(e)[:120], flush=True)
     off = set() if all_accounts else accounts_off()
-    return _hide(op, resp.get("result"), off) if off else resp.get("result")
+    return _hide(op, result, off) if off else result
 
 
 def status():
     try:
+        if maildirect.has_accounts():
+            return {"connected": True, "accounts": call("accounts", timeout=10, all_accounts=True), "off": sorted(accounts_off())}
         return {"connected": call("ping", timeout=5) == "pong", "accounts": call("accounts", timeout=10, all_accounts=True),
                 "off": sorted(accounts_off())}
     except Exception as e:

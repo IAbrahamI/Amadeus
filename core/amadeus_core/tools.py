@@ -1434,7 +1434,7 @@ CONNECTORS = {
     "notes": "Your to-dos and notes (in Amadeus' own folder, or your Obsidian vault once connected)",
     "reminders": "Reminders and schedules",
     "calendar": "Your calendar (shared with the assistant; it asks before changing it)",
-    "mail": "Mail through Thunderbird: read, search, organize, drafts; every change and every send only after your approval",
+    "mail": "Your mail, connected directly or through Thunderbird: read, search, organize, drafts; every change and every send only after your approval",
     "desktop": "Open programs and web pages on this PC (no approval; only a link that may come from a mail you never named is shown first)",
     "voice": "Words speech recognition should know (added when you ask, with your approval)",
     "work": "Send tasks to the work side (cloud, filtered + approved)",
@@ -1463,7 +1463,7 @@ def missing(connector):
     """What an optional connector still needs on this PC ("" = nothing). Its tools stay away from the model until then."""
     if connector == "mail":
         from . import mailbridge
-        return "" if mailbridge.configured() else "Not set up. Run ./install.sh --setup and say yes to mail."
+        return "" if mailbridge.configured() else "Not connected yet. Add an account on the Mail page."
     if connector == "work" and not shutil.which("claude"):
         return "Needs Claude Code: install it and log in once by running claude."
     return ""

@@ -491,7 +491,8 @@ phase_setup() {
   pr="${pr/#\~/$HOME}"; AMADEUS_PROJECTS="$pr"; env_set AMADEUS_PROJECTS "$pr"; ok "projects: $pr"
   # 2. mail through Thunderbird
   local m="n"; have thunderbird && m="y"
-  m="$(ask "Read mail through Thunderbird? (y/n)" "$m")"
+  info "Mail is optional. You can connect accounts directly later (Mail → + Add account), or read them through Thunderbird."
+  m="$(ask "Set up Thunderbird for that? (y/n)" "$m")"
   [[ "$m" =~ ^[Yy] ]] && AMADEUS_MAIL=1 || AMADEUS_MAIL=0; env_set AMADEUS_MAIL "$AMADEUS_MAIL"
   # 3. voice
   local s; s="$(ask "Talk to it: speech recognition and wake word, about 1 GB? (y/n)" "y")"

@@ -73,9 +73,9 @@ const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: nul
 async function loadMail() {
   let st;
   try { st = await (await fetch("/api/mail/status")).json(); } catch { st = { connected: false }; }
-  if (st.setup === false) {
-    body().innerHTML = note("<b>Mail isn't set up.</b> It's optional. To read mail through Thunderbird, run <code>./install.sh --setup</code> and say yes to mail.");
-    return;
+  if (st.setup === false) {  // nothing connected yet: it starts with choosing how
+    mail.accounts = []; mail.off = []; mail.acc = "__add"; mail.open = null;
+    return renderMail();
   }
   if (!st.connected) {
     body().innerHTML = note("<b>Thunderbird isn't connected.</b> Open Thunderbird (with the Amadeus Bridge add-on installed) and the mail shows up here.") +
@@ -93,13 +93,34 @@ const mailRail = () => '<nav class="acc-tabs" aria-label="Accounts">' + mail.acc
   const n = mail.unread[a.id] || 0, addr = (a.identities[0] || {}).email || a.type;
   return `<button class="acc${a.id === mail.acc ? " on" : ""}" aria-current="${a.id === mail.acc}" data-act="acc" data-acc="${esc(a.id)}"><span><b>${esc(a.name)}</b><small>${esc(addr)}</small></span>${n ? `<em>${n}</em>` : ""}</button>`;
 }).join("") + `<button class="acc add${mail.acc === "__add" ? " on" : ""}" data-act="acc" data-acc="__add"><span><b>+ Add account</b></span></button></nav>`;
+// Two ways to connect an account: directly with the provider, or through Thunderbird on this PC.
+let mailProvider = "gmail";
+async function addMailBox() {
+  const d = await api("/api/mail/direct"), p = d.providers[mailProvider], srv = (id, label, host, port) =>
+    field(label, `<span class="radio"><input id="${id}Host" placeholder="${host}" autocomplete="off"><input id="${id}Port" placeholder="${port}" inputmode="numeric" style="max-width:90px"></span>`);
+  const form = p.auth === "microsoft"
+    ? (d.microsoft ? `<div class="acts"><span class="grow"></span><button type="button" class="btn go" data-act="dms">Sign in with Microsoft</button></div>`
+      : note("Signing in with Microsoft isn't set up in this version yet. Use Thunderbird for this account for now."))
+    : `<form class="pform" id="dForm">${field("Address", '<input id="dEmail" autocomplete="off" spellcheck="false">')}
+        ${field("App password", '<input id="dPass" type="password" autocomplete="off">')}
+        ${p.manual ? srv("dImap", "IMAP server and port (SSL)", "imap.example.com", "993") + srv("dSmtp", "SMTP server and port (SSL)", "smtp.example.com", "465") : ""}
+        <div class="acts"><span class="grow"></span><button class="btn go">Connect</button></div></form>`;
+  return `<h3>Add a mail account</h3><h3 style="margin-top:14px">Directly with your provider</h3>
+    ${note("Works without other apps, and it isn't limited by what Thunderbird's add-on can do. The login stays on this PC, in a file only you can read, and only goes to that provider's server.")}
+    <div class="pform"><label>Provider<select id="dProv" data-act="dprov">${Object.entries(d.providers).map(([k, v]) => `<option value="${k}" ${k === mailProvider ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label></div>
+    ${note(esc(p.how) + (p.link ? ` <a href="${esc(p.link)}" target="_blank" rel="noopener">Open that page</a>` : ""))}${form}${info("dInfo")}
+    ${d.accounts.length ? `<h3 style="margin-top:18px">Connected directly</h3>` + rows(d.accounts.map((a) => `<div class="row"><span class="k">${esc(a.providerName)}</span><div class="t"><b>${esc(a.email)}</b></div><button class="btn" data-act="drm" data-id="${esc(a.id)}" data-email="${esc(a.email)}">Remove</button></div>`)) : ""}
+    <h3 style="margin-top:22px">Through Thunderbird</h3>
+    ${note(`If you already use Thunderbird: your sign-in stays there. ${esc(NAME())} only sees mail while Thunderbird runs and what its add-on can reach, so some mail may not work this way, like accounts Thunderbird can't add, or mail it hasn't downloaded.`)}
+    ${d.thunderbird ? `${note("In Thunderbird: <b>☰ → Account Settings → Account Actions → Add Mail Account</b>. The account then shows up here by itself.")}<div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>`
+      : note("To use it, run <code>./install.sh --setup</code> and say yes to Thunderbird.")}`;
+}
 const when = (d) => { const x = new Date(d), t = new Date(); return x.toDateString() === t.toDateString() ? x.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   : x.toDateString() === addDays(t, -1).toDateString() ? "Yesterday" : x.toLocaleDateString([], { day: "numeric", month: "short" }); };
 async function renderMail() {
   let main;
   if (mail.acc === "__add") {
-    main = `<div class="addacc"><h3>Add a mail account</h3>${note(`${esc(NAME())} reads mail through Thunderbird on this PC, so a new account is set up there once, and your sign-in, passwords and 2FA stay in Thunderbird. In Thunderbird: <b>☰ → Account Settings → Account Actions → Add Mail Account</b>. The account then shows up here as its own inbox by itself.`)}
-      <div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>
+    main = `<div class="addacc">${await addMailBox()}
       <h3 style="margin-top:22px">Which accounts ${esc(NAME())} may read</h3>${note("Switched off, it never reads that account: not here, not in the chat, not for the evening summary.")}` +
       rows(mail.accounts.map((a) => { const off = mail.off.includes(a.id);
         return `<div class="row"><span class="k">${esc((a.identities[0] || {}).email || a.type)}</span><div class="t"><b>${esc(a.name)}</b></div><button class="btn${off ? "" : " go"}" data-act="accread" data-acc="${esc(a.id)}" data-read="${off ? 1 : 0}">${off ? "Off" : "On"}</button></div>`; })) + "</div>";
@@ -235,6 +256,16 @@ body().addEventListener("click", async (e) => {
   if (act === "acc") { mail.acc = a.dataset.acc; mail.open = null; mail.days = 30; renderMail(); }
   if (act === "mailolder") { mail.days = mail.days < 90 ? 90 : 365; a.textContent = "Loading…"; renderMail(); }
   if (act === "accread") { const r = await post("/api/mail/accounts", { id: a.dataset.acc, read: a.dataset.read === "1" }); mail.off = r.off; renderMail(); mailCount(); }
+  if (act === "dms") {
+    const r = await post("/api/mail/direct/microsoft", {});
+    if (r.error) return say("dInfo", "That didn't work: " + r.error);
+    window.open(r.url, "_blank");
+    say("dInfo", "Finish signing in in your browser, then come back here.");
+  }
+  if (act === "drm") {
+    if (!confirm(`Remove ${a.dataset.email}? ${NAME()} forgets the login. Your mail stays at your provider.`)) return;
+    await post("/api/mail/direct/remove", { id: a.dataset.id }); return loadMail();
+  }
   if (act === "tbopen") { await post("/api/mail/thunderbird", {}); a.textContent = "Opening Thunderbird…"; }
   if (act === "mailopen") {
     const id = Number(a.dataset.id), m = await (await fetch(`/api/mail/message/${id}`)).json();
@@ -284,4 +315,18 @@ body().addEventListener("submit", async (e) => {
     if (f.id === "projAnswer" || proj.to === "c") return toClaude(text, $("#projInfo"));
     inp.value = ""; toAssistant(text);
   }
+});
+
+// Adding a mail account directly
+document.addEventListener("change", (e) => { if (e.target.id === "dProv") { mailProvider = e.target.value; renderMail(); } });
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "dForm") return;
+  e.preventDefault();
+  const v = (id) => { const x = document.getElementById(id); return x ? x.value.trim() : ""; }, pass = document.getElementById("dPass");
+  say("dInfo", "Trying to sign in…");
+  const r = await post("/api/mail/direct/add", { provider: mailProvider, email: v("dEmail"), password: pass.value,
+    imap: { host: v("dImapHost"), port: Number(v("dImapPort") || 993), security: "ssl" }, smtp: { host: v("dSmtpHost"), port: Number(v("dSmtpPort") || 465), security: "ssl" } });
+  pass.value = "";
+  if (r.error) return say("dInfo", "That didn't work: " + r.error);
+  mail.acc = null; loadMail();
 });

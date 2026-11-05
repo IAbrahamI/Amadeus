@@ -68,9 +68,9 @@ class OptionalApps(unittest.TestCase):
 
     def test_no_thunderbird_setup_no_mail_tools_and_it_never_starts(self):
         from amadeus_core import background, mailbridge, tools
-        with mock.patch.object(mailbridge, "configured", return_value=False), \
+        with mock.patch.object(mailbridge, "configured", return_value=False), mock.patch.object(mailbridge, "thunderbird_set_up", return_value=False), \
                 mock.patch("subprocess.run") as run, mock.patch.object(tools, "launch") as launch:
-            self.assertIn("Not set up", tools.missing("mail"))
+            self.assertIn("Not connected", tools.missing("mail"))
             names = {t["function"]["name"] for t in tools.schemas()}
             self.assertFalse(names & {t["name"] for t in tools.TOOLS if t["connector"] == "mail"})
             background.keep_apps()

@@ -92,7 +92,7 @@ def keep_apps():
     check the mail that came in meanwhile."""
     import shutil
     from . import mailbridge
-    if not mailbridge.configured():
+    if not mailbridge.thunderbird_set_up():
         return
     now = time.time()
     for name in CFG.get("keep_running", ["thunderbird"]):

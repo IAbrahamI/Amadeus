@@ -15,6 +15,7 @@ DEFAULTS = {
     "default_model": "qwen3.5-9b-48k",
     "vault_dir": os.path.join(HOME, ".local", "share", "amadeus", "notes"),  # your to-dos and notes; connecting Obsidian (Settings) moves them to its vault
     "projects_dir": "",           # where Claude Code projects live (you choose it); "" = the vault's Projects/ (older installs)
+    "ms_client_id": "",           # the app's registration at Microsoft, for signing in to Outlook directly (not a secret)
     "hindsight_url": "http://127.0.0.1:8888",
     "hindsight_bank": "amadeus-private",
     "secrets_dir": os.path.join(HOME, ".local", "share", "amadeus", "secrets"),  # created by install.sh, never in git

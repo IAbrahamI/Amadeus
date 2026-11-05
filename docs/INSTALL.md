@@ -24,7 +24,7 @@ The first run also asks three things:
 
 1. **A folder for Claude Code projects** (suggested: `~/Amadeus/Projects`), so a work run never sees your notes. You
    can change it later on the Projects page.
-2. **Mail through Thunderbird?** Yes if you use Thunderbird; your logins stay there.
+2. **Thunderbird for mail?** Optional: you can also connect accounts directly on the Mail page, without Thunderbird. Yes if you use Thunderbird; your logins stay there.
 3. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
 
 The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
