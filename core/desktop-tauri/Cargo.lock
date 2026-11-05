@@ -38,6 +38,7 @@ version = "0.9.2"
 dependencies = [
  "gtk",
  "ksni",
+ "objc2",
  "open",
  "resvg",
  "serde_json",

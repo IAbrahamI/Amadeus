@@ -20,6 +20,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }  # see-through windows
+objc2 = "0.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"

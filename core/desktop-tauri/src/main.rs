@@ -311,7 +311,12 @@ fn show_dash(app: &AppHandle, path: &str) -> tauri::Result<()> {
         let size = m.size().to_logical::<f64>(m.scale_factor());
         (width, height) = ((size.width * 0.72).min(1500.0).round(), (size.height * 0.82).min(950.0).round());
     }
-    let w = window(app, "dash", DASH_TITLE, path).inner_size(width, height).center().build()?;
+    let builder = window(app, "dash", DASH_TITLE, path).inner_size(width, height).center();
+    #[cfg(target_os = "macos")]
+    let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    let w = builder.build()?;
+    #[cfg(target_os = "macos")]
+    mac_window_look(&w);
     prepare(&w)?;
     tell_core_open(true);
     bring_dash_forward(Some((width, height)));
@@ -514,7 +519,7 @@ fn press(w: &WebviewWindow, at: &str) -> tauri::Result<()> {
             let zones = w.state::<Shared>().zones.clone();
             let moves = mini_moves_at(size.height, x, y, &zones.lock().unwrap());
             if moves {
-                w.start_dragging()?;
+                drag(w)?;
             }
         }
         "dash" if dash_moves_at(size.width, x, y) => {
@@ -525,12 +530,44 @@ fn press(w: &WebviewWindow, at: &str) -> tauri::Result<()> {
                     w.maximize()?;
                 }
             } else {
-                w.start_dragging()?;
+                drag(w)?;
             }
         }
         _ => {}
     }
     Ok(())
+}
+
+/// Moves the window with the mouse. On a Mac the pointer is a closed hand meanwhile; the page sets it back at the next
+/// mouse move.
+#[cfg(not(target_os = "linux"))]
+fn drag(w: &WebviewWindow) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
+        let hand: *mut AnyObject = msg_send![class!(NSCursor), closedHandCursor];
+        let _: () = msg_send![hand, set];
+    }
+    w.start_dragging()
+}
+
+/// The dashboard as a real Mac window, with its rounded corners and shadow: the page fills it, including the title bar,
+/// and it keeps its own buttons, so the system's three are hidden.
+#[cfg(target_os = "macos")]
+fn mac_window_look(w: &WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    let Ok(window) = w.ns_window() else { return };
+    let window = window as *mut AnyObject;
+    for kind in 0usize..3 {
+        unsafe {
+            let button: *mut AnyObject = msg_send![window, standardWindowButton: kind];
+            if !button.is_null() {
+                let _: () = msg_send![button, setHidden: true];
+            }
+        }
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
