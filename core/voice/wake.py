@@ -126,6 +126,7 @@ class Mic:
 
     def close(self):
         self.p.terminate()
+        self.p.wait(timeout=5)
 
 
 def record_request(mic, audio, start_wait=80, quiet_end=15, max_len=300):
