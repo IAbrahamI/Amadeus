@@ -50,6 +50,21 @@ jobs:
         working-directory: core/desktop-tauri
         run: cargo check --locked
 
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        working-directory: core
+        run: python -m unittest -v
+      - name: The desktop app compiles
+        working-directory: core/desktop-tauri
+        run: cargo check --locked
+
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

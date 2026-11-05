@@ -10,7 +10,7 @@ import subprocess
 import threading
 import time
 
-from . import workguard
+from . import system, workguard
 from .config import CFG, CONFIG_PATH, DEFAULTS, projects_dir
 
 HOME = os.path.expanduser("~")
@@ -49,7 +49,7 @@ def _restart():
     """The paths are read at start: a moment later, so this answer still reaches the page."""
     def run():
         time.sleep(1)
-        subprocess.run(["systemctl", "--user", "restart", "amadeus-core"], timeout=30)
+        system.restart("amadeus-core")
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -88,7 +88,8 @@ def disconnect():
     if not vault:
         raise ValueError("No vault is connected.")
     _config(vault_dir=DEFAULTS["vault_dir"])
-    subprocess.run(["systemctl", "--user", "disable", "--now", "amadeus-vault-snapshot.timer"], capture_output=True, timeout=30)
+    if system.service_timers():
+        subprocess.run(["systemctl", "--user", "disable", "--now", "amadeus-vault-snapshot.timer"], capture_output=True, timeout=30)
     env = os.path.join(REPO, "amadeus.env") if os.access(REPO, os.W_OK) else os.path.expanduser("~/.config/amadeus-core/amadeus.env")
     if os.path.exists(env):  # (or the next update connects it again)
         text = Path(env).read_text()

@@ -14,7 +14,7 @@ import urllib.request
 import subprocess
 import threading
 
-from . import db
+from . import db, system
 from .config import CFG
 
 VOICE_DIR = os.path.expanduser("~/.local/share/amadeus/voice")
@@ -166,7 +166,7 @@ def _get_kokoro():
         if not os.path.isfile(f):
             urllib.request.urlretrieve(url, f + ".part")
             os.replace(f + ".part", f)
-    subprocess.run(["systemctl", "--user", "restart", "amadeus-voice"], capture_output=True, timeout=60)
+    system.restart("amadeus-voice")
 
 
 def add_file(name, data):

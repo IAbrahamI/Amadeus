@@ -10,7 +10,7 @@ import shutil
 import time
 import urllib.request
 
-from . import agenda, db, digest, events, learning, llm, mailwatch, quickchat, tools
+from . import agenda, db, digest, events, learning, llm, mailwatch, system, quickchat, tools
 from .config import CFG
 
 
@@ -47,6 +47,8 @@ _job_seen = {}
 
 
 def check_jobs():
+    if not system.service_timers():
+        return
     timers = subprocess.run(["systemctl", "--user", "list-unit-files", "amadeus-*.timer", "--no-legend", "--plain"],
                             capture_output=True, text=True, timeout=20).stdout.split()
     units = [t[:-6] + ".service" for t in timers if t.endswith(".timer")]

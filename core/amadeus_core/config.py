@@ -1,4 +1,4 @@
-"""Settings. Defaults fit a single-user Linux desktop; override in ~/.config/amadeus-core/config.json."""
+"""Settings. Defaults fit a single-user desktop; override in ~/.config/amadeus-core/config.json."""
 import json
 import os
 from pathlib import Path
@@ -76,6 +76,9 @@ def desktop_env():
     app, the desktop session's variables are taken from systemd (KDE puts them there at login); without them the popup
     and opened apps fail with "Gtk couldn't be initialized". Missing variables only: nothing set is overwritten."""
     import subprocess
+    import sys
+    if sys.platform == "darwin":  # no such thing there: apps open through `open`
+        return
     try:
         out = subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True, text=True, timeout=5).stdout
     except Exception:

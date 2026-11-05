@@ -4,13 +4,12 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import threading
 import time
 import urllib.error
 import urllib.request
 
-from . import db
+from . import db, system
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LATEST = "https://api.github.com/repos/IAbrahamI/Amadeus/releases/latest"
@@ -77,8 +76,7 @@ def run():
     """Update now, for a git install: it restarts everything itself when it's done, so it runs apart from this process."""
     if status()["mode"] != "git":
         raise ValueError("Update it with your system's package manager.")
-    subprocess.Popen(["systemd-run", "--user", "--collect", os.path.join(ROOT, "install.sh"), "--update", "-y"],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    system.in_background([os.path.join(ROOT, "install.sh"), "--update", "-y"])
     return {"ok": True}
 
 
@@ -86,6 +84,6 @@ def restart():
     """A package update arrived: use it."""
     def later():
         time.sleep(1)
-        subprocess.run(["systemctl", "--user", "restart", "amadeus-core", "amadeus-desktop"], timeout=30)
+        system.restart("amadeus-core", "amadeus-desktop")
     threading.Thread(target=later, daemon=True).start()
     return {"ok": True}

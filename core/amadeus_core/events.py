@@ -3,10 +3,9 @@ Each new event makes Amadeus "call" you through the desktop app (desktop.py), ex
 waits until the morning."""
 import datetime
 import re
-import subprocess
 import threading
 
-from . import db, desktop
+from . import db, desktop, system
 from .config import CFG, NAME
 
 db.q("""CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, kind TEXT, title TEXT, body TEXT, ref TEXT,
@@ -79,6 +78,6 @@ def maybe_ring():
         try:  # the desktop app isn't running: at least a notification
             from .config import desktop_env
             desktop_env()
-            subprocess.run(["notify-send", "-a", "Amadeus", NAME, "Something needs your attention."], timeout=10)
+            system.notify(NAME, "Something needs your attention.")
         except Exception as e:
             print("notification failed:", e, flush=True)

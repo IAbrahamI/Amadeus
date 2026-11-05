@@ -10,6 +10,7 @@ import re
 import subprocess
 import threading
 
+from . import system
 from .config import CFG, CONFIG_PATH
 
 CORE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,8 +60,8 @@ def _restart():
     def later():
         import time
         time.sleep(1.0)
-        subprocess.run(["systemctl", "--user", "restart", "amadeus-wake"], capture_output=True, timeout=30)
-        subprocess.run(["systemctl", "--user", "restart", "amadeus-core"], capture_output=True, timeout=30)
+        system.restart("amadeus-wake")
+        system.restart("amadeus-core")
     threading.Thread(target=later, daemon=True).start()
 
 

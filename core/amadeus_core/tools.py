@@ -12,7 +12,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from . import agenda, db, mailbridge
+from . import agenda, db, mailbridge, system
 from .config import CFG, NAME
 
 
@@ -1021,6 +1021,8 @@ BROWSERS = {"firefox": ["firefox"], "brave": ["brave"], "chromium": ["chromium"]
 def _apps():
     """Installed desktop apps: {desktop id: {name, generic, keywords}} (hidden entries skipped)."""
     apps = {}
+    if system.MAC:
+        return system.mac_apps()
     for d in APP_DIRS:
         for f in sorted(glob.glob(os.path.join(d, "*.desktop"))):
             info, section = {}, ""
@@ -1046,18 +1048,14 @@ APP_ALIASES = {"settings": "systemsettings", "system settings": "systemsettings"
 
 
 def launch(cmd, name="app"):
-    """Start a program in its own systemd scope: it then belongs to your desktop session, not to Amadeus, so restarting
-    Amadeus never closes it (Thunderbird used to die with every restart)."""
-    from .config import desktop_env
-    desktop_env()  # Amadeus may have started before the desktop: apps need its display
-    unit = f"amadeus-app-{re.sub(r'[^a-z0-9]', '', name.lower())[:20]}-{int(time.time())}"
-    subprocess.Popen(["systemd-run", "--user", "--scope", "--quiet", "--collect", f"--unit={unit}", "--"] + list(cmd),
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    system.launch(cmd, name)
 
 
 def _to_front(names, seconds=10):
     """Wayland doesn't let a background service focus windows: a short KWin script brings the app's window to the front
     (the existing one right away, a new one as soon as it appears) and stops after a few seconds."""
+    if system.MAC:  # opening an app already brings it to the front there
+        return
     names = [n.lower() for n in names if n]
     js = """const M = %s;
     function hit(w) { const s = ((w.desktopFileName || "") + " " + (w.resourceClass || "") + " " + (w.resourceName || "")).toLowerCase();
@@ -1082,12 +1080,15 @@ def _to_front(names, seconds=10):
 def open_app(name):
     import difflib
     q, apps = name.lower().strip(), _apps()
+    if q in ("browser", "web browser", "internet") and system.MAC:
+        launch(["open", "-a", "Safari"], "browser")
+        return "Opened your browser."
     if q in ("browser", "web browser", "internet"):
         q = subprocess.run(["xdg-settings", "get", "default-web-browser"], capture_output=True, text=True).stdout.strip()[:-8] or q
     alias = APP_ALIASES.get(q)
     if alias in apps or q in apps:
         app_id = alias if alias in apps else q
-        launch(["gtk-launch", app_id], app_id)
+        launch(["open", "-a", app_id] if system.MAC else ["gtk-launch", app_id], app_id)
         _to_front([app_id, app_id.split(".")[-1]])
         return f"Opened {apps[app_id]['name']}."
 
@@ -1105,7 +1106,7 @@ def open_app(name):
     if not ranked or ranked[0][0] < 0.7:
         return f"No installed app matches '{name}'. Close matches: " + ", ".join(a["name"] for _, _, a in ranked[:5])
     _, app_id, app = ranked[0]
-    launch(["gtk-launch", app_id], app_id)
+    launch(["open", "-a", app_id] if system.MAC else ["gtk-launch", app_id], app_id)
     _to_front([app_id, app_id.split(".")[-1]])
     return f"Opened {app['name']}."
 
@@ -1122,11 +1123,11 @@ def _url(url):
 
 def open_page(url, browser=""):
     url = _url(url)
-    cmd = BROWSERS.get(browser.lower().strip(), ["xdg-open"]) + [url]
-    launch(cmd, "browser")
-    which = browser.lower().strip() or subprocess.run(["xdg-settings", "get", "default-web-browser"], capture_output=True,
-                                                      text=True).stdout.strip().removesuffix(".desktop")
-    _to_front([which.split(".")[-1].split("-")[0]])
+    launch(system.page_command(url, BROWSERS.get(browser.lower().strip())), "browser")
+    if not system.MAC:
+        which = browser.lower().strip() or subprocess.run(["xdg-settings", "get", "default-web-browser"], capture_output=True,
+                                                          text=True).stdout.strip().removesuffix(".desktop")
+        _to_front([which.split(".")[-1].split("-")[0]])
     return f"Opened {url}" + (f" in {browser}" if browser else "") + "."
 
 
