@@ -215,7 +215,7 @@ def listen():
             rec.SetWords(True)
             for b in phrase:
                 rec.AcceptWaveform(b)
-            while quiet < 6 and len(phrase) < 30:
+            while quiet < 6 and len(phrase) < 30 and not os.path.exists(OFF):  # (off: stop right away, even mid-sentence)
                 buf, loud = mic.read()
                 phrase.append(buf)
                 quiet = 0 if loud else quiet + 1
@@ -226,11 +226,11 @@ def listen():
                         break
             if not word:
                 word = called(json.loads(rec.FinalResult()), words, min_conf)
-            if word:
+            if word and not os.path.exists(OFF):
                 print(f"wake: {word}", flush=True)
                 handle(mic, word, phrase)
             elif len(phrase) >= 30:  # a long sentence without the name at its start: skip until the next pause
-                while True:
+                while not os.path.exists(OFF):
                     buf, loud = mic.read()
                     if not loud:
                         break
