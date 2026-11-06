@@ -44,7 +44,7 @@ class Say(unittest.TestCase):
         seen = []
 
         def fake(model, messages, tools=None):
-            self.system = messages[0]["content"]
+            self.system = "\n".join(m["content"] for m in messages)
             for t in reply:
                 yield "token", t
             yield "done", {"content": "".join(reply), "tool_calls": []}
@@ -67,3 +67,51 @@ class Say(unittest.TestCase):
     def test_not_asked_when_nothing_is_read_aloud(self):
         self.run_agent(["Hello"], speak=False)
         self.assertNotIn("## Your answer will be read aloud", self.system)
+
+
+class PromptOrder(unittest.TestCase):
+    """What changes goes with the newest message, so the model can reuse the start of the prompt."""
+
+    def test_the_start_of_the_prompt_stays_the_same(self):
+        from amadeus_core import agent, db
+        cid = "promptorder"
+        db.q("INSERT OR IGNORE INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", "m", db.now(), db.now()))
+        with mock.patch("amadeus_core.agent.datetime") as clock:
+            clock.date.today.return_value = __import__("datetime").date(2030, 1, 1)
+            clock.timedelta = __import__("datetime").timedelta
+            clock.datetime.now.return_value = __import__("datetime").datetime(2030, 1, 1, 10, 0)
+            first, ctx1 = agent._system(cid), agent._context(cid, "hey")
+            clock.datetime.now.return_value = __import__("datetime").datetime(2030, 1, 1, 10, 7)
+            second, ctx2 = agent._system(cid), agent._context(cid, "hey")
+        self.assertEqual(first, second)
+        self.assertIn("Today is", first["content"])
+        self.assertNotIn("10:0", first["content"])
+        self.assertNotEqual(ctx1, ctx2)
+
+    def test_the_context_stays_with_its_message_for_the_model_only(self):
+        from amadeus_core import agent, db
+        cid = "promptorder2"
+        db.q("INSERT OR IGNORE INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", "m", db.now(), db.now()))
+        db.add_message(cid, "user", "first")
+        agent._keep_context(cid, "first")
+        kept = agent._history(cid)[0]["content"]
+        self.assertIn("<context>", kept)
+        self.assertTrue(kept.endswith("first"))
+        db.add_message(cid, "assistant", "ok")
+        db.add_message(cid, "user", "second")
+        agent._keep_context(cid, "second")
+        history = agent._history(cid)
+        self.assertEqual(history[0]["content"], kept)  # the same words next turn
+        self.assertEqual(db.messages(cid)[0]["content"], "first")  # the chat shows yours
+
+    def test_the_history_window_moves_in_one_big_step(self):
+        from amadeus_core import agent, db
+        from amadeus_core.config import CFG
+        cid = "promptorder3"
+        db.q("INSERT OR IGNORE INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", "m", db.now(), db.now()))
+        with mock.patch.dict(CFG, {"history_chars": 100}):
+            for i in range(6):
+                db.add_message(cid, "user", f"{i}" * 30)
+            first = agent._history(cid)[0]["content"]
+            db.add_message(cid, "user", "x" * 10)
+            self.assertEqual(agent._history(cid)[0]["content"], first)

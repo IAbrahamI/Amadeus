@@ -808,6 +808,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     from . import voices, work  # noqa: F401  (work makes its tables, which the background jobs read)
     system.stop_with_app()
+    agent.load_at_start()
     background.start()
     voices.prepare_lines()
     srv = ThreadingHTTPServer((CFG["host"], CFG["port"]), Handler)

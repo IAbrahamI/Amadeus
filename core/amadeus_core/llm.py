@@ -68,6 +68,39 @@ def model_info():
     return sorted(out, key=lambda x: x["name"])
 
 
+def _timing(ev):
+    """In the log, for every answer: where the time went. Reading is what repeats if the start of the prompt changed."""
+    s = lambda k: ev.get(k, 0) / 1e9  # noqa: E731
+    print(f"answer: {s('total_duration'):.1f}s = load {s('load_duration'):.1f}s + read {ev.get('prompt_eval_count', 0)} tokens "
+          f"{s('prompt_eval_duration'):.1f}s + write {ev.get('eval_count', 0)} tokens {s('eval_duration'):.1f}s", flush=True)
+
+
+def loaded():
+    """The models in memory right now."""
+    return [m["name"] for m in json.load(urllib.request.urlopen(CFG["ollama_url"] + "/api/ps", timeout=10)).get("models", [])]
+
+
+def warm(model, messages, tools=None):
+    """Reads the prompt ahead without answering, so the next real answer can reuse it. Same request as a real one, one word long."""
+    body = {"model": model, "messages": messages, "stream": False, "think": False, "keep_alive": KEEP,
+            "options": {"temperature": 0.3, "num_thread": THREADS, "num_predict": 1}}
+    if tools:
+        body["tools"] = tools
+    req = urllib.request.Request(CFG["ollama_url"] + "/api/chat", json.dumps(body).encode(), {"content-type": "application/json"})
+    with urllib.request.urlopen(req, timeout=600) as r:
+        r.read()
+
+
+def has_room(model):
+    """Loading it wouldn't crowd the graphics card (a video or game next to it would stutter). Without a card to ask, yes."""
+    free = gpu_free()
+    if free is None or not GPU_FREE:
+        return True
+    tags = json.load(urllib.request.urlopen(CFG["ollama_url"] + "/api/tags", timeout=10)).get("models", [])
+    size = next((m["size"] for m in tags if m["name"].removesuffix(":latest") == model), None)
+    return size is not None and free >= size / 2 ** 20 + GPU_FREE
+
+
 def chat_stream(model, messages, tools=None):
     """Yields ("token", text) and finally ("done", {"content": str, "tool_calls": [...]})."""
     global _used
@@ -92,6 +125,7 @@ def chat_stream(model, messages, tools=None):
             for tc in msg.get("tool_calls") or []:
                 calls.append(tc["function"])
             if ev.get("done"):
+                _timing(ev)
                 break
     yield "done", {"content": "".join(content), "tool_calls": calls}
 

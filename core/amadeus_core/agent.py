@@ -42,8 +42,7 @@ Rules:
 - Format: clean Markdown. Lead with the answer in one plain sentence, then short lists or a small table only when they
   help. No emoji or decorative symbols, no headings for short answers.
 - End every reply with exactly one mood tag on its own line, chosen from:
-  [mood:normal] [mood:happy] [mood:thinking] [mood:surprised] [mood:worried] [mood:sad] [mood:annoyed] [mood:blush] [mood:wink]
-Today is {today}."""
+  [mood:normal] [mood:happy] [mood:thinking] [mood:surprised] [mood:worried] [mood:sad] [mood:annoyed] [mood:blush] [mood:wink]"""
 
 
 # Actions that send something out or write something lasting: flagged on the approval card when mail was just read.
@@ -165,10 +164,20 @@ def persona():
 
 def _history(cid):
     msgs, size = [], 0
-    for m in reversed(db.messages(cid)):
+    every = db.messages(cid)
+    start = db.get_setting(f"history_start:{cid}", 0)  # moved in one big step, not with every message: a start that moves means reading it all again
+    if sum(len(m["content"]) for m in every if m["id"] >= start) > CFG["history_chars"]:
+        keep, start = 0, every[-1]["id"]
+        for m in reversed(every):
+            keep += len(m["content"])
+            if keep > CFG["history_chars"] // 2:
+                break
+            start = m["id"]
+        db.set_setting(f"history_start:{cid}", start)
+    for m in reversed([m for m in every if m["id"] >= start]):
         role, meta = m["role"], m["meta"]
         if role == "user":
-            item = {"role": "user", "content": m["content"]}
+            item = {"role": "user", "content": f"<context>\n{meta['context']}\n</context>\n\n{m['content']}" if meta.get("context") else m["content"]}
         elif role == "assistant":
             item = {"role": "assistant", "content": m["content"]}
             if meta.get("tool_calls"):
@@ -278,9 +287,11 @@ SAY_REMINDER = {"role": "system", "content": "If you answer now (no tool call), 
                 "not just the first items</say>, then the full answer."}
 
 
-def _system(cid, user_text):
-    conv = db.q("SELECT * FROM conversations WHERE id=?", (cid,), one=True) or {}
-    text = SYSTEM.format(name=NAME, today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M"))
+def _system(cid):
+    """What stays the same from message to message, first in the prompt. The model only reuses what it read if the change is
+    within the last few hundred tokens (measured with qwen3.5, which otherwise reads everything again), so what's big stays here,
+    even if it changes now and then, and what changes with every message stays small, at the very end: _context."""
+    text = SYSTEM.format(name=NAME) + "\nToday is " + datetime.datetime.now().strftime("%A %d %B %Y") + "."
     if tools.enabled_connectors().get("calendar", True):
         try:
             today = datetime.date.today()
@@ -295,6 +306,9 @@ def _system(cid, user_text):
     if p:
         text += "\n\n## Persona\n" + p
     text += ABOUT_ME
+    hints = profile.asking_hints("")  # the most frequent ones
+    if hints:
+        text += ("\n\n## How this user asks for things (learned from earlier requests; use it to understand them)\n" + hints)
     from . import quickchat, work
     proj = work.project_of_chat(cid)
     if proj:  # a project's own conversation: it knows the project and its latest Claude Code results
@@ -311,6 +325,12 @@ def _system(cid, user_text):
     if rec:
         text += ("\n\n## Your last chats with the user (short recaps, so you remember what you talked about; "
                  "don't bring them up unless it helps)\n" + rec)
+    return {"role": "system", "content": text}
+
+
+def _context(cid, user_text):
+    """What changes with each message: the time, and what fits this request. It goes with the newest message."""
+    text = "The time is " + datetime.datetime.now().strftime("%H:%M") + "."
     from . import playbooks
     mine = playbooks.own_match(user_text or "")
     if mine:  # one of your own playbooks: its steps, in your words
@@ -319,9 +339,6 @@ def _system(cid, user_text):
     lessons = learning.prompt_block(cid, user_text or "")
     if lessons:
         text += ("\n\n## Lessons from earlier mistakes (learned from the user's feedback; follow them)\n" + lessons)
-    hints = profile.asking_hints(user_text or "")
-    if hints:
-        text += ("\n\n## How this user asks for things (learned from earlier requests; use it to understand them)\n" + hints)
     last_user = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None)
     if last_user and last_user["meta"].get("voice"):
         text += VOICE_NOTE
@@ -332,7 +349,7 @@ def _system(cid, user_text):
         if s["name"] == "calendar":  # small models are bad at date math: give them the dates
             d0 = datetime.date.today()
             text += "\n\nDates (use these, don't calculate): " + ", ".join(
-                f"{(d0 + datetime.timedelta(days=i)):%a %d %b}={(d0 + datetime.timedelta(days=i)).isoformat()}" for i in range(21))
+                f"{(d0 + datetime.timedelta(days=i)):%a %d %b}={(d0 + datetime.timedelta(days=i)).isoformat()}" for i in range(14))
     if user_text and tools.enabled_connectors().get("memory", True):
         try:
             mem = tools.recall(user_text)
@@ -340,12 +357,49 @@ def _system(cid, user_text):
                 text += "\n\nRelevant memories:\n" + mem
         except Exception:
             pass
-    return {"role": "system", "content": text}
+    return text
+
+
+def _keep_context(cid, user_text):
+    """The context of the newest message is worked out once and stays with it, so the conversation reads the same on the next
+    turn and the model can go on from what it already read. It's for the model only: the chat shows your own words."""
+    last = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None)
+    if not last or last["meta"].get("context"):
+        return
+    db.q("UPDATE messages SET meta=? WHERE id=?", (json.dumps({**last["meta"], "context": _context(cid, user_text)}), last["id"]))
+
+
+def warm_up(cid=None, model=None):
+    """Reads the fixed part of the prompt and the current chat ahead, so the next message is answered right away."""
+    from . import quickchat
+    model = model or db.get_setting("chat_model", "") or CFG["default_model"]
+    cid = cid or quickchat.current()
+    llm.warm(model, [_system(cid)] + _history(cid) + [{"role": "user", "content": "<context>\n</context>"}], tools.schemas())
+
+
+def load_at_start():
+    """When Amadeus starts: load the model, so the first message doesn't wait for it. Waits for Ollama, and leaves it if the
+    graphics card has no room."""
+    def run():
+        for _ in range(40):
+            try:
+                model = db.get_setting("chat_model", "") or CFG["default_model"]
+                if model not in llm.list_models() or not llm.has_room(model):
+                    return
+                warm_up(model=model)
+                print("model ready:", model, flush=True)
+                return
+            except OSError:
+                time.sleep(15)
+            except Exception as e:
+                print("loading the model ahead failed:", e, flush=True)
+                return
+    threading.Thread(target=run, daemon=True).start()
 
 
 def eval_system(user_text, lessons):
     """The instructions for one test request (learning.evaluate): the same rules, skills and lessons, no chat history."""
-    text = SYSTEM.format(name=NAME, today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M")) + ABOUT_ME
+    text = SYSTEM.format(name=NAME) + "\n" + TODAY.format(today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M")) + ABOUT_ME
     low = user_text.lower()
     off = set(db.get_setting("skills_off", []))
     for s in skills().values():
@@ -357,6 +411,9 @@ def eval_system(user_text, lessons):
 
 
 RUNNING = set()  # conversations Amadeus is working on right now (the UI shows "working…")
+
+
+TODAY = "Today is {today}."
 
 
 def run(cid, model, user_text=None, emit=lambda *a: None, max_rounds=6, curate=True, voice=False, speak=False):
@@ -395,7 +452,8 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
         db.add_message(cid, "user", user_text, meta or None)
     if user_text and _playbook(cid, user_text, emit):
         return
-    sysmsg = _system(cid, user_text or "")
+    sysmsg = _system(cid)
+    _keep_context(cid, user_text or "")
     tools.CURRENT_CID = cid
     for _ in range(max_rounds):
         content, calls, said = "", [], None
