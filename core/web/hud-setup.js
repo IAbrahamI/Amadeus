@@ -8,7 +8,7 @@
   const veil = document.createElement("div");
   veil.className = "setup";
   document.body.append(veil);
-  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false, voiceDone = false, filterDone = false;
+  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false, voiceDone = false, filterDone = false, claudeDone = false;
   const page = (at, html) => {
     const keep = veil.querySelector("input:focus");
     if (keep) return;  // you're typing: the next look comes after that
@@ -103,6 +103,14 @@
         ${j.kind === "filter" ? trouble(j.error) : ""}${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">Set up the filter</button>`)}`);
       $("#suSkip").onclick = () => { filterDone = true; step(); };
       $("#suGo").onclick = () => tell("filter");
+      return;
+    }
+    if (!claudeDone && s.filter_ready && s.claude && !s.claude.signed_in) {
+      page(4, `${text(`Projects run on Claude Code, which needs your own Anthropic account. ${s.claude.installed ? "It's installed, and you only need to sign in." : "I'll open a Terminal window that installs it with Anthropic's own installer, then signs you in."} You sign in on Anthropic's page, and ${esc(NAME())} never sees your login. This page notices by itself once it's done.`)}
+        ${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">${s.claude.installed ? "Sign in" : "Install and sign in"}</button>`)}`);
+      $("#suSkip").onclick = () => { claudeDone = true; step(); };
+      $("#suGo").onclick = () => post("/api/setup", { action: "claude" });
+      setTimeout(step, 3000);
       return;
     }
     page(5, `${text(`That's it. ${esc(NAME())} is ready, and you can change all of this later in Settings.`)}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Start</button>`)}`);

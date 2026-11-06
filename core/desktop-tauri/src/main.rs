@@ -796,6 +796,8 @@ fn listen(app: AppHandle) {
         let reply = api("/api/desktop/wait").timeout(Duration::from_secs(45)).call().and_then(|r| Ok(r.into_json::<Value>()?));
         let Ok(reply) = reply else {
             lost = true;
+            #[cfg(target_os = "macos")]
+            start_core();
             std::thread::sleep(Duration::from_secs(3));
             continue;
         };
@@ -1153,6 +1155,14 @@ fn mac_services(app: &AppHandle) {
         let _ = fs::create_dir_all(data_dir());
         let _ = fs::write(&marker, stamp);
     }
+}
+
+/// The core should be running while the app runs: after an update launchd may not have started it again. Does nothing if it's up.
+#[cfg(target_os = "macos")]
+fn start_core() {
+    use std::process::Command;
+    let uid = Command::new("id").arg("-u").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let _ = Command::new("launchctl").args(["kickstart", &format!("gui/{uid}/com.amadeus.core")]).output();
 }
 
 #[cfg(target_os = "macos")]

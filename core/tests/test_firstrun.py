@@ -154,6 +154,21 @@ class FirstStart(unittest.TestCase):
                 mock.patch.object(macfilter, "start", side_effect=OSError), mock.patch.object(macfilter, "call", side_effect=OSError):
             self.assertTrue(privacy.scrub("Anna lives in Berlin")[2])
 
+    def test_a_failed_sign_in_is_said_plainly(self):
+        from amadeus_core import work
+        self.assertTrue(work.SIGNED_OUT.search("Failed to authenticate. API Error: 401 OAuth access token has expired. Re-authenticate to continue."))
+        self.assertFalse(work.SIGNED_OUT.search("The tests failed."))
+
+    def test_claude_code_status(self):
+        from amadeus_core import db, work
+        with mock.patch.object(work, "claude_path", return_value=None):
+            self.assertEqual(work.claude_status(), {"installed": False, "signed_in": False})
+        with mock.patch.object(work, "claude_path", return_value="/x/claude"), mock.patch.object(work.subprocess, "run", return_value=mock.Mock(stdout='{"loggedIn": true}')):
+            self.assertTrue(work.claude_status()["signed_in"])
+            db.set_setting("claude_signed_out", True)
+            self.assertFalse(work.claude_status()["signed_in"])
+            db.set_setting("claude_signed_out", False)
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])

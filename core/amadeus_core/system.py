@@ -51,6 +51,16 @@ def stop_with_app():
         threading.Thread(target=watch, daemon=True).start()
 
 
+def open_terminal(command):
+    """A command in a Terminal window you can see, on a Mac. A .command file opens there without any extra permission."""
+    from . import paths
+    script = os.path.join(paths.DATA, "amadeus-terminal.command")
+    with open(script, "w") as f:
+        f.write("#!/bin/zsh -l\n" + command + "\n")
+    os.chmod(script, 0o700)
+    subprocess.run(["/usr/bin/open", script], capture_output=True, timeout=20, check=True)
+
+
 def notify(title, text):
     if MAC:  # through the app, so it's Amadeus' notification (one from osascript opens Script Editor when you click it)
         from . import desktop

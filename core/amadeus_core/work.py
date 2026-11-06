@@ -13,12 +13,13 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import threading
 import time
 
-from . import db, events
+from . import db, events, system
 from . import paths
 from .config import CFG, projects_dir
 
@@ -76,6 +77,9 @@ def open_terminal(project):
     from . import tools
     name, path = _project_dir(project)
     last = last_session(name)
+    if system.MAC:
+        system.open_terminal(f"cd {shlex.quote(path)} && " + shlex.join(["claude"] + (["--resume", last["session_id"]] if last else [])))
+        return {"ok": True, "resumed": bool(last)}
     cmd = ["kitty", "--directory", path, "claude"] + (["--resume", last["session_id"]] if last else [])
     tools.launch(cmd, "claude")
     tools._to_front(["kitty"])
@@ -84,6 +88,36 @@ def open_terminal(project):
 
 def running():
     return db.q("SELECT * FROM work_jobs WHERE status='running' ORDER BY created")
+
+
+SIGNED_OUT = re.compile(r"failed to authenticate|authentication_error|not logged in|please run /login|invalid api key|token has expired", re.I)
+CLAUDE_INSTALLER = "https://claude.ai/install.sh"
+
+
+def claude_path():
+    return shutil.which("claude") or next((p for p in [os.path.expanduser("~/.local/bin/claude")] if os.path.isfile(p)), None)
+
+
+def claude_status():
+    """Is Claude Code here and signed in? It says so itself; the sign-in stays between you and Anthropic, Amadeus never sees it."""
+    path = claude_path()
+    if not path:
+        return {"installed": False, "signed_in": False}
+    try:
+        out = json.loads(subprocess.run([path, "auth", "status", "--json"], capture_output=True, text=True, timeout=20).stdout or "{}")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        out = {}
+    return {"installed": True, "signed_in": bool(out.get("loggedIn")) and not db.get_setting("claude_signed_out", False)}
+
+
+def claude_open_sign_in():
+    """Opens a Terminal window where Claude Code's own installer and sign-in run, in front of you."""
+    path = claude_path()
+    db.set_setting("claude_signed_out", False)
+    if path:
+        system.open_terminal(shlex.join([path, "auth", "login"]))
+    else:
+        system.open_terminal(f"curl -fsSL {CLAUDE_INSTALLER} | bash && ~/.local/bin/claude auth login")
 
 
 def start(project, task, cid="", resume=None):
@@ -116,6 +150,12 @@ def _run(jid, task, resume):
         cost = out.get("total_cost_usd")
         summary = (out.get("result") or "").strip() or (p.stderr.strip()[-1500:] or "The run ended without a reply.")
         ok = p.returncode == 0 and not out.get("is_error")
+        if not ok and SIGNED_OUT.search(summary):
+            db.set_setting("claude_signed_out", True)
+            summary = ("Claude Code needs you to sign in again, so it didn't start. Go to Settings → Connectors → Claude Code, "
+                       "then say \"continue\" here. Nothing was changed.\n\n(" + summary[:300] + ")")
+        elif ok:
+            db.set_setting("claude_signed_out", False)
     except subprocess.TimeoutExpired:
         summary = f"The run took longer than {TIMEOUT // 60} minutes and was stopped. Say \"continue project {j['project']}\" to pick it up."
     except Exception as e:
