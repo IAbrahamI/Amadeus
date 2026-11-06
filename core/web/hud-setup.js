@@ -55,7 +55,7 @@
   async function step() {
     s = await api("/api/setup");
     const j = s.job || {}, busy = j.kind && !j.done, again = () => setTimeout(step, 1200);
-    if (busy) { working(j.kind === "begin" ? 1 : 0, j); return again(); }
+    if (busy) { working(j.kind === "begin" || s.picks.length ? 1 : 0, j); return again(); }
     if (s.ollama !== "running" && !s.model_ready) {
       const has = s.ollama === "installed";
       page(0, `${text(`${esc(NAME())} thinks with an AI model that runs on this computer, so your conversations stay here. A free app called Ollama runs that model. ${has ? "It's installed, but not running." : "I'll install it for you."}`)}
@@ -80,7 +80,9 @@
         ${text(`Now pick the model. I measured this computer, and the first one is what I'd use.`)}
         <div class="setup-picks">${s.picks.map((p, i) => `<label class="setup-pick"><input type="radio" name="suModel" value="${esc(p.model)}" ${p.model === chosen ? "checked" : ""}>
           <span><b>${esc(p.model)}</b>${i === 0 ? '<em class="setup-rec">recommended</em>' : ""}<br>${p.size} GB download${p.speed ? `, about ${p.speed} words per second` : ""}<br><small>${esc(p.about)}</small></span></label>`).join("")}</div>
-        ${j.kind === "begin" ? trouble(j.error) : ""}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Download and set up</button>`)}`);
+        ${s.too_old ? trouble("Your Ollama is too old for this model. I can update it, or you can pick another model.") : j.kind === "begin" || j.kind === "ollama" ? trouble(j.error) : ""}
+        ${buttons(`${s.too_old && s.can_install ? `<button class="btn" type="button" id="suUpdate">Update Ollama</button>` : ""}<span class="grow"></span><button class="btn go" id="suGo">Download and set up</button>`)}`);
+      if ($("#suUpdate")) $("#suUpdate").onclick = () => tell("update_ollama");
       veil.querySelectorAll("[name=suModel]").forEach((r) => (r.onchange = () => { chosen = r.value; }));
       $("#suFolder").oninput = (e) => { folder = e.target.value; };
       $("#suGo").onclick = () => tell("begin", { model: chosen, folder });

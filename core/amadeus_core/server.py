@@ -136,11 +136,18 @@ class Handler(BaseHTTPRequestHandler):
         elif not self._desktop() and (u.path in ("/", "/index.html", "/call.html", "/mini.html", "/bubble.html") or "token" in qs):
             return self._json({"error": "Amadeus only opens in its desktop window: use the tray icon or the Amadeus app."}, 403)
         if qs.get("token", [""])[0] == CFG["token"]:
-            self.send_response(302)
-            self.send_header("set-cookie", f"amadeus={CFG['token']}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000")
+            # the page goes on by itself, not with a redirect: a window that came from the app's starting screen would
+            # otherwise arrive from another site, and the browser leaves out this cookie then
             nxt = qs.get("next", ["/"])[0]
-            self.send_header("location", nxt if nxt.startswith("/") and not nxt.startswith("//") else "/")
+            target = json.dumps(nxt if nxt.startswith("/") and not nxt.startswith("//") else "/").replace("<", "\\u003c")
+            page = f"<!doctype html><meta charset=utf-8><body style='background:#05101A'><script>location.replace({target})</script>".encode()
+            self.send_response(200)
+            self.send_header("set-cookie", f"amadeus={CFG['token']}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000")
+            self.send_header("content-type", "text/html; charset=utf-8")
+            self.send_header("cache-control", "no-store")
+            self.send_header("content-length", str(len(page)))
             self.end_headers()
+            self.wfile.write(page)
             return
         if u.path.startswith("/avatar/"):
             if not self._authed():

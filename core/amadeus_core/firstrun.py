@@ -68,7 +68,7 @@ def needed():
 def status():
     if not needed() and (not _job["kind"] or _job["done"]):
         return {"needed": False, "job": dict(_job), "shown": _shown["yes"]}
-    return {"needed": True, "shown": _shown["yes"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
+    return {"needed": True, "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
             "folder": folders.paths(_own(), os.path.expanduser("~"))["folder"], "picks": _picks, "job": dict(_job),
             "hardware": pick_model.hardware()}
 
@@ -107,9 +107,25 @@ def _start_ollama():
     raise ValueError("Ollama didn't start. Open it once from your Applications folder, then try again.")
 
 
-def _install_ollama():
+def _quit_ollama():
+    subprocess.run(["/usr/bin/osascript", "-e", 'quit app "Ollama"'], capture_output=True, timeout=30)
+    for _ in range(15):
+        if ollama_state() != "running":
+            return
+        time.sleep(1)
+    raise ValueError("Ollama didn't close. Quit it from its menu bar icon, then try again.")
+
+
+def _update_ollama():
+    """A model needs a newer Ollama: you asked for this with the button."""
+    if not any(os.path.isdir(a) for a in OLLAMA_APPS):
+        raise ValueError("This Ollama wasn't installed as an app in Applications. Update it the way you installed it, then try again.")
+    _install_ollama(update=True)
+
+
+def _install_ollama(update=False):
     """Ollama's own signed app, only accepted if macOS confirms that signature."""
-    if ollama_state() == "installed":
+    if not update and ollama_state() == "installed":
         _say("Starting Ollama")
         return _start_ollama()
     with tempfile.TemporaryDirectory(prefix="amadeus-ollama-") as tmp:
@@ -125,10 +141,23 @@ def _install_ollama():
         app = os.path.join(tmp, "Ollama.app")
         if subprocess.run(["/usr/sbin/spctl", "--assess", "--type", "execute", app], capture_output=True, timeout=120).returncode:
             raise ValueError("macOS couldn't confirm that download is really Ollama, so I didn't install it. You can get it from ollama.com.")
+        if update:
+            _say("Closing the old Ollama")
+            _quit_ollama()
         for target in OLLAMA_APPS:
+            if update and not os.path.isdir(target):
+                continue
             try:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
-                shutil.move(app, target)
+                old = os.path.join(tmp, "old-Ollama.app")
+                if update:
+                    shutil.move(target, old)  # (dropped with the temporary folder, once the new one is in place)
+                try:
+                    shutil.move(app, target)
+                except OSError:
+                    if update:
+                        shutil.move(old, target)
+                    raise
                 break
             except OSError:
                 continue
@@ -233,6 +262,8 @@ def act(action, b):
         finish()
     elif action == "ollama":
         _run("ollama", _install_ollama if system.MAC else _start_ollama)
+    elif action == "update_ollama":
+        _run("ollama", _update_ollama)
     elif action == "scan":
         _run("scan", _scan)
     elif action == "begin":

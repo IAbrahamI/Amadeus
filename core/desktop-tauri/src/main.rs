@@ -797,6 +797,12 @@ fn listen(app: AppHandle) {
             let _ = app.run_on_main_thread(move || match cmd["do"].as_str() {
                 Some("call") if a.webview_windows().keys().all(|l| l == "bubble") => drop(show_mini(&a, true)),
                 Some("wake") => on_wake(&a, &cmd["data"]),
+                #[cfg(not(target_os = "linux"))]
+                Some("notify") => {
+                    use tauri_plugin_notification::NotificationExt;
+                    let d = &cmd["data"];
+                    let _ = a.notification().builder().title(d["title"].as_str().unwrap_or("Amadeus")).body(d["text"].as_str().unwrap_or("")).show();
+                }
                 _ => {}
             });
         }
@@ -1153,7 +1159,10 @@ fn main() {
     }
     #[cfg(target_os = "linux")]
     gtk::glib::set_prgname(Some("amadeus-call")); // the Wayland app id the KWin rule matches
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_notification::init());
+    builder
         .register_uri_scheme_protocol("amadeus", |_, _| {
             tauri::http::Response::builder().header("content-type", "text/html; charset=utf-8").body(STARTING.as_bytes().to_vec()).expect("a page")
         })

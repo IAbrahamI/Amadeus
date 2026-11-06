@@ -80,6 +80,23 @@ class FirstStart(unittest.TestCase):
         with self.assertRaises(ValueError):
             firstrun.act("finish", {})
 
+    def test_a_model_for_a_newer_ollama_offers_the_update(self):
+        with mock.patch.dict(firstrun._job, kind="begin", error="pull model manifest: 412: requires a newer version of Ollama", done=True), \
+                mock.patch.object(firstrun, "needed", return_value=True), mock.patch.object(firstrun, "ollama_state", return_value="running"), \
+                mock.patch.object(firstrun.pick_model, "hardware", return_value={}):
+            self.assertTrue(firstrun.status()["too_old"])
+
+    def test_updating_needs_the_app_in_applications(self):
+        with mock.patch.object(firstrun, "OLLAMA_APPS", ("/nowhere/Ollama.app",)), self.assertRaises(ValueError):
+            firstrun._update_ollama()
+
+    def test_a_mac_notification_goes_through_the_app(self):
+        from amadeus_core import desktop, system
+        with mock.patch.object(system, "MAC", True), mock.patch.object(desktop, "send") as send, mock.patch("subprocess.run") as run:
+            system.notify("Amadeus", "Hello")
+        send.assert_called_once_with({"do": "notify", "data": {"title": "Amadeus", "text": "Hello"}})
+        run.assert_not_called()
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])

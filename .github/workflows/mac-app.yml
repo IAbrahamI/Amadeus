@@ -61,6 +61,28 @@ jobs:
           grep -A25 'Call graph' sample.txt | cut -c1-110 || true
           echo
           python3 -c "import json; s = json.load(open('setup.json')); assert s['needed'] and s['ollama'] == 'missing' and s['shown'], s"
+      - name: Started before the core answers, the window waits and then signs in
+        timeout-minutes: 6
+        run: |
+          DATA="$HOME/Library/Application Support/Amadeus/core"
+          pkill -x amadeus-desktop || true
+          launchctl bootout "gui/$(id -u)/com.amadeus.core" || true
+          sleep 2
+          # the core can't start while something else holds its port, and this answers nothing
+          python3 -c "
+          import socket, time
+          s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('127.0.0.1', 8095)); s.listen(); s.settimeout(0.2)
+          end = time.time() + 8
+          while time.time() < end:
+              try: s.accept()[0].close()
+              except OSError: pass
+          " &
+          sleep 1
+          open /Applications/Amadeus.app
+          sleep 60
+          tail -5 "$HOME/Library/Logs/Amadeus/core.log" || true
+          curl -sS -m 20 -H "authorization: Bearer $(cat "$DATA/token")" http://127.0.0.1:8095/api/setup -o setup.json
+          python3 -c "import json; s = json.load(open('setup.json')); assert s['needed'] and s['shown'], s"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -37,12 +37,12 @@ class Mac(unittest.TestCase):
         self.assertEqual(system.page_command("https://x.y"), ["open", "https://x.y"])
         self.assertEqual(system.page_command("https://x.y", ["firefox"]), ["open", "-a", "Firefox", "https://x.y"])
 
-    def test_notification_cannot_break_out_of_the_script(self):
-        with mock.patch("subprocess.run") as run:
-            system.notify('Ama"deus', 'say "hi" \\ there')
-        script = run.call_args[0][0][2]
-        self.assertEqual(script.count('"'), 4)
-        self.assertNotIn("\\", script)
+    def test_a_notification_goes_through_the_app(self):
+        from amadeus_core import desktop
+        with mock.patch.object(desktop, "send") as send, mock.patch("subprocess.run") as run:
+            system.notify("Amadeus", 'say "hi"')
+        send.assert_called_once_with({"do": "notify", "data": {"title": "Amadeus", "text": 'say "hi"'}})
+        run.assert_not_called()
 
     def test_no_systemd_jobs(self):
         self.assertFalse(system.service_timers())

@@ -24,9 +24,9 @@ def restart(*services):
 
 
 def notify(title, text):
-    if MAC:
-        script = 'display notification "%s" with title "%s"' % tuple(re.sub(r'["\\]', "", x) for x in (text, title))
-        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10)
+    if MAC:  # through the app, so it's Amadeus' notification (one from osascript opens Script Editor when you click it)
+        from . import desktop
+        desktop.send({"do": "notify", "data": {"title": title, "text": text}})
     else:
         subprocess.run(["notify-send", "-a", title, title, text], timeout=10)
 
