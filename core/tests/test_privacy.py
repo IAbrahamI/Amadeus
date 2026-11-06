@@ -29,6 +29,11 @@ class Patterns(unittest.TestCase):
 
 
 class Scrub(unittest.TestCase):
+    def setUp(self):
+        p = mock.patch.object(privacy, "filter_available", return_value=True)
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_canary_and_denylist_hold(self):
         with mock.patch.object(privacy, "ensure_presidio"), mock.patch.object(privacy, "_ner", return_value=[]):
             self.assertTrue(privacy.scrub("note: CANARY-testmarker123")[2])
