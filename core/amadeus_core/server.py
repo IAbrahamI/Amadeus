@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import agenda, agent, background, db, desktop, devices, events, llm, mailbridge, phoneapp, profile, tools
+from . import agenda, agent, background, db, desktop, devices, events, llm, mailbridge, phoneapp, profile, system, tools
 from .config import CFG
 
 DESKTOP_UA = "AmadeusDesktop/1"
@@ -807,6 +807,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     from . import voices, work  # noqa: F401  (work makes its tables, which the background jobs read)
+    system.stop_with_app()
     background.start()
     voices.prepare_lines()
     srv = ThreadingHTTPServer((CFG["host"], CFG["port"]), Handler)

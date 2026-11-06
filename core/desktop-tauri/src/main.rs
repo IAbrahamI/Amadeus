@@ -1101,7 +1101,7 @@ fn mac_services(app: &AppHandle) {
     let uid = Command::new("id").arg("-u").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
     let xml = |s: &std::path::Path| s.display().to_string().replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     let core = res.join("core");
-    let agent = |label: &str, args: &[String], cwd: &std::path::Path, keep_alive: bool, log: &str| {
+    let agent = |label: &str, args: &[String], cwd: &std::path::Path, keep_alive: &str, log: &str| {
         let args: String = args.iter().map(|a| format!("<string>{}</string>", a)).collect();
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -1112,7 +1112,7 @@ fn mac_services(app: &AppHandle) {
 <key>WorkingDirectory</key><string>{}</string>
 <key>EnvironmentVariables</key><dict><key>PYTHONDONTWRITEBYTECODE</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
 <key>RunAtLoad</key><true/>
-<key>KeepAlive</key><{keep_alive}/>
+<key>KeepAlive</key>{keep_alive}
 <key>LimitLoadToSessionType</key><string>Aqua</string>
 <key>StandardOutPath</key><string>{log}</string>
 <key>StandardErrorPath</key><string>{log}</string>
@@ -1122,8 +1122,8 @@ fn mac_services(app: &AppHandle) {
         )
     };
     let items = [
-        ("com.amadeus.core", agent("com.amadeus.core", &[xml(&python), xml(&core.join("run.py"))], &core, true, &xml(&logs.join("core.log")))),
-        ("com.amadeus.desktop", agent("com.amadeus.desktop", &[xml(&exe), "--login".to_string()], &res, false, &xml(&logs.join("desktop.log")))),
+        ("com.amadeus.core", agent("com.amadeus.core", &[xml(&python), xml(&core.join("run.py"))], &core, &format!("<dict><key>PathState</key><dict><key>{}</key><true/></dict></dict>", xml(&python)), &xml(&logs.join("core.log")))),
+        ("com.amadeus.desktop", agent("com.amadeus.desktop", &[xml(&exe), "--login".to_string()], &res, "<false/>", &xml(&logs.join("desktop.log")))),
     ];
     let mut core_restarted = false;
     for (label, plist) in items {

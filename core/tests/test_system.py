@@ -46,3 +46,10 @@ class Mac(unittest.TestCase):
 
     def test_no_systemd_jobs(self):
         self.assertFalse(system.service_timers())
+
+
+class StopsWithItsApp(unittest.TestCase):
+    def test_only_on_a_mac(self):
+        with mock.patch.object(system, "MAC", False), mock.patch("threading.Thread") as thread:
+            system.stop_with_app()
+        thread.assert_not_called()

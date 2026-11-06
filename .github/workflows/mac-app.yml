@@ -110,7 +110,7 @@ jobs:
           rm -rf /Applications/Amadeus.app
           sleep 20
           launchctl list | grep amadeus || true
-          pgrep -fl 'core/run.py' || echo "no core left running"
+          if pgrep -fl 'core/run.py'; then echo "The core outlived its app"; exit 1; fi
           cp -R dist/macos/Amadeus.app /Applications/
           open /Applications/Amadeus.app
           sleep 45

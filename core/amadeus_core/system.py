@@ -6,6 +6,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import threading
 import time
 
 MAC = sys.platform == "darwin"
@@ -32,12 +33,22 @@ def install_agent(service, args):
     os.makedirs(os.path.dirname(plist), exist_ok=True)
     os.makedirs(logs, exist_ok=True)
     with open(plist, "wb") as f:
-        plistlib.dump({"Label": label, "ProgramArguments": list(args), "RunAtLoad": True, "KeepAlive": True, "LimitLoadToSessionType": "Aqua",
+        plistlib.dump({"Label": label, "ProgramArguments": list(args), "RunAtLoad": True, "KeepAlive": {"PathState": {args[0]: True}}, "LimitLoadToSessionType": "Aqua",
                        "EnvironmentVariables": {"PYTHONDONTWRITEBYTECODE": "1", "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
                        "StandardOutPath": os.path.join(logs, service + ".log"), "StandardErrorPath": os.path.join(logs, service + ".log")}, f)
     target = f"gui/{os.getuid()}"
     subprocess.run(["/bin/launchctl", "bootout", f"{target}/{label}"], capture_output=True, timeout=30)
     subprocess.run(["/bin/launchctl", "bootstrap", target, plist], capture_output=True, timeout=30, check=True)
+
+
+def stop_with_app():
+    """On a Mac you remove an app by dragging it to the Trash, and nothing tells its services. So they notice themselves."""
+    def watch():
+        while os.path.exists(sys.executable):
+            time.sleep(5)
+        os._exit(0)
+    if MAC:
+        threading.Thread(target=watch, daemon=True).start()
 
 
 def notify(title, text):

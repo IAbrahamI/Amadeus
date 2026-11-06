@@ -203,6 +203,8 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    from amadeus_core import system
+    system.stop_with_app()
     def warm():  # load everything in the background so the first answer is quick
         try:
             _whisper()
