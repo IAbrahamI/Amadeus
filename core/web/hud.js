@@ -464,6 +464,7 @@ const kctx = (c) => (c ? `${Math.round(c / 1024)}k` : "");
 async function loadModels() {
   try {
     const m = await api("/api/models");
+    if (m.offline) throw new Error("Ollama isn't running");
     Object.assign(MODEL, { info: m.info || m.models.map((name) => ({ name })), chat: m.chat, def: m.default });
     const cur = MODEL.info.find((x) => x.name === m.chat) || { name: m.chat };
     $("#cModelT").textContent = short(m.chat); $("#cModelC").textContent = kctx(cur.ctx);

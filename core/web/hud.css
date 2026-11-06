@@ -610,15 +610,39 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .quit:hover { color: var(--ink); background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 14px rgba(var(--a),.45); }
 .quit[hidden] { display: none; }
 
-/* the first start */
-.setup { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 60px 24px 24px; background: var(--deck, #05101A); overflow: auto; }
-.setup-in { width: min(620px, 100%); }
-.setup h2 { font: 500 20px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--text); margin: 0 0 16px; }
-.setup .acts { margin-top: 16px; }
-.setup-bad { color: #F2A65A; }
+/* the setup popup, the first time the dashboard opens: over the dimmed dashboard, in the style of its other boxes */
+.setup { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; overflow: auto; background: rgba(3, 8, 14, .78); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.setup-box { position: relative; width: min(640px, 100%); padding: 22px 26px 24px; background: var(--deck); color: var(--text);
+  --c: var(--cyan);
+  background-image: linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c));
+  background-repeat: no-repeat;
+  background-size: 26px 2px, 2px 26px, 26px 2px, 2px 26px, 26px 2px, 2px 26px, 26px 2px, 2px 26px;
+  background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%; }
+.setup-head { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px dashed var(--line-hi); }
+.setup-tag { font: 600 12px var(--display); letter-spacing: .24em; padding: 6px 12px; background: var(--cyan); color: var(--ink); }
+.setup-sub { font: 400 13px var(--mono); color: var(--dim); }
+.setup-steps { list-style: none; display: flex; gap: 6px; margin: 16px 0 18px; padding: 0; counter-reset: su; }
+.setup-steps li { flex: 1; counter-increment: su; font: 500 10.5px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); padding-top: 8px; border-top: 2px solid var(--line-hi); }
+.setup-steps li::before { content: counter(su) " "; }
+.setup-steps li.on { color: var(--text); border-top-color: var(--cyan); }
+.setup-steps li.done { color: var(--cyan); border-top-color: var(--cyan); }
+.setup-p { margin: 0 0 14px; font-size: 14px; line-height: 1.55; color: var(--text); }
+.setup-dim { color: var(--dim); font-size: 12.5px; }
+.setup-dim a { color: var(--cyan); }
+.setup-bad { color: var(--amber); }
 .setup-bad:empty { display: none; }
-.setup-bar { height: 6px; border: 1px solid var(--line-hi); }
-.setup-bar i { display: block; height: 100%; background: var(--text); transition: width .4s; }
+.setup-acts { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+.setup-acts .grow { flex: 1; }
+.setup-bar { height: 6px; margin-bottom: 8px; overflow: hidden; border: 1px solid var(--line-hi); }
+.setup-bar i { display: block; height: 100%; background: var(--cyan); transition: width .4s; }
+.setup-bar.busy i { width: 30%; animation: setup-slide 1.4s ease-in-out infinite alternate; }
+@keyframes setup-slide { from { margin-left: 0; } to { margin-left: 70%; } }
 .setup-picks { display: grid; gap: 8px; }
-.setup-pick { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-hi); color: var(--text); cursor: pointer; line-height: 1.45; }
-.setup-pick em { font-style: normal; opacity: .7; }
+.setup-pick { display: flex; gap: 12px; padding: 10px 12px; border: 1px solid var(--line-hi); font-size: 13.5px; line-height: 1.5; cursor: pointer; }
+.setup-pick:has(input:checked) { border-color: var(--cyan); }
+.setup-pick small { color: var(--dim); }
+.setup-pick input { accent-color: var(--cyan); }
+.setup-rec { font: 500 10px var(--display); font-style: normal; letter-spacing: .14em; text-transform: uppercase; margin-left: 10px; color: var(--cyan); }
+.setup .pform { margin-bottom: 14px; }
+.setup .pform { max-width: none; }
+.setup .pform input, .setup .pform select { width: 100%; box-sizing: border-box; }

@@ -26,6 +26,7 @@ OLLAMA_APPS = ("/Applications/Ollama.app", os.path.expanduser("~/Applications/Ol
 _lock = threading.Lock()
 _job = {"kind": "", "text": "", "pct": None, "error": "", "done": False}
 _picks = []
+_shown = {"yes": False}  # the setup really appeared in the dashboard (the build checks this)
 
 
 def _own():
@@ -53,7 +54,10 @@ def ollama_state():
 
 def needed():
     """Only where nothing has chosen a model yet; an install that has its model never sees this."""
-    if _own().get("default_model"):
+    own = _own()
+    if own.get("setup_pending"):
+        return True
+    if own.get("default_model"):
         return False
     state = ollama_state()
     if state != "running":
@@ -63,8 +67,8 @@ def needed():
 
 def status():
     if not needed() and (not _job["kind"] or _job["done"]):
-        return {"needed": False, "job": dict(_job)}
-    return {"needed": True, "ollama": ollama_state(), "can_install": system.MAC,
+        return {"needed": False, "job": dict(_job), "shown": _shown["yes"]}
+    return {"needed": True, "shown": _shown["yes"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
             "folder": folders.paths(_own(), os.path.expanduser("~"))["folder"], "picks": _picks, "job": dict(_job),
             "hardware": pick_model.hardware()}
 
@@ -82,7 +86,9 @@ def _run(kind, work):
         try:
             work()
             _job["done"] = True
-        except (OSError, ValueError, subprocess.SubprocessError, KeyError) as e:
+        except KeyError:
+            _job.update(error="Ollama gave an answer I didn't expect. Try again, and if it stays like this, update Ollama.", done=True)
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
             _job.update(error=str(e) or "That didn't work.", done=True)
         finally:
             _lock.release()
@@ -173,7 +179,7 @@ def prepare_folder(folder):
     if not (folder + os.sep).startswith(home + os.sep) or folder == home:
         raise ValueError("Pick a folder inside your home folder.")
     own = _own()
-    own["folder"] = folder
+    own.update(folder=folder, setup_pending=True)
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     Path(CONFIG_PATH).write_text(json.dumps(own, indent=2))
     where = folders.paths(own, home)
@@ -209,11 +215,23 @@ def _begin(model, size):
     CFG["default_model"] = variant
     db.set_setting("chat_model", variant)
     _say("Ready")
-    threading.Thread(target=lambda: (time.sleep(3), system.restart("amadeus-core")), daemon=True).start()  # your folder is read at start
+
+
+def finish():
+    own = _own()
+    own.pop("setup_pending", None)
+    Path(CONFIG_PATH).write_text(json.dumps(own, indent=2))
+    threading.Thread(target=lambda: (time.sleep(1), system.restart("amadeus-core")), daemon=True).start()  # your folder is read at start
 
 
 def act(action, b):
-    if action == "ollama":
+    if action == "shown":
+        _shown["yes"] = True
+    elif action == "finish":
+        if not _own().get("default_model"):
+            raise ValueError("Pick a model first.")
+        finish()
+    elif action == "ollama":
         _run("ollama", _install_ollama if system.MAC else _start_ollama)
     elif action == "scan":
         _run("scan", _scan)

@@ -12,9 +12,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-#[cfg(target_os = "linux")]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
@@ -38,6 +36,13 @@ addEventListener("unhandledrejection", (e) => console.error("JS rejection: " + e
 /// Where the system has no way to watch the mouse from outside the page, the page says where you pressed.
 #[cfg(not(target_os = "linux"))]
 const PRESS: &str = r#"addEventListener("mousedown", (e) => { if (e.button === 0) window.amadeusBridge.postMessage(`press:${e.clientX},${e.clientY},${e.detail}`); }, true);"#;
+const STARTING: &str = r#"<!doctype html><meta charset="utf-8"><title>Amadeus</title>
+<style>html,body{height:100%;margin:0;background:#05101A;color:#D4E6F2;font:15px -apple-system,system-ui,sans-serif}
+body{display:grid;place-items:center;text-align:center}p{max-width:440px;line-height:1.5;padding:0 24px}small{opacity:.7}
+html.quiet,html.quiet body{background:transparent}html.quiet p{display:none}</style>
+<script>if (location.search.includes("quiet")) document.documentElement.className = "quiet";
+window.takingLong = () => { document.getElementById("t").innerHTML = "This is taking longer than it should. I keep trying.<br><small>On a Mac the details are in ~/Library/Logs/Amadeus/core.log</small>"; };</script>
+<p id="t">Amadeus is starting…</p>"#;
 const SVG_NORMAL: &str = include_str!("../../web/tray/amadeus-tray.svg");
 const SVG_CALL: &str = include_str!("../../web/tray/amadeus-tray-call.svg");
 const SVG_SPEAKING: &str = include_str!("../../web/tray/amadeus-tray-speaking.svg");
@@ -81,7 +86,7 @@ fn hidden_flag() -> PathBuf {
 }
 
 fn is_local(url: &tauri::Url) -> bool {
-    url.scheme() == "about" || url.host_str() == Some("127.0.0.1")
+    url.scheme() == "about" || url.scheme() == "amadeus" || url.host_str() == Some("127.0.0.1")
 }
 
 // What the tray icon shows: only while it's really happening (a call rings, she speaks). The pages say so.
@@ -99,13 +104,58 @@ struct Shared {
 // ---------- the windows ----------
 
 /// The address that signs a window in (a cookie) and then goes on to a page.
-fn login(path: &str) -> WebviewUrl {
+fn login(path: &str) -> String {
     let next = path.replace('%', "%25").replace('#', "%23").replace('?', "%3F").replace('&', "%26").replace('=', "%3D");
-    WebviewUrl::External(format!("{}/?token={}&next={next}", base(), token()).parse().expect("a valid address"))
+    format!("{}/?token={}&next={next}", base(), token())
+}
+
+/// The core answers, and has made the key that signs a window in. A window never loads its page before that: a page
+/// that can't be reached stays blank for good.
+fn core_up() -> bool {
+    let answers = match ureq::get(&format!("{}/favicon.png", base())).timeout(Duration::from_millis(400)).call() {
+        Ok(_) | Err(ureq::Error::Status(..)) => true,
+        Err(_) => false,
+    };
+    answers && !token().is_empty()
+}
+
+/// Until then the window shows this, from inside the app. The mini core stays see-through meanwhile.
+fn wait_for_core(app: AppHandle, label: String, path: String) {
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        let mut said = false;
+        loop {
+            std::thread::sleep(Duration::from_millis(400));
+            let Some(w) = app.get_webview_window(&label) else {
+                if start.elapsed() > Duration::from_secs(5) {
+                    return; // closed
+                }
+                continue;
+            };
+            if core_up() {
+                if let Ok(url) = login(&path).parse() {
+                    let _ = w.navigate(url);
+                }
+                return;
+            }
+            if !said && start.elapsed() > Duration::from_secs(45) {
+                said = true;
+                let _ = w.eval("window.takingLong && window.takingLong()");
+            }
+        }
+    });
 }
 
 fn window<'a>(app: &'a AppHandle, label: &str, title: &str, path: &str) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
-    let builder = WebviewWindowBuilder::new(app, label, login(path))
+    let ready = core_up();
+    let url = if ready {
+        WebviewUrl::External(login(path).parse().expect("a valid address"))
+    } else {
+        let page = if label == "dash" { "amadeus://localhost/" } else { "amadeus://localhost/?quiet" };
+        wait_for_core(app.clone(), label.to_string(), path.to_string());
+        WebviewUrl::CustomProtocol(page.parse().expect("a valid address"))
+    };
+    let builder = WebviewWindowBuilder::new(app, label, url)
         .title(title)
         .decorations(false)
         .user_agent(UA)
@@ -1056,8 +1106,9 @@ fn mac_services(app: &AppHandle) {
     };
     let items = [
         ("com.amadeus.core", agent("com.amadeus.core", &[xml(&python), xml(&core.join("run.py"))], &core, true, &xml(&logs.join("core.log")))),
-        ("com.amadeus.desktop", agent("com.amadeus.desktop", &[xml(&exe)], &res, false, &xml(&logs.join("desktop.log")))),
+        ("com.amadeus.desktop", agent("com.amadeus.desktop", &[xml(&exe), "--login".to_string()], &res, false, &xml(&logs.join("desktop.log")))),
     ];
+    let mut core_restarted = false;
     for (label, plist) in items {
         let file = agents.join(format!("{label}.plist"));
         let target = format!("gui/{uid}/{label}");
@@ -1074,16 +1125,26 @@ fn mac_services(app: &AppHandle) {
         }
         if fs::write(&file, &plist).is_ok() {
             let _ = Command::new("launchctl").args(["bootstrap", &format!("gui/{uid}")]).arg(&file).status();
+            core_restarted |= label == "com.amadeus.core";
         }
     }
     // a new version of the app: the core still running is the old one
     let stamp = fs::metadata(&exe).and_then(|m| m.modified()).map(|t| format!("{t:?}")).unwrap_or_default();
     let marker = data_dir().join("app-stamp");
     if fs::read_to_string(&marker).unwrap_or_default() != stamp {
-        let _ = Command::new("launchctl").args(["kickstart", "-k", &format!("gui/{uid}/com.amadeus.core")]).status();
+        if !core_restarted {
+            let _ = Command::new("launchctl").args(["kickstart", "-k", &format!("gui/{uid}/com.amadeus.core")]).status();
+        }
         let _ = fs::create_dir_all(data_dir());
         let _ = fs::write(&marker, stamp);
     }
+}
+
+/// An app that came without an installer and has no model yet opens to its setup. (core/amadeus_core/firstrun.py decides
+/// whether the setup shows; this only decides which window comes first.)
+fn first_start() -> bool {
+    let own = config();
+    cfg!(not(target_os = "linux")) && (own["default_model"].is_null() || own["setup_pending"] == json!(true))
 }
 
 fn main() {
@@ -1093,6 +1154,9 @@ fn main() {
     #[cfg(target_os = "linux")]
     gtk::glib::set_prgname(Some("amadeus-call")); // the Wayland app id the KWin rule matches
     tauri::Builder::default()
+        .register_uri_scheme_protocol("amadeus", |_, _| {
+            tauri::http::Response::builder().header("content-type", "text/html; charset=utf-8").body(STARTING.as_bytes().to_vec()).expect("a page")
+        })
         .plugin(tauri_plugin_single_instance::init(|app, args, _| handle(app, args.get(1))))
         .manage(Shared::default())
         .invoke_handler(tauri::generate_handler![native])
@@ -1134,19 +1198,34 @@ fn main() {
             let arg = std::env::args().nth(1);
             if arg.is_some() {
                 handle(&h, arg.as_ref());
-            } else if !hidden_flag().exists() {
-                show_mini(&h, false)?;
+            } else if first_start() {
+                show_dash(&h, "/#home")?; // the setup is in the dashboard
+            } else {
+                #[cfg(not(target_os = "linux"))]
+                let _ = fs::remove_file(hidden_flag()); // you opened the app yourself (at login it's started with --login)
+                if !hidden_flag().exists() {
+                    show_mini(&h, false)?;
+                }
             }
             std::thread::spawn(move || listen(h));
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("the desktop app")
-        .run(|_, ev| {
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = ev {
-                if code.is_none() {
-                    api.prevent_exit(); // no window open is normal: the tray icon stays
+        .run(|_app, ev| match ev {
+            tauri::RunEvent::ExitRequested { api, code, .. } if code.is_none() => {
+                api.prevent_exit(); // no window open is normal: the tray icon stays
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                // the Dock icon, or opening the app again
+                if let Some(w) = _app.get_webview_window("dash") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                } else {
+                    let _ = show_mini(_app, false);
                 }
             }
+            _ => {}
         });
 }

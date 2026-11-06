@@ -207,8 +207,11 @@ class Handler(BaseHTTPRequestHandler):
             from . import firstrun
             return self._json(firstrun.status())
         if p == "/api/models":
-            return self._json({"models": llm.list_models(), "info": llm.model_info(), "default": CFG["default_model"],
-                               "chat": db.get_setting("chat_model", "") or CFG["default_model"]})
+            try:
+                return self._json({"models": llm.list_models(), "info": llm.model_info(), "default": CFG["default_model"],
+                                   "chat": db.get_setting("chat_model", "") or CFG["default_model"]})
+            except OSError:  # Ollama isn't running
+                return self._json({"offline": True, "models": [], "info": [], "default": CFG["default_model"], "chat": ""})
         if p == "/api/conversations":
             return self._json(db.q("SELECT * FROM conversations ORDER BY updated DESC"))
         m = re.fullmatch(r"/api/conversations/(\w+)", p)
@@ -783,7 +786,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    from . import voices
+    from . import voices, work  # noqa: F401  (work makes its tables, which the background jobs read)
     background.start()
     voices.prepare_lines()
     srv = ThreadingHTTPServer((CFG["host"], CFG["port"]), Handler)

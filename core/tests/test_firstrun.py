@@ -68,6 +68,18 @@ class FirstStart(unittest.TestCase):
         self.assertTrue(s["needed"])
         self.assertEqual(s["ollama"], "missing")
 
+    def test_it_stays_until_you_finish(self):
+        self.config(default_model="mine", setup_pending=True)
+        self.assertTrue(firstrun.needed())
+        with mock.patch.object(firstrun.system, "restart"):
+            firstrun.act("finish", {})
+        self.assertFalse(firstrun.needed())
+
+    def test_no_finishing_without_a_model(self):
+        self.config(setup_pending=True)
+        with self.assertRaises(ValueError):
+            firstrun.act("finish", {})
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])
