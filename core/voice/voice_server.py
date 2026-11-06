@@ -122,15 +122,27 @@ def _prompt(lang):
     return (PROMPTS.get(lang, PROMPTS["en"]) + (" " + extra if extra else ""))[:800]
 
 
+def _decode(audio):
+    """Any recording to 16 kHz mono, with the decoder that comes with the speech recognition (where there's no ffmpeg)."""
+    import av
+    import numpy as np
+    parts = []
+    with av.open(io.BytesIO(audio)) as f:
+        convert = av.AudioResampler(format="flt", layout="mono", rate=16000)
+        for frame in f.decode(audio=0):
+            parts += [r.to_ndarray().reshape(-1) for r in convert.resample(frame)]
+        parts += [r.to_ndarray().reshape(-1) for r in convert.resample(None)]
+    return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
+
+
 def stt(audio, ctype=""):
     import numpy as np
     if shutil.which("ffmpeg"):
         pcm = subprocess.run(["ffmpeg", "-v", "quiet", "-i", "pipe:0", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"],
                              input=audio, capture_output=True).stdout
         x = np.frombuffer(pcm, dtype=np.float32).copy()
-    else:  # the decoder that comes with the speech recognition
-        from faster_whisper.audio import decode_audio
-        x = decode_audio(io.BytesIO(audio), sampling_rate=16000)
+    else:
+        x = _decode(audio)
     dur = x.size / 16000
     rms = float(np.sqrt(np.mean(x ** 2))) if x.size else 0.0
     peak = float(np.max(np.abs(x))) if x.size else 0.0
