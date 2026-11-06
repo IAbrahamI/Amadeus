@@ -54,6 +54,7 @@ jobs:
           (cd "$RES/core" && "$RES/python/bin/python3" -c "from amadeus_core import firstrun; firstrun._voice(service=False)")
           V="$HOME/Library/Application Support/Amadeus"
           "$V/voice/venv-lite/bin/python" -c "import sounddevice, vosk, faster_whisper, piper; print('voice packages load')"
+          "$V/voice/venv-lite/bin/python" -c "import piper, os; d = os.path.dirname(piper.__file__); print(sorted(os.listdir(d))[:30])"
           "$V/voice/venv-lite/bin/python" -W ignore "$RES/core/voice/voice_server.py" >"$W/voice.log" 2>&1 &
           PID=$!
           T="$(cat "$V/core/token")"
