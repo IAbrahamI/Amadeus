@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-from . import db, folders, paths, system, workguard
+from . import db, folders, paths, system, voices, workguard
 from .config import CFG, CONFIG_PATH
 
 DEPLOY = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deploy")
@@ -206,10 +206,10 @@ def _scan():
     _picks[:] = [{"model": m["model"], "size": m["size"], "about": m["about"], "speed": round(m["speed"] * 0.75) if m.get("speed") else None} for m in found]
 
 
-VOICE_PACKAGES = ["faster-whisper", "soundfile", "vosk", "sounddevice", "piper-tts"]
+VOICE_PACKAGES = ["faster-whisper", "soundfile", "vosk", "sounddevice", "kokoro-onnx"]  # (Piper's Mac package stops the whole program: it looks for its data where it was built)
 WAKE_MODEL = "vosk-model-small-en-us-0.15"
 WHISPER = "Systran/faster-whisper-small"
-FIRST_VOICE = "en_US-lessac-medium"
+FIRST_VOICE = "kokoro:af_heart"
 _VOICE_PYTHON = os.path.join(paths.VOICE, "venv-lite", "bin", "python")
 
 
@@ -230,9 +230,7 @@ def _voice(service=True):
         run([_VOICE_PYTHON, "-c", f"from huggingface_hub import snapshot_download as d; d({WHISPER!r})"],
             env={**os.environ, "HF_HOME": os.path.join(models, "hf")})
         _say("Downloading a voice")
-        piper = os.path.join(models, "piper")
-        os.makedirs(piper, exist_ok=True)
-        run([_VOICE_PYTHON, "-m", "piper.download_voices", FIRST_VOICE, "--data-dir", piper])
+        voices._get_kokoro()
         if not os.path.isdir(os.path.join(models, WAKE_MODEL)):
             _say("Downloading the wake word model")
             with tempfile.TemporaryDirectory(prefix="amadeus-wake-") as tmp:

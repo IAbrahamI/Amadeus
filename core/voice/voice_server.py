@@ -49,10 +49,7 @@ def _piper(path=""):
         raise FileNotFoundError("No text-to-speech voice installed (see docs/INSTALL.md, optional: voice).")
     key = "tts:" + path
     if key not in _m:
-        import piper
         from piper import PiperVoice
-        # the Mac package looks for its speech data where it was built: tell it where the data really is
-        os.environ.setdefault("ESPEAK_DATA_PATH", os.path.join(os.path.dirname(piper.__file__), "espeak-ng-data"))
         _m[key] = PiperVoice.load(path)
     return _m[key]
 

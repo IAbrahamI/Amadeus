@@ -39,6 +39,8 @@ CATALOG = [
     ("kokoro:af_heart", "Heart", "English (US), female, natural (Kokoro)"),
     ("kokoro:am_michael", "Michael", "English (US), male, natural (Kokoro)"),
 ]
+if system.MAC:  # Piper's Mac package stops the whole voice service when it reads aloud
+    CATALOG = [c for c in CATALOG if c[0].startswith("kokoro:")]
 _busy = set()
 
 
