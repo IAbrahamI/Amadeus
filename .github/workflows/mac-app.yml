@@ -102,6 +102,22 @@ jobs:
           tail -5 "$HOME/Library/Logs/Amadeus/core.log" || true
           curl -sS -m 20 -H "authorization: Bearer $(cat "$DATA/token")" http://127.0.0.1:8095/api/setup -o setup.json
           python3 -c "import json; s = json.load(open('setup.json')); assert s['needed'] and s['shown'], s"
+      - name: Removed from Applications and installed again, it still signs in
+        timeout-minutes: 6
+        run: |
+          DATA="$HOME/Library/Application Support/Amadeus/core"
+          pkill -x amadeus-desktop || true
+          rm -rf /Applications/Amadeus.app
+          sleep 20
+          launchctl list | grep amadeus || true
+          pgrep -fl 'core/run.py' || echo "no core left running"
+          cp -R dist/macos/Amadeus.app /Applications/
+          open /Applications/Amadeus.app
+          sleep 45
+          tail -5 "$HOME/Library/Logs/Amadeus/core.log" || true
+          curl -sS -m 20 -H "authorization: Bearer $(cat "$DATA/token")" http://127.0.0.1:8095/api/setup -o setup.json
+          cat setup.json | cut -c1-120; echo
+          python3 -c "import json; s = json.load(open('setup.json')); assert s['needed'] and s['shown'], s"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
