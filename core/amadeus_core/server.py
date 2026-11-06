@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import agenda, agent, background, db, desktop, devices, events, llm, mailbridge, phoneapp, profile, system, tools, workguard
+from . import agenda, agent, background, db, desktop, devices, events, llm, macmemory, mailbridge, phoneapp, profile, system, tools, workguard
 from .config import CFG, projects_dir
 
 DESKTOP_UA = "AmadeusDesktop/1"
@@ -812,6 +812,11 @@ def main():
         workguard.install(projects_dir(CFG), CFG["notes_root"])
     except OSError as e:
         print("the guard for work runs couldn't be written:", e, flush=True)
+    if system.MAC:
+        try:
+            macmemory.at_start()
+        except OSError as e:
+            print("the memory didn't start:", e, flush=True)
     agent.load_at_start()
     background.start()
     voices.prepare_lines()

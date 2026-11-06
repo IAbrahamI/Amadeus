@@ -350,7 +350,7 @@ def _context(cid, user_text):
             d0 = datetime.date.today()
             text += "\n\nDates (use these, don't calculate): " + ", ".join(
                 f"{(d0 + datetime.timedelta(days=i)):%a %d %b}={(d0 + datetime.timedelta(days=i)).isoformat()}" for i in range(14))
-    if user_text and tools.enabled_connectors().get("memory", True):
+    if user_text and tools.enabled_connectors().get("memory", True) and not tools.missing("memory"):
         try:
             mem = tools.recall(user_text)
             if not mem.startswith("No relevant"):

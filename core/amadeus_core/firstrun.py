@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-from . import db, folders, macfilter, paths, system, voices, work, workguard
+from . import db, folders, macfilter, macmemory, paths, system, voices, work, workguard
 from .config import CFG, CONFIG_PATH
 
 DEPLOY = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deploy")
@@ -78,8 +78,8 @@ def needed():
 
 def status():
     if not needed() and (not _job["kind"] or _job["done"]):
-        return {"needed": False, "job": dict(_job), "shown": _shown["yes"], "can_install": system.MAC, "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "claude": work.claude_status(), "claude": work.claude_status() if system.MAC else {}}
-    return {"needed": True, "rejected": dict(_rejected), "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
+        return {"needed": False, "job": dict(_job), "shown": _shown["yes"], "can_install": system.MAC, "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "claude": work.claude_status(), "claude": work.claude_status() if system.MAC else {}}
+    return {"needed": True, "rejected": dict(_rejected), "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
             "folder": folders.paths(_own(), os.path.expanduser("~"))["folder"], "picks": _picks, "job": dict(_job),
             "hardware": pick_model.hardware()}
 
@@ -350,6 +350,8 @@ def act(action, b):
         _run("voice", _voice)
     elif action == "claude":
         work.claude_open_sign_in()
+    elif action == "memory":
+        _run("memory", lambda: macmemory.install(_say))
     elif action == "filter":
         _run("filter", lambda: macfilter.install(_say))
     elif action == "update_ollama":

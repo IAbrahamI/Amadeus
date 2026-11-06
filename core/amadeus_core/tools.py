@@ -12,7 +12,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from . import agenda, db, mailbridge, system
+from . import agenda, db, macmemory, mailbridge, system
 from .config import CFG, NAME
 
 
@@ -1471,6 +1471,8 @@ def missing(connector):
     if connector == "mail":
         from . import mailbridge
         return "" if mailbridge.configured() else "Not connected yet. Add an account on the Mail page."
+    if connector == "memory" and system.MAC and not macmemory.ready():
+        return "Not set up yet: Settings → Connectors → Memory."
     if connector == "work" and not shutil.which("claude"):
         return "Needs Claude Code: install it and log in once by running claude."
     return ""

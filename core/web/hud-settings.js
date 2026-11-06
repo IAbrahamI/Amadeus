@@ -66,11 +66,13 @@ const PAGES = {
   },
   async connectors() {
     const [list, fo, su] = await Promise.all([api("/api/connectors"), api("/api/folder"), api("/api/setup")]);
-    const filterBusy = (su.job || {}).kind === "filter" && !su.job.done;
-    if (filterBusy) setTimeout(() => set.page === "connectors" && PAGES.connectors(), 2000);
+    const filterBusy = (su.job || {}).kind === "filter" && !su.job.done, memoryBusy = (su.job || {}).kind === "memory" && !su.job.done;
+    if (filterBusy || memoryBusy) setTimeout(() => set.page === "connectors" && PAGES.connectors(), 2000);
     body().innerHTML = head("Connectors", "What it may use. Anything that changes something always asks you first.") +
       (su.can_install ? `<h3>Privacy filter</h3>${su.filter_ready ? note("Set up. It takes names and places out before any text leaves this computer, and macOS seals it off from the internet and your files.")
         : `${note(filterBusy ? esc((su.job || {}).text || "Setting it up…") : ((su.job || {}).kind === "filter" && su.job.error ? esc(su.job.error) + " " : "") + "Needed for projects with Claude Code: it takes names and places out before any text leaves this computer. About 1 GB. It runs here, and macOS seals it off from the internet and your files.")}${filterBusy ? "" : '<div class="acts"><span class="grow"></span><button class="btn go" data-act="fsetup">Set up the privacy filter</button></div>'}`}` : "") +
+      (su.can_install ? `<h3>Memory</h3>${su.memory_ready ? note("Set up. It runs on this computer, and macOS seals it off from the internet and your other files.")
+        : `${note(memoryBusy ? esc((su.job || {}).text || "Setting it up…") : ((su.job || {}).kind === "memory" && su.job.error ? esc(su.job.error) + " " : "") + "So Amadeus remembers what you've told it from one day to the next. About 4 GB. It runs here, and macOS seals it off from the internet and your other files.")}${memoryBusy ? "" : '<div class="acts"><span class="grow"></span><button class="btn go" data-act="msetup">Set up the memory</button></div>'}`}` : "") +
       (su.claude && su.claude.signed_in !== undefined ? `<h3>Claude Code</h3>${su.claude.signed_in ? note("Signed in. Projects can run.")
         : `${note(su.claude.installed ? "Not signed in, so projects can't run. A Terminal window opens where you sign in on Anthropic's page. Amadeus never sees your login." : "Not installed. Projects need it. A Terminal window opens with Anthropic's own installer, then you sign in on Anthropic's page.")}<div class="acts"><span class="grow"></span><button class="btn go" data-act="csetup">${su.claude.installed ? "Sign in" : "Install and sign in"}</button></div>`}` : "") +
       `<h3>Your folder</h3>${note(`Your to-dos and notes are plain Markdown files in this folder, so you can open it in any notes app. Every hour a snapshot is saved, so any change can be undone. Your projects are in ${esc(fo.projects)}.`)}
@@ -151,6 +153,7 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "asreset") { if (!confirm("Use the default assistant (default name, personality and icon)? Your own files are kept.")) return; await post("/api/assistant/reset", {}); restarted(); }
   if (act === "vuse") { await post("/api/voice/voices/select", { id: d.v }); PAGES.voice(); }
+  if (act === "msetup") { await post("/api/setup", { action: "memory" }); setTimeout(() => PAGES.connectors(), 300); return; }
   if (act === "csetup") { await post("/api/setup", { action: "claude" }); setTimeout(() => PAGES.connectors(), 8000); return; }
   if (act === "fsetup") { await post("/api/setup", { action: "filter" }); setTimeout(() => PAGES.connectors(), 300); return; }
   if (act === "vsetup") { await post("/api/setup", { action: "voice" }); setTimeout(() => PAGES.voice(), 300); return; }

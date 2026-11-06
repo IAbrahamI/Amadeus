@@ -4,11 +4,11 @@
   await window.IDENTITY;
   let s = await api("/api/setup");
   if (!s.needed) return;
-  const STEPS = ["Engine", "Model", "Mail", "Voice", "Projects", "Ready"];
+  const STEPS = ["Engine", "Model", "Memory", "Mail", "Voice", "Projects", "Ready"];
   const veil = document.createElement("div");
   veil.className = "setup";
   document.body.append(veil);
-  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false, voiceDone = false, filterDone = false, claudeDone = false;
+  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false, voiceDone = false, filterDone = false, memoryDone = false, claudeDone = false;
   const page = (at, html) => {
     const keep = veil.querySelector("input:focus");
     if (keep) return;  // you're typing: the next look comes after that
@@ -30,7 +30,7 @@
 
   async function mailStep() {
     const d = await api("/api/mail/direct"), p = d.providers[provider], simple = p.auth !== "microsoft" && !p.manual;
-    page(2, `${text(`Want ${esc(NAME())} to read and draft your mail? This is optional, and it only sends what you approve. The login stays on this computer.`)}
+    page(3, `${text(`Want ${esc(NAME())} to read and draft your mail? This is optional, and it only sends what you approve. The login stays on this computer.`)}
       ${d.accounts.length ? `<div class="setup-pick"><span><b>Connected</b><br>${d.accounts.map((a) => esc(a.email)).join("<br>")}</span></div>` : ""}
       <form class="pform" id="suMail"><label>Provider<select id="suProv">${Object.entries(d.providers).map(([k, v]) => `<option value="${k}" ${k === provider ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label>
       ${simple ? `<p class="setup-p setup-dim">${esc(p.how)}${p.link ? ` <a href="${esc(p.link)}" target="_blank" rel="noopener">Open that page</a>` : ""}</p>
@@ -55,7 +55,7 @@
   async function step() {
     s = await api("/api/setup");
     const j = s.job || {}, busy = j.kind && !j.done, again = () => setTimeout(step, 1200);
-    if (busy) { working(j.kind === "filter" ? 4 : j.kind === "voice" ? 3 : j.kind === "begin" || s.picks.length ? 1 : 0, j); return again(); }
+    if (busy) { working(j.kind === "filter" ? 5 : j.kind === "voice" ? 4 : j.kind === "memory" ? 2 : j.kind === "begin" || s.picks.length ? 1 : 0, j); return again(); }
     if (s.ollama !== "running" && !s.model_ready) {
       const has = s.ollama === "installed";
       page(0, `${text(`${esc(NAME())} thinks with an AI model that runs on this computer, so your conversations stay here. A free app called Ollama runs that model. ${has ? "It's installed, but not running." : "I'll install it for you."}`)}
@@ -90,34 +90,41 @@
       if ($("#suRemove")) $("#suRemove").onclick = () => tell("remove_model");
       return;
     }
+    if (!memoryDone && !s.memory_ready) {
+      page(2, `${text(`So ${esc(NAME())} remembers what you've told it from one day to the next. It runs entirely on this computer, about 4 GB, and macOS seals it off so it can't reach the internet or your other files. Without it, ${esc(NAME())} still works, but starts each day knowing only your profile and recent chats.`)}
+        ${j.kind === "memory" ? trouble(j.error) : ""}${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">Set up the memory</button>`)}`);
+      $("#suSkip").onclick = () => { memoryDone = true; step(); };
+      $("#suGo").onclick = () => tell("memory");
+      return;
+    }
     if (!mailDone) return mailStep();
     if (!voiceDone && !s.voice_ready) {
-      page(3, `${text(`Want to talk with ${esc(NAME())}? This adds speech recognition, the wake word and a voice for reading aloud, about 1 GB, and it all runs on this computer. macOS will ask for your microphone the first time.`)}
+      page(4, `${text(`Want to talk with ${esc(NAME())}? This adds speech recognition, the wake word and a voice for reading aloud, about 1 GB, and it all runs on this computer. macOS will ask for your microphone the first time.`)}
         ${j.kind === "voice" ? trouble(j.error) : ""}${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">Set up voice</button>`)}`);
       $("#suSkip").onclick = () => { voiceDone = true; step(); };
       $("#suGo").onclick = () => tell("voice");
       return;
     }
     if (!filterDone && !s.filter_ready) {
-      page(4, `${text(`${esc(NAME())} can hand bigger projects to Claude Code, which runs online. Before any text leaves this computer, a privacy filter takes out names and places, and you see exactly what would be sent. The filter runs here, about 1 GB, and macOS seals it off from the internet and your files. Without it, projects stay off and everything else works.`)}
+      page(5, `${text(`${esc(NAME())} can hand bigger projects to Claude Code, which runs online. Before any text leaves this computer, a privacy filter takes out names and places, and you see exactly what would be sent. The filter runs here, about 1 GB, and macOS seals it off from the internet and your files. Without it, projects stay off and everything else works.`)}
         ${j.kind === "filter" ? trouble(j.error) : ""}${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">Set up the filter</button>`)}`);
       $("#suSkip").onclick = () => { filterDone = true; step(); };
       $("#suGo").onclick = () => tell("filter");
       return;
     }
     if (!claudeDone && s.filter_ready && s.claude && !s.claude.signed_in) {
-      page(4, `${text(`Projects run on Claude Code, which needs your own Anthropic account. ${s.claude.installed ? "It's installed, and you only need to sign in." : "I'll open a Terminal window that installs it with Anthropic's own installer, then signs you in."} You sign in on Anthropic's page, and ${esc(NAME())} never sees your login. This page notices by itself once it's done.`)}
+      page(5, `${text(`Projects run on Claude Code, which needs your own Anthropic account. ${s.claude.installed ? "It's installed, and you only need to sign in." : "I'll open a Terminal window that installs it with Anthropic's own installer, then signs you in."} You sign in on Anthropic's page, and ${esc(NAME())} never sees your login. This page notices by itself once it's done.`)}
         ${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">${s.claude.installed ? "Sign in" : "Install and sign in"}</button>`)}`);
       $("#suSkip").onclick = () => { claudeDone = true; step(); };
       $("#suGo").onclick = () => post("/api/setup", { action: "claude" });
       setTimeout(step, 3000);
       return;
     }
-    page(5, `${text(`That's it. ${esc(NAME())} is ready, and you can change all of this later in Settings.`)}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Start</button>`)}`);
+    page(6, `${text(`That's it. ${esc(NAME())} is ready, and you can change all of this later in Settings.`)}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Start</button>`)}`);
     $("#suGo").onclick = async () => {
       const r = await post("/api/setup", { action: "finish" });
       if (r.error) { veil.querySelector(".setup-msg").textContent = r.error; return; }
-      page(5, `${text("Starting up…")}<div class="setup-bar busy"><i></i></div>`);
+      page(6, `${text("Starting up…")}<div class="setup-bar busy"><i></i></div>`);
       const back = async () => { try { const h = await api("/api/setup"); if (!h.needed) return location.reload(); } catch {} setTimeout(back, 1000); };
       setTimeout(back, 2500);
     };

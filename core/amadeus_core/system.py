@@ -25,7 +25,7 @@ def restart(*services):
         subprocess.run(["systemctl", "--user", "restart", *services], capture_output=True, timeout=60)
 
 
-def install_agent(service, args):
+def install_agent(service, args, needs=None):
     """A background service on a Mac: it starts at login, and again if it stops. Replaces the one of that name."""
     label = _label(service)
     plist = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
@@ -33,7 +33,7 @@ def install_agent(service, args):
     os.makedirs(os.path.dirname(plist), exist_ok=True)
     os.makedirs(logs, exist_ok=True)
     with open(plist, "wb") as f:
-        plistlib.dump({"Label": label, "AssociatedBundleIdentifiers": ["com.amadeus.desktop"], "ProgramArguments": list(args), "RunAtLoad": True, "KeepAlive": {"PathState": {args[0]: True}}, "LimitLoadToSessionType": "Aqua",
+        plistlib.dump({"Label": label, "AssociatedBundleIdentifiers": ["com.amadeus.desktop"], "ProgramArguments": list(args), "RunAtLoad": True, "KeepAlive": {"PathState": {needs or args[0]: True}}, "LimitLoadToSessionType": "Aqua",
                        "EnvironmentVariables": {"PYTHONDONTWRITEBYTECODE": "1", "PATH": os.path.expanduser("~/.local/bin") + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
                        "StandardOutPath": os.path.join(logs, service + ".log"), "StandardErrorPath": os.path.join(logs, service + ".log")}, f)
     target = f"gui/{os.getuid()}"

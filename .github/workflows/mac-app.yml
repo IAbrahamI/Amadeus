@@ -139,5 +139,5 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: The whole setup with a real Ollama and a real model
-        timeout-minutes: 30
+        timeout-minutes: 50
         run: python3 packaging/macos/check_setup.py

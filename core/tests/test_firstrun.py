@@ -169,6 +169,14 @@ class FirstStart(unittest.TestCase):
             self.assertFalse(work.claude_status()["signed_in"])
             db.set_setting("claude_signed_out", False)
 
+    def test_the_memory_seal_only_allows_this_computer(self):
+        from amadeus_core import macmemory
+        rules = macmemory.profile()
+        self.assertIn("(deny network*)", rules)
+        self.assertIn('(remote ip "localhost:*")', rules)
+        self.assertNotIn('(allow network*)', rules)
+        self.assertIn("(deny file-write*)", rules)
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])
