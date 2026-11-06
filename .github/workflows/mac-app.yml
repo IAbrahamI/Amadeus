@@ -50,6 +50,7 @@ jobs:
           RES="$PWD/dist/macos/Amadeus.app/Contents/Resources"
           export HOME="$(mktemp -d)" PYTHONDONTWRITEBYTECODE=1
           W="$(mktemp -d)"  # (nothing gets written inside the signed app)
+          trap 'echo "--- voice service log"; tail -40 "$W/voice.log" || true' EXIT
           (cd "$RES/core" && "$RES/python/bin/python3" -c "from amadeus_core import firstrun; firstrun._voice(service=False)")
           V="$HOME/Library/Application Support/Amadeus"
           "$V/voice/venv-lite/bin/python" -c "import sounddevice, vosk, faster_whisper, piper; print('voice packages load')"
@@ -61,7 +62,6 @@ jobs:
           curl -sS -m 180 -H "authorization: Bearer $T" -H 'content-type: audio/wav' --data-binary @"$W/said.wav" http://127.0.0.1:8896/stt | tee "$W/heard.json"
           echo
           kill "$PID" || true
-          tail -5 "$W/voice.log" || true
           python3 -c "import json; t = json.load(open('$W/heard.json'))['text'].lower(); assert 'calendar' in t, t"
       - name: Open the real app, and the setup really appears in its window
         timeout-minutes: 6
