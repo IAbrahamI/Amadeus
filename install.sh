@@ -308,7 +308,7 @@ phase_secrets() {
   else (umask 077; python3 -c 'import json,secrets;print(json.dumps({"amadeus":secrets.token_urlsafe(32)}))' >"$f"); ok "created the memory key"; fi
   f="$SECRETS/canaries.json"
   if [[ -f "$f" ]]; then ok "canary markers exist"
-  else (umask 077; python3 -c 'import json,secrets;print(json.dumps({"vault":"CANARY-"+secrets.token_hex(8)}))' >"$f"); ok "created a canary marker"; fi
+  else (umask 077; python3 -c 'import json,secrets;print(json.dumps({"marker":"CANARY-"+secrets.token_hex(8)}))' >"$f"); ok "created a canary marker"; fi
   f="$SECRETS/denylist.txt"
   if [[ -f "$f" ]]; then ok "deny-list exists"
   else (umask 077; printf '# One word or phrase per line that must never leave this PC (names, addresses, projects).\n' >"$f"); ok "created an empty deny-list ($f)"; fi

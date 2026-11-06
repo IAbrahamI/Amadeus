@@ -7,7 +7,7 @@ NOTES=$(python3 "@REPO@/core/amadeus_core/folders.py" | sed -n 3p)
 DEST="${XDG_DATA_HOME:-$HOME/.local/share}/amadeus/notes-snapshots"
 mkdir -p "$DEST/hourly" "$DEST/daily"
 stamp=$(date +%Y-%m-%d_%H%M)
-tar --zstd -C "$(dirname "$NOTES")" --exclude='.obsidian/plugins/*/node_modules' -cf "$DEST/hourly/notes_$stamp.tar.zst" "$(basename "$NOTES")"
+tar --zstd -C "$(dirname "$NOTES")" --exclude='node_modules' -cf "$DEST/hourly/notes_$stamp.tar.zst" "$(basename "$NOTES")"
 today="$DEST/daily/notes_$(date +%Y-%m-%d).tar.zst"
 [ -e "$today" ] || cp "$DEST/hourly/notes_$stamp.tar.zst" "$today"
 ls -1t "$DEST"/hourly/*.tar.zst | tail -n +49 | xargs -r rm --

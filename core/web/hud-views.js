@@ -174,6 +174,7 @@ const folderForm = (fo, suggest) => `<form class="pform pfform" id="pfSet"><div 
   ${fo.projects.length ? `<label class="chk"><input type="checkbox" id="pfMove" checked> Move my ${fo.projects.length} project${fo.projects.length === 1 ? "" : "s"} there (${fo.projects.map(esc).join(", ")})</label>` : ""}
   <div class="acts"><span class="grow"></span><button class="btn go">Use this folder</button></div><p class="sample" id="pfInfo"></p></form>`;
 async function renderProject() {
+  clearInterval(proj.poll);  // (each refresh starts its own: without this the old ones kept refreshing the page forever)
   const d = proj.d = await api(`/api/projects/${encodeURIComponent(proj.sel)}`);
   if (d.error) { proj.sel = null; return renderProjects(); }
   const [c, l] = ST[d.state] || ST.idle, last = d.runs[d.runs.length - 1];
@@ -185,6 +186,7 @@ async function renderProject() {
   const q = d.state === "needs" && last ? `<div class="tline q"><span class="ts">${ago(last.finished || last.created)}</span><div><b>Questions for you</b>${note("The last run ended with questions. Your answer goes to Claude Code (through the privacy filter, and you see exactly what leaves first).")}
     <form class="qform" id="projAnswer"><input placeholder="Your answers, e.g. 1 yes, 2 Munich, 3 yes" aria-label="Answer"><button class="btn go">Continue the project</button></form></div></div>` : "";
   $("#pmeta").textContent = `${d.files.length} file${d.files.length === 1 ? "" : "s"}`;
+  const readAt = body().scrollTop, atEnd = body().scrollHeight - readAt - body().clientHeight < 80;
   body().innerHTML = `<div class="phead"><button class="btn" data-act="proj" data-p="">‹ Projects</button><b>${esc(d.name)}</b><span class="chip st ${c}">${l}</span><span class="grow"></span>
       <button class="btn" data-act="projdone" data-done="${d.state === "done" ? 0 : 1}">${d.state === "done" ? "Open again" : "Mark done"}</button><button class="btn" data-act="projterm" title="Opens a terminal with Claude Code in this project's folder">Open in Claude Code</button></div>
     <div class="pgrid"><div class="pside"><h3>Overview</h3><div class="ov md">${d.overview ? md(d.overview) : note("No Overview.md yet.")}</div>
@@ -196,7 +198,11 @@ async function renderProject() {
         <p class="tohint">${proj.to === "c" ? "Starts or continues a Claude Code run in this project's folder. You see exactly what leaves the PC before it's sent." : `${esc(NAME())} knows this project and can hand work to Claude Code for you.`}</p>
         <input id="projText" placeholder="${proj.to === "c" ? "Task or answer for Claude Code…" : `Message to ${esc(NAME())} about this project…`}" aria-label="Message" autocomplete="off">
         <button class="btn go psend">${proj.to === "c" ? "Send to Claude Code ›" : `Send to ${esc(NAME())} ›`}</button><div id="projPreview" class="preview" hidden></div><p class="sample" id="projInfo"></p></form></div></div>`;
-  const tl = body().querySelector(".tlist"); if (tl && tl.lastElementChild) tl.lastElementChild.scrollIntoView({ block: "nearest" });
+  // down to the newest only when you open it, or something new came while you were at the end: never while you read further up
+  const tl = body().querySelector(".tlist"), count = tl ? tl.children.length : 0;
+  if (tl && tl.lastElementChild && (proj.shown !== d.name || (atEnd && count !== proj.count))) tl.lastElementChild.scrollIntoView({ block: "nearest" });
+  else body().scrollTop = readAt;
+  proj.shown = d.name; proj.count = count;
   if (d.running) proj.poll = setInterval(async () => { const x = await api(`/api/projects/${encodeURIComponent(d.name)}`); if (!x.running && proj.sel === d.name && curView === "projects") renderProject(); }, 5000);
 }
 // to Claude Code: first the privacy filter's preview (exactly what leaves), then the send you confirm

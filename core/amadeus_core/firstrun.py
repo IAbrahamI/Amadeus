@@ -282,7 +282,7 @@ def prepare_folder(folder):
     workguard.install(where["projects"], where["notes_root"])
     os.makedirs(paths.SECRETS, mode=0o700, exist_ok=True)
     for name, text in (("hindsight-keys.json", json.dumps({"amadeus": tokens.token_urlsafe(32)})),
-                       ("canaries.json", json.dumps({"vault": "CANARY-" + tokens.token_hex(8)})),
+                       ("canaries.json", json.dumps({"marker": "CANARY-" + tokens.token_hex(8)})),
                        ("denylist.txt", "# One word or phrase per line that must never leave this computer (names, addresses, projects).\n")):
         f = os.path.join(paths.SECRETS, name)
         if not os.path.exists(f):

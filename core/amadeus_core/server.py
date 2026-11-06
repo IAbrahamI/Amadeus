@@ -11,8 +11,8 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import agenda, agent, background, db, desktop, devices, events, llm, mailbridge, phoneapp, profile, system, tools
-from .config import CFG
+from . import agenda, agent, background, db, desktop, devices, events, llm, mailbridge, phoneapp, profile, system, tools, workguard
+from .config import CFG, projects_dir
 
 DESKTOP_UA = "AmadeusDesktop/1"
 RELOGIN = """<!doctype html><meta charset=utf-8><title>Amadeus</title>
@@ -808,6 +808,10 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     from . import voices, work  # noqa: F401  (work makes its tables, which the background jobs read)
     system.stop_with_app()
+    try:  # the guard for work runs always matches where your projects and notes are now
+        workguard.install(projects_dir(CFG), CFG["notes_root"])
+    except OSError as e:
+        print("the guard for work runs couldn't be written:", e, flush=True)
     agent.load_at_start()
     background.start()
     voices.prepare_lines()

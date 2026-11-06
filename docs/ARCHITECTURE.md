@@ -30,7 +30,7 @@ flowchart TB
       hindsight["Hindsight<br/>long-term memory"]
       presidio["Presidio<br/>privacy filter<br/>(Docker, no internet)"]
       tb["Thunderbird<br/>+ Amadeus Bridge add-on"]
-      vault["To-dos and notes<br/>(plain files in your folder)"]
+      notesfiles["To-dos and notes<br/>(plain files in your folder)"]
     end
 
     cc["Claude Code<br/>one run per approved task"]
@@ -42,7 +42,7 @@ flowchart TB
     agent --> ollama
     agent --> hindsight
     agent --> tb
-    agent --> vault
+    agent --> notesfiles
     agent -- "send to work" --> presidio
     presidio -- "filtered text,<br/>after your approval" --> cc
     cc -- "works only in" --> projects["your projects folder<br/>(apart from your notes)"]

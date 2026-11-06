@@ -79,7 +79,7 @@ It sets up, in this order:
 4. **Memory.** A Hindsight container that only answers requests carrying your key, with its data in the Docker
    volume `hindsight-data`. The first start downloads embedding models and can take a few minutes.
 5. **One folder for your files.** The install asks where (suggested `~/Amadeus`). `Notes/` holds your to-dos and notes
-   as plain Markdown, so Obsidian or any other notes app can open it, with nothing to connect. `Projects/` holds Claude
+   as plain Markdown, so any notes app can open it, with nothing to connect. `Projects/` holds Claude
    Code's work, kept apart so a work run never sees your notes. An hourly snapshot of `Notes/` lets you undo any change.
    Scripted installs can set `AMADEUS_FOLDER`.
 6. **The projects folder and the guard for work runs:** writes the guard for the folder you chose (see

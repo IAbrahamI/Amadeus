@@ -63,7 +63,7 @@ flowchart LR
     core --> llm["Ollama<br/>local model"]
     core --> mem["Hindsight<br/>memory"]
     core --> tb["Mail<br/>direct or Thunderbird"]
-    core --> vault["Notes · to-dos<br/>(plain files in your folder)"]
+    core --> notesfiles["Notes · to-dos<br/>(plain files in your folder)"]
     core -- "send to work" --> filter["Privacy filter<br/>Presidio"]
     filter --> ok{"your<br/>approval"}
     ok --> cc["Claude Code<br/>one run per task"]
@@ -76,7 +76,7 @@ flowchart LR
       llm
       mem
       tb
-      vault
+      notesfiles
       filter
       ok
       projects

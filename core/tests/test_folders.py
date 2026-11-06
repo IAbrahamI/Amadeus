@@ -27,19 +27,11 @@ class Places(unittest.TestCase):
         self.assertEqual(p["notes"], os.path.join(self.home, "Mine", "Notes"))
         self.assertEqual(p["projects"], os.path.join(self.home, "Mine", "Projects"))
 
-    def test_notes_in_a_vault_only_when_you_set_that(self):
-        amadeus = os.path.join(self.home, "Documents", "Obsidian Vault", "Amadeus")
-        os.makedirs(amadeus)
-        self.assertEqual(folders.paths({}, self.home)["notes"], os.path.join(self.home, "Amadeus", "Notes"))  # never picked up by itself
-        p = folders.paths({"notes_dir": amadeus, "notes_root": os.path.dirname(amadeus), "projects_dir": os.path.join(self.home, "P")}, self.home)
-        self.assertEqual(p["notes"], amadeus)
-        self.assertEqual(p["notes_root"], os.path.dirname(amadeus))
-        self.assertEqual(p["projects"], os.path.join(self.home, "P"))
-
-    def test_config_from_the_connector(self):
-        p = folders.paths({"vault_dir": os.path.join(self.home, "V", "Amadeus")}, self.home)
+    def test_notes_somewhere_else_when_you_set_that(self):
+        p = folders.paths({"notes_dir": os.path.join(self.home, "V", "A"), "notes_root": os.path.join(self.home, "V"), "projects_dir": os.path.join(self.home, "P")}, self.home)
+        self.assertEqual(p["notes"], os.path.join(self.home, "V", "A"))
         self.assertEqual(p["notes_root"], os.path.join(self.home, "V"))
-        self.assertEqual(p["projects"], os.path.join(self.home, "V", "Amadeus", "Projects"))
+        self.assertEqual(p["projects"], os.path.join(self.home, "P"))
 
     def test_notes_from_before_the_folder_stay_found(self):
         earlier = os.path.join(self.home, ".local", "share", "amadeus", "notes")
@@ -47,7 +39,7 @@ class Places(unittest.TestCase):
         self.assertEqual(folders.paths({}, self.home)["notes"], earlier)
 
     def test_a_changed_notes_folder_wins(self):
-        p = folders.paths({"notes_dir": os.path.join(self.home, "N"), "vault_dir": os.path.join(self.home, "V", "A")}, self.home)
+        p = folders.paths({"notes_dir": os.path.join(self.home, "N")}, self.home)
         self.assertEqual(p["notes"], os.path.join(self.home, "N"))
         self.assertEqual(p["notes_root"], os.path.join(self.home, "N"))
 

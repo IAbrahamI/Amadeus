@@ -14,17 +14,14 @@ def paths(own, home):
     """{folder, notes, notes_root, projects} from your config. notes_root is what work runs are kept out of."""
     folder = os.path.expanduser(own.get("folder") or os.path.join(home, "Amadeus"))
     earlier = os.path.join(home, ".local", "share", "amadeus", "notes")
-    legacy = own.get("vault_dir", "")  # an install from when this was the Obsidian connector's setting
     if own.get("notes_dir"):
         notes = os.path.expanduser(own["notes_dir"])
         root = os.path.expanduser(own.get("notes_root") or notes)
-    elif legacy:
-        notes, root = os.path.expanduser(legacy), os.path.dirname(os.path.expanduser(legacy.rstrip("/")))
     elif not own.get("folder") and os.path.isdir(earlier):
         notes = root = earlier
     else:
         notes = root = os.path.join(folder, "Notes")
-    projects = os.path.expanduser(own.get("projects_dir") or (os.path.join(legacy, "Projects") if legacy else os.path.join(folder, "Projects")))
+    projects = os.path.expanduser(own.get("projects_dir") or os.path.join(folder, "Projects"))
     return {"folder": folder, "notes": notes, "notes_root": root, "projects": os.path.realpath(projects)}
 
 

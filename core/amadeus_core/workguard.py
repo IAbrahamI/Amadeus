@@ -56,10 +56,6 @@ def install(projects, notes=""):
             f.write(text)
         os.chmod(p, mode)
         wrote.append(name)
-    old = os.path.join(GUARD, "vault-guard.py")  # the earlier name of the hook
-    if os.path.exists(old):
-        os.chmod(old, stat.S_IRUSR | stat.S_IWUSR)
-        os.remove(old)
     os.chmod(GUARD, 0o555)
     return wrote
 

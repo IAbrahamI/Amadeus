@@ -1,4 +1,4 @@
-"""Your notes folder. Plain Markdown files: open it in Obsidian or any other app, Amadeus doesn't need to know which.
+"""Your notes folder. Plain Markdown files: open it in any notes app, Amadeus doesn't need to know which.
 Changing it copies your to-dos and notes over, never on top of anything already there."""
 import json
 import os
@@ -49,7 +49,6 @@ def set_notes(path):
             shutil.copy2(src, dst)
     own = json.loads(Path(CONFIG_PATH).read_text()) if os.path.exists(CONFIG_PATH) else {}
     own.update(notes_dir=notes, notes_root=notes)
-    own.pop("vault_dir", None)
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     Path(CONFIG_PATH).write_text(json.dumps(own, indent=2))
     workguard.install(projects, notes)  # work runs never read it
