@@ -36,28 +36,32 @@ t=$SECONDS; api /memories '{"items":[{"content":"The user has a blue bicycle cal
 sleep 20
 t=$SECONDS; api /memories/recall '{"query":"what bicycle does the user have","max_tokens":500}' | cut -c1-500; echo "finding: $((SECONDS-t))s"
 kill "$PID"; sleep 8; pgrep -fl postgres | head -3 | cut -c1-100
-cat > "$W/seal.sb" <<EOF
-(version 1)
-(allow default)
-(deny network*)
+REAL="$(cd "$W" && pwd -P)"
+NET='(deny network*)
 (allow network* (local ip "localhost:*"))
 (allow network* (remote ip "localhost:*"))
 (allow network* (local unix-socket))
-(allow network* (remote unix-socket))
-(deny file-write*)
-(allow file-write* (subpath "$(cd "$W" && pwd -P)") (subpath "/private/tmp") (subpath "/private/var/folders") (literal "/dev/null") (literal "/dev/dtracehelper"))
-EOF
-echo "--- sealed"
-t=$SECONDS
-HF_HUB_OFFLINE=1 sandbox-exec -f "$W/seal.sb" "$V/bin/hindsight-api" >"$W/sealed.log" 2>&1 &
-PID=$!
-wait_up 150 && echo "sealed start: healthy after $((SECONDS-t))s" || { echo "sealed start FAILED"; tail -40 "$W/sealed.log"; exit 1; }
-t=$SECONDS; api /memories/recall '{"query":"what bicycle does the user have","max_tokens":500}' | cut -c1-400; echo "sealed finding: $((SECONDS-t))s"
-t=$SECONDS; api /memories '{"items":[{"content":"The user likes green tea."}]}' | cut -c1-200; echo "sealed saving: $((SECONDS-t))s"
-ps -o rss=,command= -p "$PID" | cut -c1-70; ps -axo rss=,command= | grep -E '[p]ostgres' | head -2 | cut -c1-70
-for code in "import socket; socket.create_connection(('1.1.1.1',53),timeout=4)" "import urllib.request; urllib.request.urlopen('http://example.com',timeout=6)" "open('$W/../x','w').write('x')"; do
-  sandbox-exec -f "$W/seal.sb" "$V/bin/python" -c "$code" >/dev/null 2>&1 && echo "BAD not blocked: ${code:0:40}" || echo "blocked: ${code:0:40}"
+(allow network* (remote unix-socket))'
+FILES="(deny file-write*)
+(allow file-write* (subpath \"$REAL\") (subpath \"/private/tmp\") (subpath \"/private/var/folders\") (literal \"/dev/null\") (literal \"/dev/dtracehelper\") (literal \"/dev/tty\"))"
+printf '(version 1)\n(allow default)\n' > "$W/none.sb"
+printf '(version 1)\n(allow default)\n%s\n' "$NET" > "$W/net.sb"
+printf '(version 1)\n(allow default)\n%s\n' "$FILES" > "$W/files.sb"
+printf '(version 1)\n(allow default)\n%s\n%s\n' "$NET" "$FILES" > "$W/seal.sb"
+pg_stop() { pkill -f 'bin/postgres' 2>/dev/null; sleep 3; }
+for name in none net files seal; do
+  echo "--- $name"; pg_stop
+  t=$SECONDS
+  HF_HUB_OFFLINE=1 sandbox-exec -f "$W/$name.sb" "$V/bin/hindsight-api" >"$W/$name.log" 2>&1 &
+  PID=$!
+  if wait_up 45; then echo "healthy after $((SECONDS-t))s"; t=$SECONDS; api /memories/recall '{"query":"what bicycle does the user have","max_tokens":500}' | cut -c1-160; echo "finding: $((SECONDS-t))s"
+    [ "$name" = seal ] && { t=$SECONDS; api /memories '{"items":[{"content":"The user likes green tea."}]}' | cut -c1-120; echo "saving: $((SECONDS-t))s"; ps -axo rss=,command= | grep -E '[h]indsight-api|bin/[p]ostgres -' | head -3 | cut -c1-70; }
+  else echo "FAILED"; grep -E 'pg0|rror|denied' "$W/$name.log" | tail -5 | cut -c1-200; fi
+  kill "$PID" 2>/dev/null; sleep 6
 done
-kill "$PID"; pkill -f 'ollama serve' || true
-tail -5 "$W/sealed.log" | cut -c1-160
+find "$W/.pg0" -name '*.log' | head -3; find "$W/.pg0" -maxdepth 2 | head -12 | cut -c60-
+for f in $(find "$W/.pg0" -name '*.log' | head -2); do tail -6 "$f" | cut -c1-170; done
+log show --last 5m --predicate 'eventMessage CONTAINS "deny" AND eventMessage CONTAINS "postgres"' --style compact 2>/dev/null | tail -8 | cut -c1-170
+"$V/bin/python" -c "import pg0,inspect;print(pg0.__file__)" 2>&1 | tail -1 | cut -c60-
+pkill -f 'ollama serve' || true
 echo done
