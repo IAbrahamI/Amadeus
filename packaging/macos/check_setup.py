@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 
 DATA = os.path.expanduser("~/Library/Application Support/Amadeus/core")
@@ -20,7 +21,11 @@ def call(body=None):
 
 def run(action, minutes, **extra):
     print(f"--- {action}", flush=True)
-    call({"action": action, **extra})
+    try:
+        call({"action": action, **extra})
+    except urllib.error.HTTPError as e:  # the page in the app's window may have started the same step
+        if e.code != 400:
+            raise
     end, said = time.time() + minutes * 60, ""
     while time.time() < end:
         s = call()
@@ -28,7 +33,7 @@ def run(action, minutes, **extra):
         if job.get("text") != said:
             said = job.get("text")
             print(" ", said, flush=True)
-        if job.get("done"):
+        if job.get("done") and job.get("kind") == action:
             return s, job
         time.sleep(3)
     sys.exit(f"{action} took more than {minutes} minutes")
