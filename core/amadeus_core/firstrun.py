@@ -109,9 +109,14 @@ def _run(kind, work):
 def _start_ollama():
     if system.MAC:
         subprocess.run(["/usr/bin/open", "-g", "-a", "Ollama"], capture_output=True, timeout=20)
-    for _ in range(45):
+    for second in range(60):
         if ollama_state() == "running":
             return
+        if second == 20 and system.MAC:  # the app may be waiting on its own first-start window: its server works without that
+            app = next((a for a in OLLAMA_APPS if os.path.isfile(os.path.join(a, "Contents", "Resources", "ollama"))), None)
+            if app:
+                subprocess.Popen([os.path.join(app, "Contents", "Resources", "ollama"), "serve"], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)
         time.sleep(1)
     raise ValueError("Ollama didn't start. Open it once from your Applications folder, then try again.")
 
