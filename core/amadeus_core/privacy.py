@@ -19,7 +19,7 @@ import subprocess
 import time
 import urllib.request
 
-from . import system
+from . import macfilter, system
 from .config import CFG
 
 PATTERNS = [
@@ -67,6 +67,8 @@ def _terms():
 
 
 def _post(url, body):
+    if system.MAC:  # no containers there: the sealed program
+        return macfilter.call("analyze" if url == ANALYZER else "anonymize", body)
     r = urllib.request.Request(url, json.dumps(body).encode(), {"content-type": "application/json"})
     return json.load(urllib.request.urlopen(r, timeout=30))
 
@@ -101,6 +103,8 @@ def _ner(text, keep=()):
 def ensure_presidio():
     """Presidio runs on demand: start the containers if they are stopped (Amadeus stops them when idle).
     Either container sometimes hangs on a cold start (gunicorn without a worker): restart that one."""
+    if system.MAC:
+        return macfilter.start()
     os.makedirs(os.path.dirname(LAST_USED), exist_ok=True)
     Path(LAST_USED).touch()
     services = {"presidio-analyzer": ANALYZER.rsplit("/", 1)[0] + "/health",
@@ -125,8 +129,8 @@ def ensure_presidio():
 
 
 def filter_available():
-    """Presidio runs in Docker, which the Mac app doesn't use. Without it there's nothing to wait for, so say so at once."""
-    return not system.MAC and bool(shutil.which("docker"))
+    """Without the filter there's nothing to wait for, so say so at once."""
+    return macfilter.ready() if system.MAC else bool(shutil.which("docker"))
 
 
 def scrub(text, keep=()):

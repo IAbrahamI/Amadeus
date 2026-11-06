@@ -65,8 +65,12 @@ const PAGES = {
         <div class="acts"><input type="file" id="skFile" accept=".md"><span class="grow"></span><button class="btn go">Add skill</button></div>${info("skInfo")}</form>`;
   },
   async connectors() {
-    const [list, fo] = await Promise.all([api("/api/connectors"), api("/api/folder")]);
+    const [list, fo, su] = await Promise.all([api("/api/connectors"), api("/api/folder"), api("/api/setup")]);
+    const filterBusy = (su.job || {}).kind === "filter" && !su.job.done;
+    if (filterBusy) setTimeout(() => set.page === "connectors" && PAGES.connectors(), 2000);
     body().innerHTML = head("Connectors", "What it may use. Anything that changes something always asks you first.") +
+      (su.can_install ? `<h3>Privacy filter</h3>${su.filter_ready ? note("Set up. It takes names and places out before any text leaves this computer, and macOS seals it off from the internet and your files.")
+        : `${note(filterBusy ? esc((su.job || {}).text || "Setting it up…") : ((su.job || {}).kind === "filter" && su.job.error ? esc(su.job.error) + " " : "") + "Needed for projects with Claude Code: it takes names and places out before any text leaves this computer. About 1 GB. It runs here, and macOS seals it off from the internet and your files.")}${filterBusy ? "" : '<div class="acts"><span class="grow"></span><button class="btn go" data-act="fsetup">Set up the privacy filter</button></div>'}`}` : "") +
       `<h3>Your folder</h3>${note(`Your to-dos and notes are plain Markdown files in this folder, so you can open it in Obsidian or any other notes app. Every hour a snapshot is saved, so any change can be undone. Your projects are in ${esc(fo.projects)}.`)}
        <form class="pform" id="folderForm">${field("Your notes", `<input id="folderNotes" value="${esc(fo.notes)}" autocomplete="off" spellcheck="false">`)}<div class="acts"><span class="grow"></span><button class="btn go">Use this folder</button></div>${info("folderInfo")}</form>` +
       `<h3 style="margin-top:22px">What it may use</h3>` +
@@ -145,6 +149,7 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "asreset") { if (!confirm("Use the default assistant (default name, personality and icon)? Your own files are kept.")) return; await post("/api/assistant/reset", {}); restarted(); }
   if (act === "vuse") { await post("/api/voice/voices/select", { id: d.v }); PAGES.voice(); }
+  if (act === "fsetup") { await post("/api/setup", { action: "filter" }); setTimeout(() => PAGES.connectors(), 300); return; }
   if (act === "vsetup") { await post("/api/setup", { action: "voice" }); setTimeout(() => PAGES.voice(), 300); return; }
   if (act === "vget") { await post("/api/voice/voices/download", { id: d.v }); PAGES.voice(); }
   if (act === "vtest") {

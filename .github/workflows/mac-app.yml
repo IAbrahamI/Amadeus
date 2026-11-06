@@ -63,6 +63,14 @@ jobs:
           echo
           kill "$PID" || true
           python3 -c "import json; t = json.load(open('$W/heard.json'))['text'].lower(); assert 'calendar' in t, t"
+      - name: The privacy filter works sealed off, and can't reach anything
+        timeout-minutes: 15
+        run: |
+          RES="$PWD/dist/macos/Amadeus.app/Contents/Resources"
+          W="$(mktemp -d)"
+          export HOME="$W" PYTHONDONTWRITEBYTECODE=1
+          cd "$RES/core"
+          "$RES/python/bin/python3" "$GITHUB_WORKSPACE/packaging/macos/check_filter.py"
       - name: Open the real app, and the setup really appears in its window
         timeout-minutes: 6
         run: |

@@ -4,11 +4,11 @@
   await window.IDENTITY;
   let s = await api("/api/setup");
   if (!s.needed) return;
-  const STEPS = ["Engine", "Model", "Mail", "Voice", "Ready"];
+  const STEPS = ["Engine", "Model", "Mail", "Voice", "Projects", "Ready"];
   const veil = document.createElement("div");
   veil.className = "setup";
   document.body.append(veil);
-  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false, voiceDone = false;
+  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false, voiceDone = false, filterDone = false;
   const page = (at, html) => {
     const keep = veil.querySelector("input:focus");
     if (keep) return;  // you're typing: the next look comes after that
@@ -55,7 +55,7 @@
   async function step() {
     s = await api("/api/setup");
     const j = s.job || {}, busy = j.kind && !j.done, again = () => setTimeout(step, 1200);
-    if (busy) { working(j.kind === "voice" ? 3 : j.kind === "begin" || s.picks.length ? 1 : 0, j); return again(); }
+    if (busy) { working(j.kind === "filter" ? 4 : j.kind === "voice" ? 3 : j.kind === "begin" || s.picks.length ? 1 : 0, j); return again(); }
     if (s.ollama !== "running" && !s.model_ready) {
       const has = s.ollama === "installed";
       page(0, `${text(`${esc(NAME())} thinks with an AI model that runs on this computer, so your conversations stay here. A free app called Ollama runs that model. ${has ? "It's installed, but not running." : "I'll install it for you."}`)}
@@ -98,11 +98,18 @@
       $("#suGo").onclick = () => tell("voice");
       return;
     }
-    page(4, `${text(`That's it. ${esc(NAME())} is ready, and you can change all of this later in Settings.`)}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Start</button>`)}`);
+    if (!filterDone && !s.filter_ready) {
+      page(4, `${text(`${esc(NAME())} can hand bigger projects to Claude Code, which runs online. Before any text leaves this computer, a privacy filter takes out names and places, and you see exactly what would be sent. The filter runs here, about 1 GB, and macOS seals it off from the internet and your files. Without it, projects stay off and everything else works.`)}
+        ${j.kind === "filter" ? trouble(j.error) : ""}${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">Set up the filter</button>`)}`);
+      $("#suSkip").onclick = () => { filterDone = true; step(); };
+      $("#suGo").onclick = () => tell("filter");
+      return;
+    }
+    page(5, `${text(`That's it. ${esc(NAME())} is ready, and you can change all of this later in Settings.`)}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Start</button>`)}`);
     $("#suGo").onclick = async () => {
       const r = await post("/api/setup", { action: "finish" });
       if (r.error) { veil.querySelector(".setup-msg").textContent = r.error; return; }
-      page(4, `${text("Starting up…")}<div class="setup-bar busy"><i></i></div>`);
+      page(5, `${text("Starting up…")}<div class="setup-bar busy"><i></i></div>`);
       const back = async () => { try { const h = await api("/api/setup"); if (!h.needed) return location.reload(); } catch {} setTimeout(back, 1000); };
       setTimeout(back, 2500);
     };

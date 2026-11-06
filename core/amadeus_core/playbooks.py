@@ -11,7 +11,7 @@ import re
 import time
 import urllib.request
 
-from . import db, llm, mailbridge, tools
+from . import db, llm, mailbridge, system, tools
 from .config import CFG, NAME
 
 
@@ -223,7 +223,8 @@ def new_project(cid, text, state):
             preview, findings, _ = tools.send_to_work_preview(md)
             if "presidio-unavailable" in findings:  # nothing leaves unchecked, and there's no point in asking for approval
                 return ("I can't send this yet: a work project leaves this computer, and the privacy filter that checks the text first "
-                        "isn't available here. Nothing was sent, and your draft is kept. Say **yes** to try again."), False
+                        "isn't available here. Nothing was sent, and your draft is kept. "
+                        + ("Set it up under **Settings → Connectors → Privacy filter**, then say **yes** again." if system.MAC else "Say **yes** to try again.")), False
             _approval(cid, "start_work_project", {"name": name, "spec": md},
                       f"Start work project **{name}** (one Claude Code run, folder "
                       f"`{name}/` in your projects folder). **Exactly this text leaves your PC:**\n\n> " + preview.replace("\n", "\n> "))

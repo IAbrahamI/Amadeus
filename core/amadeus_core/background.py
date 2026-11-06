@@ -10,7 +10,7 @@ import shutil
 import time
 import urllib.request
 
-from . import agenda, db, digest, events, learning, llm, mailwatch, system, quickchat, tools
+from . import agenda, db, digest, events, learning, llm, macfilter, mailwatch, quickchat, system, tools
 from . import paths
 from .config import CFG
 
@@ -30,6 +30,8 @@ PRESIDIO_STAMP = os.path.join(paths.ROOT, "presidio-last-used")
 
 def idle_stop():
     """Stop Presidio (the privacy filter's helper) after 15 minutes without use."""
+    if system.MAC:
+        return macfilter.stop_when_idle()
     now = time.time()
     try:
         idle = now - os.path.getmtime(PRESIDIO_STAMP) > IDLE_SEC

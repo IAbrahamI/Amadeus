@@ -769,7 +769,7 @@ def filter_allow_add(words):
 
 def held_why(findings):
     if "presidio-unavailable" in findings:
-        return "Not sent: the privacy filter that checks the text first isn't available here."
+        return "Not sent: the privacy filter that checks the text first isn't available here. On a Mac you can set it up under Settings → Connectors → Privacy filter."
     return "Not sent: the text contains something from your deny-list or a canary marker."
 
 

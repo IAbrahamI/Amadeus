@@ -132,6 +132,28 @@ class FirstStart(unittest.TestCase):
         start.assert_not_called()
         ner.assert_not_called()
 
+    def test_a_filter_that_can_connect_is_never_used(self):
+        from amadeus_core import macfilter
+        class Fake:
+            stdout = mock.Mock(readline=lambda self=None: '{"ready": false, "sealed": false}')
+            kill = mock.Mock()
+        with mock.patch.object(macfilter.subprocess, "Popen", return_value=Fake()), mock.patch.object(macfilter, "command", return_value=["x"]), self.assertRaises(OSError):
+            macfilter._start()
+        self.assertIsNone(macfilter._proc)
+
+    def test_the_seal_has_no_network_and_no_writing(self):
+        from amadeus_core import macfilter
+        rules = macfilter.profile()
+        self.assertIn("(deny network*)", rules)
+        self.assertIn("(deny file-write*)", rules)
+        self.assertNotIn("allow network", rules)
+
+    def test_the_filter_failing_holds_the_text_back(self):
+        from amadeus_core import macfilter, privacy
+        with mock.patch.object(privacy.system, "MAC", True), mock.patch.object(macfilter, "ready", return_value=True), \
+                mock.patch.object(macfilter, "start", side_effect=OSError), mock.patch.object(macfilter, "call", side_effect=OSError):
+            self.assertTrue(privacy.scrub("Anna lives in Berlin")[2])
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])
