@@ -79,7 +79,7 @@
         <form class="pform"><label>Your folder<input id="suFolder" value="${esc(folder)}" autocomplete="off" spellcheck="false"></label></form>
         ${text(`Now pick the model. I measured this computer, and the first one is what I'd use.`)}
         <div class="setup-picks">${s.picks.map((p, i) => `<label class="setup-pick"><input type="radio" name="suModel" value="${esc(p.model)}" ${p.model === chosen ? "checked" : ""}>
-          <span><b>${esc(p.model)}</b>${i === 0 ? '<em class="setup-rec">recommended</em>' : ""}<br>${p.size} GB download${p.speed ? `, about ${p.speed} words per second` : ""}<br><small>${esc(p.about)}</small></span></label>`).join("")}</div>
+          <span><b>${esc(p.model)}</b>${i === 0 ? '<em class="setup-rec">recommended</em>' : ""}${p.proven ? '<em class="setup-rec">proven with Amadeus</em>' : ""}<br>${p.size} GB download${p.speed ? `, about ${p.speed} words per second` : ""}<br><small>${esc(p.about)}</small></span></label>`).join("")}</div>
         ${s.too_old ? trouble("Your Ollama is too old for this model. I can update it, or you can pick another model.") : j.kind === "begin" || j.kind === "ollama" ? trouble(j.error) : ""}
         ${buttons(`${s.too_old && s.can_install ? `<button class="btn" type="button" id="suUpdate">Update Ollama</button>` : ""}${s.rejected && s.rejected.downloaded ? `<button class="btn" type="button" id="suRemove">Remove ${esc(s.rejected.model)} (${s.rejected.size} GB)</button>` : ""}<span class="grow"></span><button class="btn go" id="suGo">Download and set up</button>`)}`);
       if ($("#suUpdate")) $("#suUpdate").onclick = () => tell("update_ollama");

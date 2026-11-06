@@ -29,7 +29,6 @@ _lock = threading.Lock()
 _job = {"kind": "", "text": "", "pct": None, "error": "", "done": False}
 _picks = []
 _rejected = {}  # the model that just didn't pass, so you can remove its download
-_failed = set()
 _shown = {"yes": False}  # the setup really appeared in the dashboard (the build checks this)
 
 
@@ -199,11 +198,16 @@ def _scan():
         raise ValueError("Can't reach Ollama's model library. Check your internet connection and try again.")
     speed = _baseline()
     _say("Reading the newest models")
-    latest = [m for m in pick_model.latest_models() if m["name"] not in _failed]
-    found = pick_model.suggest_latest(pick_model.hardware(), latest, speed)
+    own = _own()
+    failed = set(own.get("models_failed", []))
+    latest = [m for m in pick_model.latest_models() if not {n for n, _ in m["versions"]} & failed]
+    found = [m for m in pick_model.suggest_latest(pick_model.hardware(), latest, speed) if m["model"] not in failed]
+    proven = {m for m, _, _ in pick_model.CATALOG} | set(own.get("models_proven", []))
+    found.sort(key=lambda m: m["model"] not in proven)
     if not found:
         raise ValueError("There isn't enough memory or disk space for any model here.")
-    _picks[:] = [{"model": m["model"], "size": m["size"], "about": m["about"], "speed": round(m["speed"] * 0.75) if m.get("speed") else None} for m in found]
+    _picks[:] = [{"model": m["model"], "size": m["size"], "about": m["about"], "speed": round(m["speed"] * 0.75) if m.get("speed") else None,
+                  "proven": m["model"] in proven} for m in found]
 
 
 VOICE_PACKAGES = ["faster-whisper", "soundfile", "vosk", "sounddevice", "kokoro-onnx"]  # (Piper's Mac package stops the whole program: it looks for its data where it was built)
@@ -275,6 +279,14 @@ def prepare_folder(folder):
                 out.write(text + "\n")
 
 
+def _remember(key, model):
+    """What a model did on this computer: it isn't offered again if it failed, and is shown as proven if it passed."""
+    own = _own()
+    if model not in own.get(key, []):
+        own[key] = own.get(key, []) + [model]
+        Path(CONFIG_PATH).write_text(json.dumps(own, indent=2))
+
+
 def _begin(model, size):
     _say("Getting " + model)
     _rejected.clear()
@@ -287,8 +299,10 @@ def _begin(model, size):
         raise ValueError(f"I couldn't test {model}: {why}. Try again.")
     if verdict == "no":
         _picks[:] = [p for p in _picks if p["model"] != model]
+        _remember("models_failed", model)
         _rejected.update(model=model, size=size, downloaded=fresh)
         raise ValueError(f"{model} can't work with Amadeus: {why}. It needs tools for nearly everything, so please pick another one.")
+    _remember("models_proven", model)
     ctx = pick_model.context_for(pick_model.hardware(), size)
     variant = pick_model.variant_name(model, ctx)
     _api("/api/create", {"model": variant, "from": model, "parameters": {"num_ctx": ctx}, "stream": False}, timeout=300).close()
@@ -319,7 +333,6 @@ def act(action, b):
     elif action == "remove_model":
         if not _rejected.get("downloaded"):
             raise ValueError("Nothing to remove.")
-        _failed.add(_rejected["model"].split(":")[0])
         _api("/api/delete", {"model": _rejected["model"]}, method="DELETE").close()
         _rejected.clear()
     elif action == "voice":

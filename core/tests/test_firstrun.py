@@ -97,6 +97,19 @@ class FirstStart(unittest.TestCase):
         send.assert_called_once_with({"do": "notify", "data": {"title": "Amadeus", "text": "Hello"}})
         run.assert_not_called()
 
+    def test_what_a_model_did_is_remembered(self):
+        latest = [{"name": "bad", "versions": [("bad:8b", 6.0)]}, {"name": "new", "versions": [("new:8b", 6.0)]}]
+        self.config(models_failed=["bad:8b"], models_proven=["new:8b"])
+        with mock.patch.object(firstrun, "_baseline", return_value=None), mock.patch.object(firstrun.pick_model, "registry_reachable", return_value=True), \
+                mock.patch.object(firstrun.pick_model, "latest_models", return_value=latest), \
+                mock.patch.object(firstrun.pick_model, "hardware", return_value={"gpu_gb": 12.0, "gpu": "", "ram_gb": 16.0, "cores": 8, "disk_gb": 100.0}):
+            firstrun._scan()
+        got = {p["model"]: p["proven"] for p in firstrun._picks}
+        firstrun._picks.clear()
+        self.assertNotIn("bad:8b", got)
+        self.assertTrue(got["new:8b"])
+        self.assertTrue(got["qwen3.5:9b"])
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])
