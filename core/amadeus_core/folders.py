@@ -13,9 +13,8 @@ except ImportError:  # run directly by install.sh and the snapshots
 def paths(own, home):
     """{folder, notes, notes_root, projects} from your config. notes_root is what work runs are kept out of."""
     folder = os.path.expanduser(own.get("folder") or os.path.join(home, "Amadeus"))
-    older = os.path.join(home, "Documents", "Obsidian Vault", "Amadeus")  # installs from before the chosen folder
     earlier = os.path.join(home, ".local", "share", "amadeus", "notes")
-    legacy = own.get("vault_dir") or (older if os.path.isdir(older) else "")
+    legacy = own.get("vault_dir", "")  # an install from when this was the Obsidian connector's setting
     if own.get("notes_dir"):
         notes = os.path.expanduser(own["notes_dir"])
         root = os.path.expanduser(own.get("notes_root") or notes)

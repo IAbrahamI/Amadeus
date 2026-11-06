@@ -27,10 +27,11 @@ class Places(unittest.TestCase):
         self.assertEqual(p["notes"], os.path.join(self.home, "Mine", "Notes"))
         self.assertEqual(p["projects"], os.path.join(self.home, "Mine", "Projects"))
 
-    def test_older_install_in_a_vault_keeps_the_whole_vault_private(self):
+    def test_notes_in_a_vault_only_when_you_set_that(self):
         amadeus = os.path.join(self.home, "Documents", "Obsidian Vault", "Amadeus")
         os.makedirs(amadeus)
-        p = folders.paths({"projects_dir": os.path.join(self.home, "P")}, self.home)
+        self.assertEqual(folders.paths({}, self.home)["notes"], os.path.join(self.home, "Amadeus", "Notes"))  # never picked up by itself
+        p = folders.paths({"notes_dir": amadeus, "notes_root": os.path.dirname(amadeus), "projects_dir": os.path.join(self.home, "P")}, self.home)
         self.assertEqual(p["notes"], amadeus)
         self.assertEqual(p["notes_root"], os.path.dirname(amadeus))
         self.assertEqual(p["projects"], os.path.join(self.home, "P"))
