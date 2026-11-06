@@ -180,19 +180,62 @@ def suggest_latest(hw, latest, speed=None):
             break
         if t["model"] not in {p["model"] for p in picks}:
             picks.append(t)
-    return picks[:3]
+    return sorted(picks[:3], key=lambda p: p["model"] not in {m for m, _, _ in CATALOG})  # what's proven with Amadeus comes first
+
+
+TOOL_TRIES = ["What time is it in Paris? Use the tool.", "Use get_time to find the current time in Paris.",
+              "Call the get_time tool with the city Paris, then tell me the result."]
+
+
+def _ollama_says(e):
+    """What Ollama itself answered, if it did."""
+    try:
+        return json.loads(e.read()).get("error") or str(e)
+    except (AttributeError, OSError, ValueError):
+        return str(e)
+
+
+def tool_check(model):
+    """Can Amadeus work with it? ("ok" | "no" | "unknown", why). "unknown" means the check itself couldn't run, which says
+    nothing about the model. It has to do what Amadeus does: call a tool with the right argument, then answer from the result."""
+    tool = {"type": "function", "function": {"name": "get_time", "description": "The current time in a city.", "parameters": {
+        "type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}
+    chat = lambda messages: _api("/api/chat", {"model": model, "stream": False, "think": False, "keep_alive": "1m", "tools": [tool],  # noqa: E731
+                                               "options": {"temperature": 0}, "messages": messages}, timeout=600)["message"]
+    trouble = ""
+    try:
+        try:
+            caps = _api("/api/show", {"model": model}).get("capabilities")
+        except (OSError, ValueError):
+            caps = None  # (an older Ollama doesn't say: the real test below decides)
+        if caps is not None and "tools" not in caps:
+            return "no", "Ollama says this model has no tool support"
+        answered = False
+        for prompt in TOOL_TRIES:
+            try:
+                first = [{"role": "user", "content": prompt}]
+                said = chat(first)
+                answered = True
+                call = next((c["function"] for c in said.get("tool_calls") or [] if c["function"]["name"] == "get_time"), None)
+                if not call or "paris" not in str((call.get("arguments") or {}).get("city", "")).lower():
+                    continue
+                final = chat(first + [said, {"role": "tool", "content": "14:05"}])
+                if final.get("content", "").strip():
+                    return "ok", ""
+            except (OSError, ValueError, KeyError) as e:
+                trouble = _ollama_says(e)
+        if answered and not trouble:
+            return "no", "in three tries it didn't use the tool correctly"
+        return "unknown", trouble or "Ollama didn't answer"
+    finally:
+        try:
+            _api("/api/generate", {"model": model, "keep_alive": 0})  # give the memory back
+        except (OSError, ValueError):
+            pass
 
 
 def calls_tools(model):
-    """It really uses a tool when asked to: Amadeus can't work without that."""
-    tool = {"type": "function", "function": {"name": "get_time", "description": "The current time in a city.", "parameters": {
-        "type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}
-    try:
-        r = _api("/api/chat", {"model": model, "stream": False, "think": False, "keep_alive": 0, "tools": [tool], "options": {"temperature": 0},
-                               "messages": [{"role": "user", "content": "What time is it in Paris? Use the tool."}]})
-        return any(c["function"]["name"] == "get_time" for c in r["message"].get("tool_calls") or [])
-    except (OSError, ValueError, KeyError):
-        return False
+    return tool_check(model)[0] == "ok"
 
 
 def context_for(hw, size):

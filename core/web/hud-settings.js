@@ -40,9 +40,12 @@ const PAGES = {
         <div class="acts"><button type="button" class="btn" data-act="asreset">Use the defaults</button><span class="grow"></span><button class="btn go">Save</button></div>${info("asInfo")}</form>` + await updatesBox();
   },
   async voice() {
-    const d = await api("/api/voice/voices");
+    const [d, su] = await Promise.all([api("/api/voice/voices"), api("/api/setup")]);
+    const job = su.job || {}, busy = job.kind === "voice" && !job.done;
+    if (busy) setTimeout(() => set.page === "voice" && PAGES.voice(), 2000);
     body().innerHTML = head("Voice", "The voice that reads your briefs aloud. Everything runs on this PC.") +
-      (!d.piper ? note("The voice service isn't set up yet (see the install guide, \"Optional: voice\").") : rows(d.voices.map((v) => `<div class="row"><span class="k">${v.id === d.selected ? "▶" : ""}</span>
+      (su.can_install && !su.voice_ready ? `${note(busy ? esc(job.text || "Setting up voice…") : (job.kind === "voice" && job.error ? esc(job.error) + " " : "") + "Add speech recognition, the wake word and a voice for reading aloud, about 1 GB. It all runs on this computer.")}${busy ? "" : '<div class="acts"><span class="grow"></span><button class="btn go" data-act="vsetup">Set up voice</button></div>'}` :
+      !d.piper ? note("The voice service isn't set up yet (see the install guide, \"Optional: voice\").") : rows(d.voices.map((v) => `<div class="row"><span class="k">${v.id === d.selected ? "▶" : ""}</span>
         <div class="t"><b>${esc(v.name)}</b><span>${esc(v.about)}</span></div><div class="acts">${v.installed ? `<button class="btn" data-act="vtest" data-v="${esc(v.id)}">Test</button>` : ""}
         ${v.id === d.selected ? '<span class="chip st st-done">In use</span>' : v.installed ? `<button class="btn go" data-act="vuse" data-v="${esc(v.id)}">Use</button>`
           : v.downloading ? '<span class="chip">Downloading…</span>' : `<button class="btn" data-act="vget" data-v="${esc(v.id)}">Download</button>`}</div></div>`))) +
@@ -142,6 +145,7 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "asreset") { if (!confirm("Use the default assistant (default name, personality and icon)? Your own files are kept.")) return; await post("/api/assistant/reset", {}); restarted(); }
   if (act === "vuse") { await post("/api/voice/voices/select", { id: d.v }); PAGES.voice(); }
+  if (act === "vsetup") { await post("/api/setup", { action: "voice" }); setTimeout(() => PAGES.voice(), 300); return; }
   if (act === "vget") { await post("/api/voice/voices/download", { id: d.v }); PAGES.voice(); }
   if (act === "vtest") {
     const was = (await api("/api/voice/voices")).selected;

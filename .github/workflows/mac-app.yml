@@ -44,6 +44,25 @@ jobs:
           [ "$code" = 403 ]
           test -f "$HOME/Library/Application Support/Amadeus/core/token"
           codesign --verify --deep --strict dist/macos/Amadeus.app
+      - name: Voice installs on a Mac, and speech goes out and comes back
+        timeout-minutes: 15
+        run: |
+          RES="$PWD/dist/macos/Amadeus.app/Contents/Resources"
+          export HOME="$(mktemp -d)" PYTHONDONTWRITEBYTECODE=1
+          W="$(mktemp -d)"  # (nothing gets written inside the signed app)
+          (cd "$RES/core" && "$RES/python/bin/python3" -c "from amadeus_core import firstrun; firstrun._voice(service=False)")
+          V="$HOME/Library/Application Support/Amadeus"
+          "$V/voice/venv-lite/bin/python" -c "import sounddevice, vosk, faster_whisper, piper; print('voice packages load')"
+          "$V/voice/venv-lite/bin/python" -W ignore "$RES/core/voice/voice_server.py" >"$W/voice.log" 2>&1 &
+          PID=$!
+          T="$(cat "$V/core/token")"
+          for _ in $(seq 60); do curl -sf http://127.0.0.1:8896/health >/dev/null && break; sleep 2; done
+          curl -sS -m 120 -H "authorization: Bearer $T" -d '{"text":"Please show my calendar for tomorrow.","voice":"'"$V/voice/models/piper/en_US-lessac-medium.onnx"'"}' http://127.0.0.1:8896/tts -o "$W/said.wav"
+          curl -sS -m 180 -H "authorization: Bearer $T" -H 'content-type: audio/wav' --data-binary @"$W/said.wav" http://127.0.0.1:8896/stt | tee "$W/heard.json"
+          echo
+          kill "$PID" || true
+          tail -5 "$W/voice.log" || true
+          python3 -c "import json; t = json.load(open('$W/heard.json'))['text'].lower(); assert 'calendar' in t, t"
       - name: Open the real app, and the setup really appears in its window
         timeout-minutes: 6
         run: |

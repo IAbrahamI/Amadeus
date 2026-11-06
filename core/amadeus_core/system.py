@@ -2,6 +2,7 @@
 else in the core just calls this. Where the data lives is in paths.py."""
 import glob
 import os
+import plistlib
 import re
 import subprocess
 import sys
@@ -21,6 +22,22 @@ def restart(*services):
             subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{_label(s)}"], capture_output=True, timeout=60)
     else:
         subprocess.run(["systemctl", "--user", "restart", *services], capture_output=True, timeout=60)
+
+
+def install_agent(service, args):
+    """A background service on a Mac: it starts at login, and again if it stops. Replaces the one of that name."""
+    label = _label(service)
+    plist = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
+    logs = os.path.expanduser("~/Library/Logs/Amadeus")
+    os.makedirs(os.path.dirname(plist), exist_ok=True)
+    os.makedirs(logs, exist_ok=True)
+    with open(plist, "wb") as f:
+        plistlib.dump({"Label": label, "ProgramArguments": list(args), "RunAtLoad": True, "KeepAlive": True, "LimitLoadToSessionType": "Aqua",
+                       "EnvironmentVariables": {"PYTHONDONTWRITEBYTECODE": "1", "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
+                       "StandardOutPath": os.path.join(logs, service + ".log"), "StandardErrorPath": os.path.join(logs, service + ".log")}, f)
+    target = f"gui/{os.getuid()}"
+    subprocess.run(["/bin/launchctl", "bootout", f"{target}/{label}"], capture_output=True, timeout=30)
+    subprocess.run(["/bin/launchctl", "bootstrap", target, plist], capture_output=True, timeout=30, check=True)
 
 
 def notify(title, text):

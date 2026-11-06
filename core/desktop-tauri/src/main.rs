@@ -693,6 +693,17 @@ fn native(app: AppHandle, window: WebviewWindow, msg: String) {
         } else if let Some(html) = m.strip_prefix("bubble:") {
             set_bubble(&a, html);
             Ok(())
+        } else if m == "relogin" {
+            // this window has no valid sign-in. Once, not in a circle: the page says so if it doesn't help
+            static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+            let mut last = LAST.lock().unwrap();
+            if last.is_some_and(|t| t.elapsed() < Duration::from_secs(20)) {
+                Ok(())
+            } else {
+                *last = Some(Instant::now());
+                eprintln!("signing a window in again");
+                w.navigate(login("/#home").parse().expect("a valid address"))
+            }
         } else if let Some(at) = m.strip_prefix("press:") {
             press(&w, at)
         } else if m == "calling:1" || m == "calling:0" {
@@ -1146,6 +1157,39 @@ fn mac_services(app: &AppHandle) {
     }
 }
 
+#[cfg(target_os = "macos")]
+static WAKE: Mutex<Option<std::process::Child>> = Mutex::new(None);
+
+/// The wake word listens through the microphone, and macOS asks about the program that started it, so this app runs it
+/// (a background service couldn't get that permission). It waits until voice has been set up.
+#[cfg(target_os = "macos")]
+fn keep_wake_word_running(app: &AppHandle) {
+    let Ok(res) = app.path().resource_dir() else { return };
+    let script = res.join("core/voice/wake.py");
+    let python = home_path("Library/Application Support/Amadeus/voice/venv-lite/bin/python");
+    let model = home_path("Library/Application Support/Amadeus/voice/models/vosk-model-small-en-us-0.15");
+    let log = home_path("Library/Logs/Amadeus/wake.log");
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(10));
+        if !python.exists() || !model.exists() {
+            continue;
+        }
+        let mut running = WAKE.lock().unwrap();
+        if running.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None))) {
+            continue;
+        }
+        let output = fs::OpenOptions::new().create(true).append(true).open(&log);
+        let mut cmd = std::process::Command::new(&python);
+        cmd.arg("-W").arg("ignore").arg(&script).env("PYTHONDONTWRITEBYTECODE", "1");
+        if let Ok(f) = output {
+            if let Ok(copy) = f.try_clone() {
+                cmd.stdout(copy).stderr(f);
+            }
+        }
+        *running = cmd.spawn().ok();
+    });
+}
+
 /// An app that came without an installer and has no model yet opens to its setup. (core/amadeus_core/firstrun.py decides
 /// whether the setup shows; this only decides which window comes first.)
 fn first_start() -> bool {
@@ -1204,6 +1248,8 @@ fn main() {
             mac_services(&h);
             #[cfg(not(target_os = "linux"))]
             watch_pointer(h.clone());
+            #[cfg(target_os = "macos")]
+            keep_wake_word_running(&h);
             let arg = std::env::args().nth(1);
             if arg.is_some() {
                 handle(&h, arg.as_ref());
@@ -1224,6 +1270,12 @@ fn main() {
         .run(|_app, ev| match ev {
             tauri::RunEvent::ExitRequested { api, code, .. } if code.is_none() => {
                 api.prevent_exit(); // no window open is normal: the tray icon stays
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Exit => {
+                if let Some(mut wake) = WAKE.lock().unwrap().take() {
+                    let _ = wake.kill();
+                }
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {

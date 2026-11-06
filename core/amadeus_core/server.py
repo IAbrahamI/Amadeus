@@ -15,6 +15,10 @@ from . import agenda, agent, background, db, desktop, devices, events, llm, mail
 from .config import CFG
 
 DESKTOP_UA = "AmadeusDesktop/1"
+RELOGIN = """<!doctype html><meta charset=utf-8><title>Amadeus</title>
+<body style="margin:0;height:100vh;display:grid;place-items:center;background:#05101A;color:#D4E6F2;font:15px system-ui,sans-serif"><p id=t>Signing in…</p>
+<script>window.amadeusBridge.postMessage("relogin");
+setTimeout(() => { t.textContent = "Amadeus couldn't sign this window in. Please quit it from the menu bar icon and open it again."; }, 8000);</script>"""
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("text/javascript", ".js")
 WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
@@ -169,6 +173,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not u.path.startswith("/api/"):
             if not self._authed() and u.path in ("/", "/index.html"):
+                if self._desktop():  # the app's own window, without a valid sign-in: it signs in again
+                    page = RELOGIN.encode()
+                    self.send_response(200)
+                    self.send_header("content-type", "text/html; charset=utf-8")
+                    self.send_header("cache-control", "no-store")
+                    self.send_header("content-length", str(len(page)))
+                    self.end_headers()
+                    self.wfile.write(page)
+                    return
                 return self._json({"error": "Open Amadeus with the 'amadeus' command (it signs you in)."}, 401)
             return self._static(u.path)
         if not self._authed():

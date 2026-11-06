@@ -7,11 +7,13 @@ from pathlib import Path
 import secrets as tokens
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 
 from . import db, folders, paths, system, workguard
 from .config import CFG, CONFIG_PATH
@@ -26,6 +28,8 @@ OLLAMA_APPS = ("/Applications/Ollama.app", os.path.expanduser("~/Applications/Ol
 _lock = threading.Lock()
 _job = {"kind": "", "text": "", "pct": None, "error": "", "done": False}
 _picks = []
+_rejected = {}  # the model that just didn't pass, so you can remove its download
+_failed = set()
 _shown = {"yes": False}  # the setup really appeared in the dashboard (the build checks this)
 
 
@@ -67,8 +71,8 @@ def needed():
 
 def status():
     if not needed() and (not _job["kind"] or _job["done"]):
-        return {"needed": False, "job": dict(_job), "shown": _shown["yes"]}
-    return {"needed": True, "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
+        return {"needed": False, "job": dict(_job), "shown": _shown["yes"], "can_install": system.MAC, "voice_ready": voice_ready()}
+    return {"needed": True, "rejected": dict(_rejected), "voice_ready": voice_ready(), "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
             "folder": folders.paths(_own(), os.path.expanduser("~"))["folder"], "picks": _picks, "job": dict(_job),
             "hardware": pick_model.hardware()}
 
@@ -195,10 +199,55 @@ def _scan():
         raise ValueError("Can't reach Ollama's model library. Check your internet connection and try again.")
     speed = _baseline()
     _say("Reading the newest models")
-    found = pick_model.suggest_latest(pick_model.hardware(), pick_model.latest_models(), speed)
+    latest = [m for m in pick_model.latest_models() if m["name"] not in _failed]
+    found = pick_model.suggest_latest(pick_model.hardware(), latest, speed)
     if not found:
         raise ValueError("There isn't enough memory or disk space for any model here.")
     _picks[:] = [{"model": m["model"], "size": m["size"], "about": m["about"], "speed": round(m["speed"] * 0.75) if m.get("speed") else None} for m in found]
+
+
+VOICE_PACKAGES = ["faster-whisper", "soundfile", "vosk", "sounddevice", "piper-tts"]
+WAKE_MODEL = "vosk-model-small-en-us-0.15"
+WHISPER = "Systran/faster-whisper-small"
+FIRST_VOICE = "en_US-lessac-medium"
+_VOICE_PYTHON = os.path.join(paths.VOICE, "venv-lite", "bin", "python")
+
+
+def voice_ready():
+    return os.path.isfile(_VOICE_PYTHON) and os.path.isdir(os.path.join(paths.VOICE, "models", WAKE_MODEL))
+
+
+def _voice(service=True):
+    """Speech recognition, the wake word and a first voice for reading aloud. Everything then runs on this computer."""
+    run = lambda cmd, **kw: subprocess.run(cmd, check=True, capture_output=True, timeout=3600, **kw)  # noqa: E731
+    models = os.path.join(paths.VOICE, "models")
+    os.makedirs(models, exist_ok=True)
+    try:
+        _say("Installing speech recognition")
+        run([sys.executable, "-m", "venv", os.path.join(paths.VOICE, "venv-lite")])
+        run([_VOICE_PYTHON, "-m", "pip", "install", "--quiet", *VOICE_PACKAGES])
+        _say("Downloading the speech model")
+        run([_VOICE_PYTHON, "-c", f"from huggingface_hub import snapshot_download as d; d({WHISPER!r})"],
+            env={**os.environ, "HF_HOME": os.path.join(models, "hf")})
+        _say("Downloading a voice")
+        piper = os.path.join(models, "piper")
+        os.makedirs(piper, exist_ok=True)
+        run([_VOICE_PYTHON, "-m", "piper.download_voices", FIRST_VOICE, "--data-dir", piper])
+        if not os.path.isdir(os.path.join(models, WAKE_MODEL)):
+            _say("Downloading the wake word model")
+            with tempfile.TemporaryDirectory(prefix="amadeus-wake-") as tmp:
+                zipped = os.path.join(tmp, "wake.zip")
+                with urllib.request.urlopen(f"https://alphacephei.com/vosk/models/{WAKE_MODEL}.zip", timeout=120) as r, open(zipped, "wb") as f:
+                    shutil.copyfileobj(r, f)
+                zipfile.ZipFile(zipped).extractall(models)
+    except subprocess.CalledProcessError as e:
+        tail = (e.stderr or b"").decode(errors="replace").strip().splitlines()[-1:]
+        raise ValueError("Setting up voice didn't work: " + (tail[0] if tail else "see the log")) from e
+    db.set_setting("tts_voice", FIRST_VOICE)
+    if service:
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        system.install_agent("amadeus-voice", [_VOICE_PYTHON, "-W", "ignore", os.path.join(here, "voice", "voice_server.py")])
+    _say("Ready")
 
 
 def prepare_folder(folder):
@@ -230,11 +279,18 @@ def prepare_folder(folder):
 
 def _begin(model, size):
     _say("Getting " + model)
-    if model not in pick_model.installed():
+    _rejected.clear()
+    fresh = model not in pick_model.installed()
+    if fresh:
         _pull(model, "Downloading " + model)
-    _say("Checking that it can use tools")
-    if not pick_model.calls_tools(model):
-        raise ValueError(f"{model} can't use tools, and Amadeus needs them for nearly everything. Pick another one.")
+    _say("Checking that it can work with Amadeus")
+    verdict, why = pick_model.tool_check(model)
+    if verdict == "unknown":
+        raise ValueError(f"I couldn't test {model}: {why}. Try again.")
+    if verdict == "no":
+        _picks[:] = [p for p in _picks if p["model"] != model]
+        _rejected.update(model=model, size=size, downloaded=fresh)
+        raise ValueError(f"{model} can't work with Amadeus: {why}. It needs tools for nearly everything, so please pick another one.")
     ctx = pick_model.context_for(pick_model.hardware(), size)
     variant = pick_model.variant_name(model, ctx)
     _api("/api/create", {"model": variant, "from": model, "parameters": {"num_ctx": ctx}, "stream": False}, timeout=300).close()
@@ -262,6 +318,14 @@ def act(action, b):
         finish()
     elif action == "ollama":
         _run("ollama", _install_ollama if system.MAC else _start_ollama)
+    elif action == "remove_model":
+        if not _rejected.get("downloaded"):
+            raise ValueError("Nothing to remove.")
+        _failed.add(_rejected["model"].split(":")[0])
+        _api("/api/delete", {"model": _rejected["model"]}, method="DELETE").close()
+        _rejected.clear()
+    elif action == "voice":
+        _run("voice", _voice)
     elif action == "update_ollama":
         _run("ollama", _update_ollama)
     elif action == "scan":

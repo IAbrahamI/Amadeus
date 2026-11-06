@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import unittest
+from unittest import mock
 
 from . import HOME  # noqa: F401
 
@@ -51,16 +52,43 @@ class PickModel(unittest.TestCase):
         self.assertNotIn("m:cloud", got)
         self.assertLess(got["m:small"], 1)
 
-    def test_newest_first_then_tuned_then_lighter(self):
+    def test_proven_first_then_newest_then_lighter(self):
         latest = [{"name": "big", "versions": [("big:70b", 40.0)]}, {"name": "new", "versions": [("new:8b", 6.0), ("new:20b", 13.0)]},
                   {"name": "mini", "versions": [("mini", 2.0)]}]
         names = [m["model"] for m in pm.suggest_latest(hw(12), latest)]
-        self.assertEqual(names, ["new:8b", "qwen3.5:9b", "mini"])
+        self.assertEqual(names, ["qwen3.5:9b", "new:8b", "mini"])
+
+    def test_a_model_passes_only_by_really_using_the_tool(self):
+        good = {"role": "assistant", "tool_calls": [{"function": {"name": "get_time", "arguments": {"city": "Paris"}}}]}
+
+        def ollama(answers, caps=("completion", "tools")):
+            def api(path, body=None, timeout=300):
+                if path == "/api/show":
+                    return {"capabilities": list(caps)}
+                if path == "/api/generate":
+                    return {}
+                a = answers.pop(0)
+                if isinstance(a, Exception):
+                    raise a
+                return {"message": a}
+            return api
+        check = lambda api: mock.patch.object(pm, "_api", api)  # noqa: E731
+        with check(ollama([good, {"content": "It's 14:05."}])):
+            self.assertEqual(pm.tool_check("m")[0], "ok")
+        with check(ollama([{"content": "no"}, good, {"content": "It's 14:05."}])):  # one miss isn't a verdict
+            self.assertEqual(pm.tool_check("m")[0], "ok")
+        with check(ollama([{"content": "no"}, {"content": "no"}, {"content": "no"}])):
+            self.assertEqual(pm.tool_check("m")[0], "no")
+        with check(ollama([], caps=("completion",))):
+            self.assertEqual(pm.tool_check("m")[0], "no")
+        with check(ollama([OSError("gone"), OSError("gone"), OSError("gone")])):
+            self.assertEqual(pm.tool_check("m"), ("unknown", "gone"))  # says nothing about the model
 
     def test_no_card_and_no_speed_test_stays_small(self):
         latest = [{"name": "big", "versions": [("big:27b", 8.3)]}, {"name": "mini", "versions": [("mini", 1.1)]}]
         names = [m["model"] for m in pm.suggest_latest(hw(0, 16), latest)]
-        self.assertEqual(names[0], "mini")
+        self.assertEqual(names[0], "qwen3.5:4b")  # proven with Amadeus
+        self.assertIn("mini", names)
         self.assertNotIn("big:27b", names)
 
     def test_offline_uses_the_built_in_list(self):

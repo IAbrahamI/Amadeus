@@ -9,6 +9,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import threading
@@ -123,9 +124,13 @@ def _prompt(lang):
 
 def stt(audio, ctype=""):
     import numpy as np
-    pcm = subprocess.run(["ffmpeg", "-v", "quiet", "-i", "pipe:0", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"],
-                         input=audio, capture_output=True).stdout
-    x = np.frombuffer(pcm, dtype=np.float32).copy()
+    if shutil.which("ffmpeg"):
+        pcm = subprocess.run(["ffmpeg", "-v", "quiet", "-i", "pipe:0", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"],
+                             input=audio, capture_output=True).stdout
+        x = np.frombuffer(pcm, dtype=np.float32).copy()
+    else:  # the decoder that comes with the speech recognition
+        from faster_whisper.audio import decode_audio
+        x = decode_audio(io.BytesIO(audio), sampling_rate=16000)
     dur = x.size / 16000
     rms = float(np.sqrt(np.mean(x ** 2))) if x.size else 0.0
     peak = float(np.max(np.abs(x))) if x.size else 0.0

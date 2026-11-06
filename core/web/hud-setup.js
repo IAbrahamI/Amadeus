@@ -4,11 +4,11 @@
   await window.IDENTITY;
   let s = await api("/api/setup");
   if (!s.needed) return;
-  const STEPS = ["Engine", "Model", "Mail", "Ready"];
+  const STEPS = ["Engine", "Model", "Mail", "Voice", "Ready"];
   const veil = document.createElement("div");
   veil.className = "setup";
   document.body.append(veil);
-  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false;
+  let chosen = "", folder = s.folder, provider = "gmail", mailDone = false, voiceDone = false;
   const page = (at, html) => {
     const keep = veil.querySelector("input:focus");
     if (keep) return;  // you're typing: the next look comes after that
@@ -55,7 +55,7 @@
   async function step() {
     s = await api("/api/setup");
     const j = s.job || {}, busy = j.kind && !j.done, again = () => setTimeout(step, 1200);
-    if (busy) { working(j.kind === "begin" || s.picks.length ? 1 : 0, j); return again(); }
+    if (busy) { working(j.kind === "voice" ? 3 : j.kind === "begin" || s.picks.length ? 1 : 0, j); return again(); }
     if (s.ollama !== "running" && !s.model_ready) {
       const has = s.ollama === "installed";
       page(0, `${text(`${esc(NAME())} thinks with an AI model that runs on this computer, so your conversations stay here. A free app called Ollama runs that model. ${has ? "It's installed, but not running." : "I'll install it for you."}`)}
@@ -81,19 +81,27 @@
         <div class="setup-picks">${s.picks.map((p, i) => `<label class="setup-pick"><input type="radio" name="suModel" value="${esc(p.model)}" ${p.model === chosen ? "checked" : ""}>
           <span><b>${esc(p.model)}</b>${i === 0 ? '<em class="setup-rec">recommended</em>' : ""}<br>${p.size} GB download${p.speed ? `, about ${p.speed} words per second` : ""}<br><small>${esc(p.about)}</small></span></label>`).join("")}</div>
         ${s.too_old ? trouble("Your Ollama is too old for this model. I can update it, or you can pick another model.") : j.kind === "begin" || j.kind === "ollama" ? trouble(j.error) : ""}
-        ${buttons(`${s.too_old && s.can_install ? `<button class="btn" type="button" id="suUpdate">Update Ollama</button>` : ""}<span class="grow"></span><button class="btn go" id="suGo">Download and set up</button>`)}`);
+        ${buttons(`${s.too_old && s.can_install ? `<button class="btn" type="button" id="suUpdate">Update Ollama</button>` : ""}${s.rejected && s.rejected.downloaded ? `<button class="btn" type="button" id="suRemove">Remove ${esc(s.rejected.model)} (${s.rejected.size} GB)</button>` : ""}<span class="grow"></span><button class="btn go" id="suGo">Download and set up</button>`)}`);
       if ($("#suUpdate")) $("#suUpdate").onclick = () => tell("update_ollama");
       veil.querySelectorAll("[name=suModel]").forEach((r) => (r.onchange = () => { chosen = r.value; }));
       $("#suFolder").oninput = (e) => { folder = e.target.value; };
       $("#suGo").onclick = () => tell("begin", { model: chosen, folder });
+      if ($("#suRemove")) $("#suRemove").onclick = () => tell("remove_model");
       return;
     }
     if (!mailDone) return mailStep();
-    page(3, `${text(`That's it. ${esc(NAME())} is ready, and you can change all of this later in Settings.`)}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Start</button>`)}`);
+    if (!voiceDone && !s.voice_ready) {
+      page(3, `${text(`Want to talk with ${esc(NAME())}? This adds speech recognition, the wake word and a voice for reading aloud, about 1 GB, and it all runs on this computer. macOS will ask for your microphone the first time.`)}
+        ${j.kind === "voice" ? trouble(j.error) : ""}${buttons(`<button class="btn" type="button" id="suSkip">Skip for now</button><span class="grow"></span><button class="btn go" id="suGo">Set up voice</button>`)}`);
+      $("#suSkip").onclick = () => { voiceDone = true; step(); };
+      $("#suGo").onclick = () => tell("voice");
+      return;
+    }
+    page(4, `${text(`That's it. ${esc(NAME())} is ready, and you can change all of this later in Settings.`)}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">Start</button>`)}`);
     $("#suGo").onclick = async () => {
       const r = await post("/api/setup", { action: "finish" });
       if (r.error) { veil.querySelector(".setup-msg").textContent = r.error; return; }
-      page(3, `${text("Starting up…")}<div class="setup-bar busy"><i></i></div>`);
+      page(4, `${text("Starting up…")}<div class="setup-bar busy"><i></i></div>`);
       const back = async () => { try { const h = await api("/api/setup"); if (!h.needed) return location.reload(); } catch {} setTimeout(back, 1000); };
       setTimeout(back, 2500);
     };

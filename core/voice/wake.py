@@ -110,16 +110,37 @@ def partial_call(partial, words):
     return said[0] if said and said[0] in words else None
 
 
+class MacMic:
+    """The microphone on a Mac. The Amadeus app starts this program, so macOS asks you about the app."""
+
+    def __init__(self):
+        import sounddevice
+        self.s = sounddevice.RawInputStream(samplerate=RATE, channels=1, dtype="int16", blocksize=CHUNK)
+        self.s.start()
+        self.floor = 300.0
+
+    def _chunk(self):
+        return bytes(self.s.read(CHUNK)[0])
+
+    def close(self):
+        self.s.stop()
+        self.s.close()
+
+
 class Mic:
     def __init__(self):
         self.p = subprocess.Popen(["parec", "--raw", "--format=s16le", f"--rate={RATE}", "--channels=1",
                                    "--latency-msec=100", "--client-name=Amadeus wake word"], stdout=subprocess.PIPE)
         self.floor = 300.0
 
-    def read(self):
+    def _chunk(self):
         buf = self.p.stdout.read(CHUNK * 2)
         if len(buf) < CHUNK * 2:
             raise EOFError("microphone closed")
+        return buf
+
+    def read(self):
+        buf = self._chunk()
         rms = float(np.sqrt(np.mean(np.frombuffer(buf, np.int16).astype(np.float32) ** 2)))
         loud = rms > max(self.floor * 2.5, 250)
         if not loud:
@@ -129,6 +150,11 @@ class Mic:
     def close(self):
         self.p.terminate()
         self.p.wait(timeout=5)
+
+
+MacMic.read = Mic.read
+if sys.platform == "darwin":
+    Mic = MacMic  # noqa: F811
 
 
 def record_request(mic, audio, start_wait=80, quiet_end=15, max_len=300):
@@ -184,9 +210,14 @@ def greet(mic):
         data = urllib.request.urlopen(req, timeout=10).read()
         if not data:
             return
-        p = subprocess.Popen(["paplay"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        p.stdin.write(data)
-        p.stdin.close()
+        if sys.platform == "darwin":
+            line = os.path.join(DATA, "wake-line.wav")
+            Path(line).write_bytes(data)
+            p = subprocess.Popen(["/usr/bin/afplay", line], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            p = subprocess.Popen(["paplay"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            p.stdin.write(data)
+            p.stdin.close()
         while p.poll() is None:
             mic.read()
         for _ in range(2):  # the room's echo
