@@ -38,8 +38,9 @@ def profile():
     return f'''(version 1)
 (allow default)
 (deny network*)
-(allow network* (local ip "localhost:*"))
-(allow network* (remote ip "localhost:*"))
+(allow network-bind (local ip "localhost:*"))
+(allow network-inbound (local ip "localhost:*"))
+(allow network-outbound (remote ip "localhost:*"))
 (deny file-write*)
 (allow file-write* (subpath "{own}") (subpath "/private/tmp") (subpath "/private/var/folders") (literal "/dev/null") (literal "/dev/dtracehelper"))
 (deny file-read* (subpath "{home}"))
@@ -107,7 +108,7 @@ def _api(path, body):
 
 def check_seal():
     """It has to be cut off, or the memory stays off."""
-    for code in ("import socket; socket.create_connection(('1.1.1.1', 53), timeout=4)", f"open({os.path.expanduser('~/.amadeus-seal-test')!r}, 'w')"):
+    for code in ("import socket; socket.create_connection(('1.1.1.1', 53), timeout=4)", "import urllib.request; urllib.request.urlopen('http://example.com', timeout=6)", f"open({os.path.expanduser('~/.amadeus-seal-test')!r}, 'w')"):
         if subprocess.run(sealed([PYTHON, "-c", code]), capture_output=True, timeout=30).returncode == 0:
             raise OSError("the memory isn't sealed off, so it stays off")
 

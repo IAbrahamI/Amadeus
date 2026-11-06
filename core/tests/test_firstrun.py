@@ -173,8 +173,8 @@ class FirstStart(unittest.TestCase):
         from amadeus_core import macmemory
         rules = macmemory.profile()
         self.assertIn("(deny network*)", rules)
-        self.assertIn('(remote ip "localhost:*")', rules)
-        self.assertNotIn('(allow network*)', rules)
+        self.assertIn('(allow network-outbound (remote ip "localhost:*"))', rules)
+        self.assertNotIn('allow network*', rules)  # outgoing connections were allowed by a rule about the local side
         self.assertIn("(deny file-write*)", rules)
 
     def test_a_mac_counts_its_shared_memory(self):
