@@ -22,7 +22,7 @@ print(f"installed in {time.time() - t:.0f}s")
 
 ATTEMPTS = {
     "the internet by address": "import socket; socket.create_connection(('1.1.1.1', 53), timeout=4)",
-    "the internet by name": "import urllib.request; urllib.request.urlopen('https://example.com', timeout=6)",
+    "the internet by name": "import urllib.request; urllib.request.urlopen('http://example.com', timeout=6)",
     "name lookup": "import socket; socket.getaddrinfo('example.com', 443)",
     "reading your files": f"open({secret!r}).read()",
     "writing a file at home": f"open({os.path.join(home, 'written')!r}, 'w').write('x')",
