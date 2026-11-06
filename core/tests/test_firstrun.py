@@ -110,6 +110,16 @@ class FirstStart(unittest.TestCase):
         self.assertTrue(got["new:8b"])
         self.assertTrue(got["qwen3.5:9b"])
 
+    def test_ollama_installed_elsewhere_is_never_installed_again(self):
+        with mock.patch.object(firstrun.system, "MAC", True), mock.patch.object(firstrun, "OLLAMA_APPS", ("/nowhere/Ollama.app",)), \
+                mock.patch.object(firstrun, "_models", side_effect=OSError), mock.patch.object(firstrun.subprocess, "run", return_value=mock.Mock(returncode=0)):
+            self.assertEqual(firstrun.ollama_state(), "installed")
+        with mock.patch.object(firstrun, "ollama_state", return_value="installed"), mock.patch.object(firstrun, "_start_ollama") as start, \
+                mock.patch.object(firstrun.urllib.request, "urlopen") as download:
+            firstrun._install_ollama()
+        start.assert_called_once()
+        download.assert_not_called()
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])

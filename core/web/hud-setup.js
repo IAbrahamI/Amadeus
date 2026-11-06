@@ -61,6 +61,7 @@
       page(0, `${text(`${esc(NAME())} thinks with an AI model that runs on this computer, so your conversations stay here. A free app called Ollama runs that model. ${has ? "It's installed, but not running." : "I'll install it for you."}`)}
         ${j.kind === "ollama" ? trouble(j.error) : ""}${buttons(`<span class="grow"></span><button class="btn go" id="suGo">${s.can_install && !has ? "Install Ollama" : "Start Ollama"}</button>`)}`);
       $("#suGo").onclick = () => tell("ollama");
+      setTimeout(step, 3000);  // you may also start or install it yourself
       return;
     }
     if (!s.model_ready) {

@@ -47,12 +47,20 @@ def _models():
         return [m["name"].removesuffix(":latest") for m in json.load(r).get("models", [])]
 
 
+def _ollama_app_known():
+    """Wherever the app is: macOS itself knows, so it doesn't have to be in Applications."""
+    if not system.MAC:
+        return False
+    return any(os.path.isdir(a) for a in OLLAMA_APPS) or \
+        subprocess.run(["/usr/bin/open", "-Ra", "Ollama"], capture_output=True, timeout=20).returncode == 0
+
+
 def ollama_state():
     try:
         _models()
         return "running"
     except (OSError, ValueError):
-        return "installed" if system.MAC and any(os.path.isdir(a) for a in OLLAMA_APPS) or shutil.which("ollama") else "missing"
+        return "installed" if _ollama_app_known() or shutil.which("ollama") else "missing"
 
 
 def needed():
@@ -100,9 +108,7 @@ def _run(kind, work):
 
 def _start_ollama():
     if system.MAC:
-        app = next((a for a in OLLAMA_APPS if os.path.isdir(a)), None)
-        if app:
-            subprocess.run(["/usr/bin/open", "-g", app], capture_output=True, timeout=20)
+        subprocess.run(["/usr/bin/open", "-g", "-a", "Ollama"], capture_output=True, timeout=20)
     for _ in range(45):
         if ollama_state() == "running":
             return
@@ -128,7 +134,7 @@ def _update_ollama():
 
 def _install_ollama(update=False):
     """Ollama's own signed app, only accepted if macOS confirms that signature."""
-    if not update and ollama_state() == "installed":
+    if not update and ollama_state() != "missing":  # never a second copy of what you already have
         _say("Starting Ollama")
         return _start_ollama()
     with tempfile.TemporaryDirectory(prefix="amadeus-ollama-") as tmp:
@@ -165,7 +171,7 @@ def _install_ollama(update=False):
             except OSError:
                 continue
         else:
-            raise ValueError("Couldn't put Ollama in your Applications folder.")
+            raise ValueError("macOS didn't let me put Ollama in your Applications folder. Install it from ollama.com, then come back: this page notices by itself.")
     _say("Starting Ollama")
     _start_ollama()
 

@@ -1090,10 +1090,6 @@ fn mac_services(app: &AppHandle) {
     if !python.exists() {
         return; // run from a build folder
     }
-    if let Some(bundle) = res.parent().and_then(|p| p.parent()) {
-        // you approved the app with "Open Anyway"; launchd starts its Python on its own, without that approval
-        let _ = Command::new("xattr").args(["-dr", "com.apple.quarantine"]).arg(bundle).status();
-    }
     let agents = home_path("Library/LaunchAgents");
     let logs = home_path("Library/Logs/Amadeus");
     let _ = fs::create_dir_all(&agents);
@@ -1108,6 +1104,7 @@ fn mac_services(app: &AppHandle) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>{label}</string>
+<key>AssociatedBundleIdentifiers</key><array><string>com.amadeus.desktop</string></array>
 <key>ProgramArguments</key><array>{args}</array>
 <key>WorkingDirectory</key><string>{}</string>
 <key>EnvironmentVariables</key><dict><key>PYTHONDONTWRITEBYTECODE</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>

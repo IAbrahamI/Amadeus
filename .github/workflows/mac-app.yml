@@ -11,7 +11,7 @@ on:
 jobs:
   build:
     runs-on: macos-15  # Apple Silicon: Macs with an M1 or newer are the ones Amadeus supports
-    timeout-minutes: 40
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -118,6 +118,9 @@ jobs:
           curl -sS -m 20 -H "authorization: Bearer $(cat "$DATA/token")" http://127.0.0.1:8095/api/setup -o setup.json
           cat setup.json | cut -c1-120; echo
           python3 -c "import json; s = json.load(open('setup.json')); assert s['needed'] and s['shown'], s"
+      - name: The whole setup with a real Ollama and a real model
+        timeout-minutes: 30
+        run: python3 packaging/macos/check_setup.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
