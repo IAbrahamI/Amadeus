@@ -220,7 +220,10 @@ def new_project(cid, text, state):
             spec = state["spec"]
             name = re.sub(r"[^\w .-]", "", spec.get("name") or "New project").strip()[:60] or "New project"
             md = _spec_md(spec)
-            preview = tools.send_to_work_preview(md)[0]
+            preview, findings, _ = tools.send_to_work_preview(md)
+            if "presidio-unavailable" in findings:  # nothing leaves unchecked, and there's no point in asking for approval
+                return ("I can't send this yet: a work project leaves this computer, and the privacy filter that checks the text first "
+                        "isn't available here. Nothing was sent, and your draft is kept. Say **yes** to try again."), False
             _approval(cid, "start_work_project", {"name": name, "spec": md},
                       f"Start work project **{name}** (one Claude Code run, folder "
                       f"`{name}/` in your projects folder). **Exactly this text leaves your PC:**\n\n> " + preview.replace("\n", "\n> "))
@@ -238,7 +241,7 @@ def start_work_project(name, spec):
     from . import work
     clean, findings, hold = tools._scrub(spec, keep=("ORGANIZATION",))
     if hold:
-        return "Not sent: the spec contains something from your deny-list or a canary marker."
+        return tools.held_why(findings)
     name, folder = work._folder(name)
     overview = os.path.join(folder, "Overview.md")
     if not os.path.exists(overview):

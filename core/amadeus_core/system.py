@@ -34,7 +34,7 @@ def install_agent(service, args):
     os.makedirs(logs, exist_ok=True)
     with open(plist, "wb") as f:
         plistlib.dump({"Label": label, "AssociatedBundleIdentifiers": ["com.amadeus.desktop"], "ProgramArguments": list(args), "RunAtLoad": True, "KeepAlive": {"PathState": {args[0]: True}}, "LimitLoadToSessionType": "Aqua",
-                       "EnvironmentVariables": {"PYTHONDONTWRITEBYTECODE": "1", "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
+                       "EnvironmentVariables": {"PYTHONDONTWRITEBYTECODE": "1", "PATH": os.path.expanduser("~/.local/bin") + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
                        "StandardOutPath": os.path.join(logs, service + ".log"), "StandardErrorPath": os.path.join(logs, service + ".log")}, f)
     target = f"gui/{os.getuid()}"
     subprocess.run(["/bin/launchctl", "bootout", f"{target}/{label}"], capture_output=True, timeout=30)

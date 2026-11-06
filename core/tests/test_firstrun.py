@@ -120,6 +120,18 @@ class FirstStart(unittest.TestCase):
         start.assert_called_once()
         download.assert_not_called()
 
+    def test_no_filter_means_an_answer_at_once_and_nothing_leaves(self):
+        from amadeus_core import privacy
+        import time
+        with mock.patch.object(privacy.system, "MAC", True), mock.patch.object(privacy, "ensure_presidio") as start, mock.patch.object(privacy, "_ner") as ner:
+            t = time.time()
+            _, findings, hold = privacy.scrub("Hello there")
+        self.assertLess(time.time() - t, 1)
+        self.assertTrue(hold)
+        self.assertIn("presidio-unavailable", findings)
+        start.assert_not_called()
+        ner.assert_not_called()
+
     def test_a_mac_counts_its_shared_memory(self):
         def sysctl(cmd, **_):
             return mock.Mock(stdout={"hw.memsize": str(16 * 2 ** 30), "machdep.cpu.brand_string": "Apple M1"}[cmd[-1]])

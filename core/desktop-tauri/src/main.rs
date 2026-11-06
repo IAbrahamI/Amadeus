@@ -1099,6 +1099,7 @@ fn mac_services(app: &AppHandle) {
     let core = res.join("core");
     let agent = |label: &str, args: &[String], cwd: &std::path::Path, keep_alive: &str, log: &str| {
         let args: String = args.iter().map(|a| format!("<string>{}</string>", a)).collect();
+        let local = xml(&home_path(".local/bin")); // where Claude Code is usually installed
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1107,7 +1108,7 @@ fn mac_services(app: &AppHandle) {
 <key>AssociatedBundleIdentifiers</key><array><string>com.amadeus.desktop</string></array>
 <key>ProgramArguments</key><array>{args}</array>
 <key>WorkingDirectory</key><string>{}</string>
-<key>EnvironmentVariables</key><dict><key>PYTHONDONTWRITEBYTECODE</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+<key>EnvironmentVariables</key><dict><key>PYTHONDONTWRITEBYTECODE</key><string>1</string><key>PATH</key><string>{local}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key>{keep_alive}
 <key>LimitLoadToSessionType</key><string>Aqua</string>

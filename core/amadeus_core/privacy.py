@@ -14,10 +14,12 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 import urllib.request
 
+from . import system
 from .config import CFG
 
 PATTERNS = [
@@ -122,9 +124,16 @@ def ensure_presidio():
         subprocess.run(["docker", "restart", *hung], capture_output=True, timeout=90)
 
 
+def filter_available():
+    """Presidio runs in Docker, which the Mac app doesn't use. Without it there's nothing to wait for, so say so at once."""
+    return not system.MAC and bool(shutil.which("docker"))
+
+
 def scrub(text, keep=()):
+    available = filter_available()
     try:
-        ensure_presidio()
+        if available:
+            ensure_presidio()
     except Exception:
         pass  # the check below still fails closed if Presidio is unreachable
     findings, hold = [], False
@@ -137,6 +146,8 @@ def scrub(text, keep=()):
         text, n = rx.subn(f"[{label}]", text)
         if n:
             findings.append(f"{label}x{n}")
+    if not available:
+        return text, findings + ["presidio-unavailable"], True  # fail closed: hold, never send unchecked
     try:
         hits = _ner(text, keep)
     except Exception:

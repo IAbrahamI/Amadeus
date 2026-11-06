@@ -767,6 +767,12 @@ def filter_allow_add(words):
     return f"The privacy filter will keep: {', '.join(new) or 'nothing new'}."
 
 
+def held_why(findings):
+    if "presidio-unavailable" in findings:
+        return "Not sent: the privacy filter that checks the text first isn't available here."
+    return "Not sent: the text contains something from your deny-list or a canary marker."
+
+
 def send_to_work_preview(task):
     clean, findings, hold = _scrub(task, keep=("ORGANIZATION",))
     return clean, findings, hold
@@ -777,7 +783,7 @@ def send_to_work(task, project=""):
     from . import work
     clean, findings, hold = _scrub(task, keep=("ORGANIZATION",))
     if hold:
-        return "Not sent: the text contains something from your deny-list or a canary marker."
+        return held_why(findings)
     name = project.strip() or re.sub(r"\s+", " ", re.sub(r"[^\w\s-]", "", clean)).strip()[:40] or "Task"
     r = work.start(name, clean, CURRENT_CID)
     if isinstance(r, str):
@@ -793,7 +799,7 @@ def continue_project(project, text):
         return f"I have no earlier run for '{project}'. Say \"send to work: …\" to start it."
     clean, findings, hold = _scrub(text, keep=("ORGANIZATION",))
     if hold:
-        return "Not sent: the text contains something from your deny-list or a canary marker."
+        return held_why(findings)
     r = work.start(last["project"], clean, CURRENT_CID, resume=last["session_id"])
     return r if isinstance(r, str) else f"**{last['project']}** continues. I'll tell you when it's done."
 
