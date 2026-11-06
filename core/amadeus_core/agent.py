@@ -372,8 +372,9 @@ def _keep_context(cid, user_text):
 def warm_up(cid=None, model=None):
     """Reads the fixed part of the prompt and the current chat ahead, so the next message is answered right away."""
     from . import quickchat
-    model = model or db.get_setting("chat_model", "") or CFG["default_model"]
     cid = cid or quickchat.current()
+    conv = db.q("SELECT model FROM conversations WHERE id=?", (cid,), one=True) or {}
+    model = model or conv.get("model") or db.get_setting("chat_model", "") or CFG["default_model"]  # the one that chat answers with
     llm.warm(model, [_system(cid)] + _history(cid) + [{"role": "user", "content": "<context>\n</context>"}], tools.schemas())
 
 
@@ -386,8 +387,8 @@ def load_at_start():
                 model = db.get_setting("chat_model", "") or CFG["default_model"]
                 if model not in llm.list_models() or not llm.has_room(model):
                     return
-                warm_up(model=model)
-                print("model ready:", model, flush=True)
+                warm_up()
+                print("model ready", flush=True)
                 return
             except OSError:
                 time.sleep(15)
