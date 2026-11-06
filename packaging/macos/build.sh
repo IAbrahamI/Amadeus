@@ -43,6 +43,10 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 DMG="$OUT/Amadeus-$VERSION-$ARCH.dmg"
 rm -f "$DMG"
-hdiutil create -volname Amadeus -srcfolder "$STAGE" -fs HFS+ -format UDZO "$DMG"
+for attempt in 1 2 3 4 5; do  # ("Resource busy" happens now and then on build machines)
+  hdiutil create -volname Amadeus -srcfolder "$STAGE" -fs HFS+ -format UDZO "$DMG" && break
+  [ "$attempt" = 5 ] && exit 1
+  sleep $((attempt * 5))
+done
 rm -rf "$STAGE"
 echo "Built $DMG"
