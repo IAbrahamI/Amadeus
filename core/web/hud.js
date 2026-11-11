@@ -28,7 +28,13 @@ const core = Core.start(stage);
 let docked = false, sideMode = false, curView = "home";
 function place() {
   const { W, H } = core.size, narrow = W < 760;
-  if (docked) {  // big views: the core docks bottom-left, centred in its own column so its rings never run under the box
+  const chat = app.classList.contains("ws-on") && document.querySelector(".wschat"), grid = chat && document.querySelector(".wsgrid");
+  if (chat && chat.offsetWidth) {  // the workspace fills the screen: a small core floats in the corner under the chat
+    const s = stage.getBoundingClientRect(), c = chat.getBoundingClientRect(), g = grid.getBoundingClientRect();
+    const r = Math.max(26, Math.min(50, c.width / 2 / 1.42 - 10, H * .07));
+    app.style.setProperty("--wscore", Math.round(r * 1.42 * 2 + 18) + "px");
+    core.target(c.width > 500 ? c.right - s.left - r * 1.42 - 10 : c.left - s.left + c.width / 2, g.bottom - s.top - r * 1.42 - 4, r, true);
+  } else if (docked) {  // big views: the core docks bottom-left, centred in its own column so its rings never run under the box
     const col = Math.round(Math.min(440, Math.max(300, W * .25)));
     const r = narrow ? 34 : Math.min((col - 34) / 2 / 1.42, H * .19);
     app.style.setProperty("--col", col + "px"); app.style.setProperty("--dockr", r + "px");
@@ -38,7 +44,7 @@ function place() {
     core.target((W - pw) / 2, H * .46, Math.min(W - pw, H) * .29);
   } else core.target(W / 2, H * .46, Math.min(W, H) * (narrow ? .32 : .31));
 }
-new ResizeObserver(() => place()).observe(stage); place();
+core.onResize = place; place();
 const STATE = { idle: "Idle", think: "Recalling", speak: "Speaking", listen: "Listening" };
 function setMode(m) { core.mode(m); $("#state").textContent = STATE[m]; }
 

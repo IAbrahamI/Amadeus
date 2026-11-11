@@ -19,7 +19,7 @@ const CALL = new URLSearchParams(location.search).has("call");  // opened for a 
 // ---------- the core ----------
 const core = Core.start($("#corewrap"), { points: "mini" });
 const placeCore = () => { const r = $("#corewrap").getBoundingClientRect(); core.target(r.width / 2, r.height / 2, Math.min(r.width, r.height) / 2 / 1.5); };
-new ResizeObserver(placeCore).observe($("#corewrap")); placeCore();
+core.onResize = placeCore; placeCore();
 let mode = "idle";
 const setMode = (m) => { mode = m; core.mode(m); };
 // the sphere: a click opens the dashboard, holding it talks to her (she listens while you hold, it sends when you let

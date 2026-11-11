@@ -339,7 +339,9 @@
         front.width = W * DPR; front.height = H * DPR;
         back.width = W * HDPR; back.height = H * HDPR;
         bctx.setTransform(HDPR, 0, 0, HDPR, 0, 0); box = null;
+        if (api && api.onResize) api.onResize();  // the page places the core only after the core knows its new size
       };
+      let api = null;
       new ResizeObserver(resize).observe(stage); resize();
       const frame = (now) => {
         raf = requestAnimationFrame(frame);
@@ -411,7 +413,7 @@
       const stop = () => { cancelAnimationFrame(raf); raf = 0; };
       document.addEventListener("visibilitychange", () => (document.hidden ? stop() : run()));  // hidden: uses nothing
       run();
-      const api = {
+      api = {
         get size() { return { W, H }; },
         gpu: !!gl,
         mode(m) { if (m === "think" && state.mode !== "think") { state.hbT = 0; if (api.onBeat) setTimeout(api.onBeat); } state.mode = m; },  // the first beat lands at once

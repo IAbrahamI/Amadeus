@@ -672,6 +672,9 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .wslive p:last-child { color: var(--text); }
 .wschat { border-left: 1px dashed rgba(var(--a),.2); padding-left: 12px; overflow: auto; }
 .wschat .tline { grid-template-columns: 52px 1fr; }
+/* the core floats small in the corner under the chat, above the glass (it draws nothing elsewhere, and takes no clicks) */
+.ws-on .wschat { margin-bottom: var(--wscore, 160px); }
+.ws-on .core-layer { z-index: 3; pointer-events: none; }
 @media (max-width: 1000px) { .wsgrid { grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); } .wschat { grid-column: 1 / -1; border-left: 0; border-top: 1px dashed rgba(var(--a),.2); padding: 10px 0 0; max-height: 38%; } }
 
 .remnew { max-width: none; margin-bottom: 14px; } .remrow { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 8px; }

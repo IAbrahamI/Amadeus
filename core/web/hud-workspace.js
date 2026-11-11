@@ -19,6 +19,7 @@ function closeWorkspace() {
   if (proj.ws && dirtyAny() && !confirm("You have unsaved changes. Leave the workspace anyway?")) return false;
   clearInterval(ws.poll); ws.poll = null;
   proj.ws = false; app.classList.remove("ws-on");
+  place();  // the core goes back to its corner of the stage
   Object.assign(ws, { files: [], last: 0, live: [], bufs: {}, layout: null, groups: {}, focus: null, project: "" });
   return true;
 }
@@ -54,7 +55,7 @@ function firstGroup(node) { return !node ? null : node.group || firstGroup(node.
 function allGroups(node, out = []) { if (node) { if (node.group) out.push(node.group); else { allGroups(node.a, out); allGroups(node.b, out); } } return out; }
 
 // put a file in a group: as a tab in the middle, or in a new group to one side ("left" | "right" | "top" | "bottom")
-function place(path, target, where = "center", from = null) {
+function placeTab(path, target, where = "center", from = null) {
   if (!path) return;
   if (!ws.layout) { ws.layout = { group: newGroup() }; target = ws.layout.group; }
   target = target && ws.groups[target] ? target : ws.focus || firstGroup(ws.layout);
@@ -199,7 +200,7 @@ function refreshTabs(path) {  // the tab marks and save buttons, without touchin
 async function openFile(path, target, where = "center", from = null) {
   if (!path) return;
   await load(path);
-  place(path, target, where, from);
+  placeTab(path, target, where, from);
   await drawEditors();
 }
 async function save(id, overwrite) {
@@ -269,6 +270,7 @@ async function renderWorkspace(d, chat, chip, label) {
   if (!ws.layout) { const first = d.files.find((f) => f.path === "Overview.md") || d.files[0]; ws.layout = { group: newGroup(first ? [first.path] : []) }; ws.focus = ws.layout.group; }
   await drawEditors();
   const side = body().querySelector(".wschat"); side.scrollTop = side.scrollHeight;
+  place(); setTimeout(place, 400);  // a small core in the corner under the chat (again once the panel has settled)
   clearInterval(ws.poll); ws.poll = setInterval(wsTick, 2000); wsTick();
 }
 
