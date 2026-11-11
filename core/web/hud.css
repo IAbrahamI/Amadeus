@@ -30,7 +30,7 @@
   --mono: "JetBrains Mono", ui-monospace, monospace;
 }
 html, body { height: 100%; }
-body { background: var(--void); color: var(--text); font: 14px/1.5 var(--body); overflow: hidden; }
+body { margin: 0; background: var(--void); color: var(--text); font: 14px/1.5 var(--body); overflow: hidden; }
 * { box-sizing: border-box; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 /* HUD scrollbars: thin cyan bar, no arrows, no grey track */
