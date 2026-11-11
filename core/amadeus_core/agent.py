@@ -9,7 +9,7 @@ import re
 import threading
 import time
 
-from . import db, events, learning, llm, profile, tools
+from . import db, events, grounding, learning, llm, profile, tools
 from .config import CFG, NAME
 from .speech import SAY_RE, SayFilter
 
@@ -38,6 +38,11 @@ Rules:
   stable knowledge is fine, but say when you are unsure.
 - Only use send_to_work when the user wants coding, writing or bigger projects done by the work agents.
 - When asked what you know about the user, use memory_overview and list the facts plainly.
+- Something has only happened if you called its tool in this turn. Never say it's added, set, saved, sent or done otherwise, and never
+  state what a list holds (to-dos, reminders, calendar, mail) without looking it up with its tool in this turn.
+- When one message asks for several things (a to-do and a reminder for it), call every tool it needs in the same turn.
+  A to-do or reminder about a mail or a person is still just a to-do or reminder: save it in the user's words, don't look anything up first.
+- Times and dates: never calculate them. Give create_reminder the user's own words ("in 5 minutes", "tomorrow 09:00", "today evening").
 - Keep answers short and clear. If you don't know, say so.
 - Format: clean Markdown. Lead with the answer in one plain sentence, then short lists or a small table only when they
   help. No emoji or decorative symbols, no headings for short answers.
@@ -144,13 +149,20 @@ def own_skill(name):
     return os.path.isfile(os.path.join(SKILLS_DIRS[1], name, "SKILL.md")) or os.path.isfile(os.path.join(SKILLS_DIRS[1], name + ".md"))
 
 
+JUST_NOTE_IT = re.compile(r"\b(to-?dos?|remind(er)?s?|erinner\w*|aufgabe|recu[eé]rd\w*|recordatorio)\b", re.I)
+
+
 def matching_skills(cid):
     """Skills whose trigger words appear in the user's last two messages: loaded only for those answers (keeps every
     other message small and fast). Background skills are used by their jobs, never in chat."""
     users = [m["content"] for m in db.messages(cid) if m["role"] == "user"][-2:]
     text = " ".join(users).lower()
     off = set(db.get_setting("skills_off", []))
-    return [s for s in skills().values() if s["mode"] == "auto" and s["name"] not in off and any(t in text for t in s["triggers"])]
+    found = [s for s in skills().values() if s["mode"] == "auto" and s["name"] not in off and any(t in text for t in s["triggers"])]
+    # a to-do or reminder ABOUT something (replying to a mail, a project) is only a to-do: the skill for doing that thing stays out
+    if users and JUST_NOTE_IT.search(users[-1]):
+        found = [s for s in found if s["name"] == "calendar"]
+    return found
 
 
 def persona():
@@ -331,6 +343,9 @@ def _system(cid):
 def _context(cid, user_text):
     """What changes with each message: the time, and what fits this request. It goes with the newest message."""
     text = "The time is " + datetime.datetime.now().strftime("%H:%M") + "."
+    times = grounding.hint(user_text)
+    if times:
+        text += "\n" + times
     from . import playbooks
     mine = playbooks.own_match(user_text or "")
     if mine:  # one of your own playbooks: its steps, in your words
@@ -345,7 +360,8 @@ def _context(cid, user_text):
     if last_user and last_user["meta"].get("speak"):
         text += SAY_NOTE
     for s in matching_skills(cid):
-        text += f"\n\n## Skill: {s['name']} (follow it for this request)\n{s['body']}"
+        text += (f"\n\n## Skill: {s['name']} (loaded because of a word in the message; follow it only if this is what the user wants done "
+                 f"right now, not when they only want a to-do, note or reminder about it)\n{s['body']}")
         if s["name"] == "calendar":  # small models are bad at date math: give them the dates
             d0 = datetime.date.today()
             text += "\n\nDates (use these, don't calculate): " + ", ".join(
@@ -445,6 +461,23 @@ def _playbook(cid, user_text, emit):
     return True
 
 
+HOLD = 160  # characters of an answer looked at before it starts to appear
+
+
+def _acted(cid):
+    """A tool ran or waits for approval since your last message."""
+    for m in reversed(db.messages(cid)):
+        if m["role"] == "user":
+            return False
+        if m["role"] in ("tool", "approval") or m["meta"].get("tool_calls"):
+            return True
+    return False
+
+
+def _ever_acted(cid):
+    return any(m["role"] == "tool" for m in db.messages(cid))
+
+
 def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
     last = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None) if user_text is None else None
     speak = speak or bool(last and last["meta"].get("speak"))  # picking up again after an approval
@@ -456,9 +489,13 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
     sysmsg = _system(cid)
     _keep_context(cid, user_text or "")
     tools.CURRENT_CID = cid
+    said_by_user = next((m["content"] for m in reversed(db.messages(cid)) if m["role"] == "user"), "")
+    acted = _acted(cid)  # a tool already ran in this turn (picking up after an approval): what it says now is backed by that
+    nudge, held_back = [], False
     for _ in range(max_rounds):
         content, calls, said = "", [], None
         spoken = SayFilter()
+        held, streaming = [], acted  # the start of an answer is held for a moment: "Done." without a tool must never reach you
 
         def show(line, text):  # the spoken line goes to the voice, everything else to the screen
             nonlocal said
@@ -467,12 +504,29 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 emit("say", line)
             if text:
                 emit("token", text)
-        messages = [sysmsg] + _history(cid) + ([SAY_REMINDER] if speak else [])
+        messages = [sysmsg] + _history(cid) + nudge + ([SAY_REMINDER] if speak else [])
         for kind, data in llm.chat_stream(model, messages, tools.schemas()):
-            if kind == "token":
+            if kind != "token":
+                content, calls = data["content"], data["tool_calls"]
+            elif streaming:
                 show(*spoken.feed(data))
             else:
-                content, calls = data["content"], data["tool_calls"]
+                held.append(data)
+                if not held_back and len("".join(held)) >= HOLD and not grounding.unbacked("".join(held)):
+                    streaming = True
+                    show(*spoken.feed("".join(held)))
+                    held = []
+        if not calls and not acted and grounding.unbacked(content):
+            if not nudge:  # once: tell it nothing happened, and let it really do it
+                if streaming:
+                    show(None, "\n\n(That wasn't right: nothing has been done yet. One moment.)\n\n")
+                print("answered as done without a tool: asking again", flush=True)
+                nudge, held_back = [{"role": "assistant", "content": content}, {"role": "user", "content": grounding.NUDGE}], True
+                continue
+            if not _ever_acted(cid):  # still nothing behind it, and nothing earlier in this chat it could mean
+                content, held = grounding.HONEST + "\n[mood:worried]", [grounding.HONEST]
+        if held:
+            show(*spoken.feed("".join(held)))
         show(*spoken.flush())
         content = SAY_RE.sub("", content, count=1).strip() or said or ""  # the chat keeps the full answer
         if said and content == said:  # only the line came: that's the answer on screen too
@@ -499,6 +553,11 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 db.add_message(cid, "tool", f"Unknown tool {name}", {"name": name})
                 continue
             # saving memories normally needs no approval, but right after reading mail it does (no memory poisoning by emails)
+            if name == "create_reminder":  # the time comes from your words, not from the model's arithmetic
+                fixed = grounding.correct_when(str(args.get("when", "")), said_by_user)
+                if fixed != args.get("when"):
+                    print(f"reminder time corrected from {args.get('when')!r} to {fixed!r}", flush=True)
+                    args = c["arguments"] = {**args, "when": fixed}
             needs = t["approval"] or (name == "remember" and _read_mail_recently(cid)) or \
                 (name == "open_page" and _read_mail_recently(cid) and not tools.user_named_site(cid, str(args.get("url", ""))))
             # opening things needs no approval; only a link that may come from a mail or message (and that you never
@@ -545,6 +604,7 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 except Exception as e:
                     result = f"Error: {e}"
                 db.add_message(cid, "tool", result, {"name": name})
+        acted = True
         if waiting:
             emit("done", {"waiting": True})
             return

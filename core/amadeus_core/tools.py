@@ -12,7 +12,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from . import agenda, db, macmemory, mailbridge, system
+from . import agenda, db, grounding, macmemory, mailbridge, system
 from .config import CFG, NAME
 
 
@@ -186,7 +186,10 @@ def parse_schedule(when):
         return f"once {dt:%Y-%m-%d %H:%M}", dt.timestamp()
     m = re.fullmatch(r"(daily|weekdays|weekly (mon|tue|wed|thu|fri|sat|sun)) (\d{1,2}):(\d{2})", w)
     if not m:
-        raise ValueError("Use 'YYYY-MM-DD HH:MM', 'daily HH:MM', 'weekdays HH:MM' or 'weekly mon HH:MM'.")
+        said = grounding.resolve_when(w, now)  # everyday words: "in 5 minutes", "tomorrow 09:00", "today evening"
+        if said:
+            return parse_schedule(said)
+        raise ValueError("Use the user's own words ('in 5 minutes', 'tomorrow 09:00', 'today evening'), 'YYYY-MM-DD HH:MM', 'daily HH:MM', 'weekdays HH:MM' or 'weekly mon HH:MM'.")
     kind, hh, mm = m.group(1), int(m.group(3)), int(m.group(4))
     norm = f"{kind} {hh:02d}:{mm:02d}"
     return norm, next_run(norm)
@@ -1284,8 +1287,9 @@ TOOLS = [
       "summaries). Use todo_add/notes_add for the user's files.", {"path": S, "content": S}, ["path", "content"],
       write_note, "notes", True, lambda a: f"Write note **{a.get('path')}**:\n\n> " + a.get('content', '')[:800].replace("\n", "\n> ")),
     T("list_reminders", "List active reminders.", {}, [], list_reminders, "reminders"),
-    T("create_reminder", "Create a reminder. 'when' must be 'YYYY-MM-DD HH:MM', 'daily HH:MM', 'weekdays HH:MM' or "
-      "'weekly mon HH:MM'.", {"text": S, "when": S}, ["text", "when"], create_reminder, "reminders", True,
+    T("create_reminder", "Create a reminder. For 'when' pass the user's own words for a single time ('in 5 minutes', 'tomorrow 09:00', "
+      "'today evening', 'friday 14:30'): the time is worked out for you, never calculate it. For repeating ones: 'daily HH:MM', "
+      "'weekdays HH:MM' or 'weekly mon HH:MM'.", {"text": S, "when": S}, ["text", "when"], create_reminder, "reminders", True,
       lambda a: f"Remind you: **{a.get('text')}** — {parse_schedule(a.get('when', ''))[0]}"),
     T("delete_reminder", "Remove a reminder by id.", {"reminder_id": S}, ["reminder_id"], delete_reminder, "reminders",
       True, _delete_reminder_summary),

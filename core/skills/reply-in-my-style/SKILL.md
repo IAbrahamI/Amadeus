@@ -6,7 +6,7 @@ metadata:
 ---
 # Reply in my style
 
-When the user wants to reply to an email:
+When the user wants you to write a reply to an email now (not when they only want a to-do or reminder to reply later):
 1. Read the email first (mail_read) if you haven't yet. If it is unclear which mail, ask or use mail_search.
 2. Write the reply in the user's voice, using "How you communicate" from their profile: their usual greeting and sign-off,
    formal or casual, length, emoji or not. Match the language of the email (German, English, Spanish) unless told otherwise.
