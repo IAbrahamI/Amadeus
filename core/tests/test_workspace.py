@@ -129,3 +129,29 @@ class Presence(unittest.TestCase):
     def test_outside_the_project_is_ignored(self):
         p = work.Presence(self.folder)
         self.assertIsNone(self.feed(p, '{"file_path": "/etc/passwd"}', tool="Read"))
+
+
+class Report(unittest.TestCase):
+    """When a run ends in the project's own chat, Amadeus doesn't repeat Claude's report; it keeps it to answer from."""
+
+    def test_project_chat_keeps_the_report_quietly(self):
+        import subprocess
+        from amadeus_core import agent, db
+        name, folder = work._folder("Report test")
+        cid = work.project_chat(name)
+        jid = db.new_id()
+        db.q("INSERT INTO work_jobs(id,project,folder,session_id,status,created,conversation_id,task) VALUES(?,?,?,?,?,?,?,?)",
+             (jid, name, folder, "", "running", time.time(), cid, "do it"))
+        out = json.dumps({"type": "result", "result": "Built main.rs; run it with cargo run.", "session_id": "s1", "total_cost_usd": 0.1}) + "\n" + \
+            json.dumps({"type": "system", "subtype": "task_summary"}) + "\n"
+        done = subprocess.CompletedProcess([], 0, out, "")
+        with mock.patch.object(work, "_watched", return_value=done), mock.patch.object(work, "_learn") as learn, \
+                mock.patch.object(work.events, "add"):
+            work._run(jid, "do it", None)
+        msgs = db.messages(cid)
+        self.assertEqual([m["role"] for m in msgs], ["work"])
+        self.assertIn("cargo run", msgs[0]["content"])
+        learn.assert_called_once()
+        hist = agent._history(cid)
+        self.assertTrue(any(h["role"] == "user" and "don't repeat it" in h["content"] and "cargo run" in h["content"] for h in hist))
+        self.assertEqual(work._job(jid)["status"], "done")  # the result line is found even when it isn't the last line

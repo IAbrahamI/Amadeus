@@ -198,6 +198,10 @@ def _history(cid):
                 item["tool_calls"] = [{"function": c} for c in meta["tool_calls"]]
         elif role == "tool":
             item = {"role": "tool", "content": m["content"][:4000], "tool_name": meta.get("name", "")}
+        elif role == "work":  # Claude Code's report in a project's chat: the user read it already, Amadeus learns from it
+            item = {"role": "user", "content": f"<context>\nClaude Code {'finished' if meta.get('ok') else 'stopped'} on "
+                    f"{meta.get('project', 'the project')}. The user saw this report in the project's timeline: don't repeat it, "
+                    f"use it to answer.\n\n{m['content'][:4000]}\n</context>"}
         else:
             continue
         size += len(m["content"])

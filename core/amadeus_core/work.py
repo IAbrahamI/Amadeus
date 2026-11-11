@@ -416,10 +416,31 @@ def _run(jid, task, resume):
     db.q("UPDATE work_jobs SET status=?, session_id=?, finished=?, summary=?, cost=? WHERE id=?",
          ("done" if ok else "failed", sid, time.time(), summary[:20000], cost, jid))
     head = f"{j['project']}: " + ("questions for you" if "## Questions" in summary else "done" if ok else "stopped")
-    if j["conversation_id"]:
-        db.add_message(j["conversation_id"], "assistant",
+    cid = j["conversation_id"]
+    if cid and (project_of_chat(cid) or "").casefold() == j["project"].casefold():
+        # the project's own chat: you read Claude's report in the project's timeline already, so Amadeus doesn't repeat it.
+        # It's kept as Claude's report in that chat, so Amadeus knows what happened and answers from it (see agent._history)
+        db.add_message(cid, "work", summary, {"project": j["project"], "ok": ok})
+    elif cid:
+        db.add_message(cid, "assistant",
                        f"**{j['project']}** ({'finished' if ok else 'stopped'}):\n\n{summary}", {"mood": "normal"})
+    if ok:
+        _learn(j["project"], summary)
     events.add("work" if ok else "job_failed", head, summary[:600], cid=j["conversation_id"] or "")
+
+
+def _learn(project, summary):
+    """What Claude Code found out or built goes into long-term memory too (once you've been idle a moment, like all
+    learning), so Amadeus can answer from it later, in any chat. Without a memory service it's simply skipped."""
+    from . import agent, tools
+
+    def keep():
+        try:
+            tools._hs("/memories", {"items": [{"content": summary[:6000],
+                                               "context": f"Claude Code's report after working on the project {project}"}]})
+        except Exception as e:
+            print(f"work: not kept in memory ({e})", flush=True)
+    agent.later(keep)
 
 
 def status():
