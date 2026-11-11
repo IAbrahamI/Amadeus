@@ -63,6 +63,7 @@ const VIEWS = {
 };
 const body = () => $("#pbody");
 function open(v) {
+  if (v !== "projects" && typeof closeWorkspace === "function" && proj.ws && !closeWorkspace()) return;
   document.querySelectorAll(".nav").forEach((b) => b.setAttribute("aria-current", String(b.dataset.v === v)));
   curView = VIEWS[v] ? v : "home";
   if (!VIEWS[v]) { docked = sideMode = false; app.classList.remove("docked", "side"); place(); return; }

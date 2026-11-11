@@ -316,11 +316,13 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/projects/folder":  # where the projects live, and whether that's (still) among your notes
             from . import work
             return self._json(work.folder_info())
-        m = re.fullmatch(r"/api/projects/([^/]+)(/file)?", p)
+        m = re.fullmatch(r"/api/projects/([^/]+)(/file|/changes)?", p)
         if m:
             from . import work
             name = urllib.parse.unquote(m.group(1))
             try:
+                if m.group(2) == "/changes":  # the workspace view: files and what the agent is doing, asked every two seconds
+                    return self._json(work.changes(name))
                 return self._json(work.project_file(name, qs.get("path", [""])[0]) if m.group(2) else work.project(name))
             except ValueError as e:
                 return self._json({"error": str(e)}, 404)
@@ -493,6 +495,16 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(work.set_folder(b.get("path", ""), bool(b.get("move"))))
             except (ValueError, OSError) as e:
+                return self._json({"error": str(e)}, 400)
+        m = re.fullmatch(r"/api/projects/([^/]+)/file", p)
+        if m:  # you save a file in the workspace view
+            from . import work
+            try:
+                return self._json(work.save_file(urllib.parse.unquote(m.group(1)), b.get("path", ""), str(b.get("text", "")),
+                                                 None if b.get("overwrite") else b.get("seen")))
+            except work.Changed as e:
+                return self._json({"error": str(e), "changed": True}, 409)
+            except ValueError as e:
                 return self._json({"error": str(e)}, 400)
         m = re.fullmatch(r"/api/projects/([^/]+)/state", p)
         if m:  # you mark a project done (or open it again)

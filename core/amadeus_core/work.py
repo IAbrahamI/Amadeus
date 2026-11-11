@@ -134,9 +134,103 @@ def start(project, task, cid="", resume=None):
     return jid, name
 
 
+LIVE = {}  # job id -> what the run is doing right now, for the workspace view: [{"t", "text", "path"}]
+VERBS = {"Read": "Reading", "Edit": "Editing", "MultiEdit": "Editing", "Write": "Writing", "NotebookEdit": "Editing", "Glob": "Looking for files",
+         "Grep": "Searching", "Bash": "Running", "TodoWrite": "Planning", "Task": "Working on a part of it"}
+
+
+def _step(folder, line):
+    """One line of Claude Code's live output as steps you can read: which file it reads or changes, what it runs, what it says."""
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        return []
+    out = []
+    for block in ((ev.get("message") or {}).get("content") or []) if ev.get("type") == "assistant" else []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "tool_use":
+            given = block.get("input") or {}
+            path = str(given.get("file_path") or given.get("notebook_path") or given.get("path") or "")
+            rel = os.path.relpath(path, folder) if path.startswith(folder + os.sep) else ""
+            what = rel or str(given.get("command") or given.get("pattern") or given.get("description") or "")[:120]
+            out.append({"t": time.time(), "text": f"{VERBS.get(block.get('name'), block.get('name', 'Working'))} {what}".strip(), "path": rel})
+        elif block.get("type") == "text" and (block.get("text") or "").strip():
+            out.append({"t": time.time(), "text": block["text"].strip()[:300], "path": ""})
+    return out
+
+
+def _watched(cmd, folder, env, jid):
+    """Runs it like subprocess.run, and keeps its latest steps in LIVE while it works."""
+    LIVE[jid] = []
+    p = subprocess.Popen(cmd, cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    lines, errors = [], []
+    reader = threading.Thread(target=lambda: errors.append(p.stderr.read()), daemon=True)
+    reader.start()
+    timer = threading.Timer(TIMEOUT, p.kill)
+    timer.start()
+    try:
+        for line in p.stdout:
+            lines.append(line)
+            LIVE[jid] = (LIVE[jid] + _step(folder, line))[-40:]
+        p.wait()
+    finally:
+        expired = not timer.is_alive()
+        timer.cancel()
+        LIVE.pop(jid, None)
+    if expired and p.returncode != 0:
+        raise subprocess.TimeoutExpired(cmd, TIMEOUT)
+    reader.join(timeout=5)
+    return subprocess.CompletedProcess(cmd, p.returncode, "".join(lines), "".join(errors))
+
+
+def changes(name):
+    """For the workspace view, asked every two seconds: the files with their times, and what a running Claude Code is doing."""
+    name, path = _project_dir(name)
+    files = []
+    for dirpath, dirs, fnames in os.walk(path):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("__pycache__", "node_modules")]
+        for f in fnames:
+            if not f.startswith("."):
+                full = os.path.join(dirpath, f)
+                try:
+                    files.append({"path": os.path.relpath(full, path), "size": os.path.getsize(full), "modified": os.path.getmtime(full)})
+                except OSError:
+                    pass  # gone in this moment
+    files.sort(key=lambda f: f["path"].lower())
+    job = db.q("SELECT id FROM work_jobs WHERE lower(project)=lower(?) AND status='running' ORDER BY created DESC LIMIT 1", (name,), one=True)
+    return {"files": files, "running": bool(job), "live": LIVE.get(job["id"], []) if job else []}
+
+
+class Changed(ValueError):
+    """The file on disk is newer than the one you were editing."""
+
+
+def save_file(name, rel, text, seen=None):
+    """You save a file in the workspace view. Only inside this project, never a hidden file, and never over a newer version on disk
+    (the agent may have changed it meanwhile) unless you say so (seen=None)."""
+    name, path = _project_dir(name)
+    rel = str(rel or "").strip().lstrip("/")
+    full = os.path.realpath(os.path.join(path, rel))
+    parts = os.path.relpath(full, path).split(os.sep)
+    if not rel or not full.startswith(path + os.sep) or any(p.startswith(".") for p in parts):
+        raise ValueError("That's not a file in this project.")
+    if os.path.isdir(full):
+        raise ValueError("That's a folder.")
+    if len(text.encode()) > 2_000_000:
+        raise ValueError("Too large to save here.")
+    if seen is not None and os.path.exists(full) and os.path.getmtime(full) > float(seen) + 0.0005:
+        raise Changed("It was changed on disk since you opened it.")
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    tmp = full + ".amadeus-saving"
+    Path(tmp).write_text(text)
+    os.replace(tmp, full)
+    return {"path": os.path.relpath(full, path), "modified": os.path.getmtime(full)}
+
+
 def _run(jid, task, resume):
     j = _job(jid)
-    cmd = ["claude", "-p", task, "--output-format", "json", "--model", MODEL, "--effort", EFFORT,
+    cmd = ["claude", "-p", task, "--output-format", "stream-json", "--verbose", "--model", MODEL, "--effort", EFFORT,
            "--settings", os.path.join(GUARD, "settings.json"), "--permission-mode", "acceptEdits",
            "--allowedTools", TOOLS, "--append-system-prompt", RULES]
     if resume:
@@ -144,7 +238,7 @@ def _run(jid, task, resume):
     env = {**os.environ, "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
     summary, sid, cost, ok = "", resume, None, False
     try:
-        p = subprocess.run(cmd, cwd=j["folder"], capture_output=True, text=True, timeout=TIMEOUT, env=env)
+        p = _watched(cmd, j["folder"], env, jid)
         out = json.loads(p.stdout.strip().splitlines()[-1]) if p.stdout.strip() else {}
         sid = out.get("session_id") or sid
         cost = out.get("total_cost_usd")
@@ -287,7 +381,7 @@ def project_file(name, rel):
         raise ValueError("Too large to show here; open it in an editor.")
     data = Path(full).read_bytes()
     try:
-        return {"path": rel, "text": data.decode("utf-8")}
+        return {"path": rel, "text": data.decode("utf-8"), "modified": os.path.getmtime(full)}
     except UnicodeDecodeError:
         return {"path": rel, "binary": True}
 

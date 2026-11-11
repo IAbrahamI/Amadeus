@@ -187,17 +187,19 @@ async function renderProject() {
     <form class="qform" id="projAnswer"><input placeholder="Your answers, e.g. 1 yes, 2 Munich, 3 yes" aria-label="Answer"><button class="btn go">Continue the project</button></form></div></div>` : "";
   $("#pmeta").textContent = `${d.files.length} file${d.files.length === 1 ? "" : "s"}`;
   const readAt = body().scrollTop, atEnd = body().scrollHeight - readAt - body().clientHeight < 80;
-  body().innerHTML = `<div class="phead"><button class="btn" data-act="proj" data-p="">‹ Projects</button><b>${esc(d.name)}</b><span class="chip st ${c}">${l}</span><span class="grow"></span>
-      <button class="btn" data-act="projdone" data-done="${d.state === "done" ? 0 : 1}">${d.state === "done" ? "Open again" : "Mark done"}</button><button class="btn" data-act="projterm" title="Opens a terminal with Claude Code in this project's folder">Open in Claude Code</button></div>
-    <div class="pgrid"><div class="pside"><h3>Overview</h3><div class="ov md">${d.overview ? md(d.overview) : note("No Overview.md yet.")}</div>
-      <h3 style="margin-top:18px">Files</h3><div class="files">${d.files.map((f) => `<div><button class="linkfile" data-act="projfile" data-f="${esc(f.path)}">${esc(f.path)}</button><small>${Math.max(1, Math.round(f.size / 1024))} KB</small></div>`).join("") || note("No files yet.")}</div><div id="projFile"></div></div>
-    <div class="pmain"><h3>Timeline</h3><div class="tlist">${items.map((i) => i.h).join("") || note(`Nothing here yet. Talk to ${esc(NAME())} about the project, or give Claude Code its first task.`)}${q}</div>
+  const chat = `<h3>Timeline</h3><div class="tlist">${items.map((i) => i.h).join("") || note(`Nothing here yet. Talk to ${esc(NAME())} about the project, or give Claude Code its first task.`)}${q}</div>
       <form class="pcomp${proj.to === "c" ? " cc" : ""}" id="projSend"><span class="tolabel">Send to</span><div class="to" role="radiogroup" aria-label="Send to">
         <button type="button" class="${proj.to === "a" ? "on" : ""}" role="radio" aria-checked="${proj.to === "a"}" data-act="to" data-who="a">${esc(NAME())}</button>
         <button type="button" class="${proj.to === "c" ? "on" : ""}" role="radio" aria-checked="${proj.to === "c"}" data-act="to" data-who="c">Claude Code</button></div>
         <p class="tohint">${proj.to === "c" ? "Starts or continues a Claude Code run in this project's folder. You see exactly what leaves the PC before it's sent." : `${esc(NAME())} knows this project and can hand work to Claude Code for you.`}</p>
         <input id="projText" placeholder="${proj.to === "c" ? "Task or answer for Claude Code…" : `Message to ${esc(NAME())} about this project…`}" aria-label="Message" autocomplete="off">
-        <button class="btn go psend">${proj.to === "c" ? "Send to Claude Code ›" : `Send to ${esc(NAME())} ›`}</button><div id="projPreview" class="preview" hidden></div><p class="sample" id="projInfo"></p></form></div></div>`;
+        <button class="btn go psend">${proj.to === "c" ? "Send to Claude Code ›" : `Send to ${esc(NAME())} ›`}</button><div id="projPreview" class="preview" hidden></div><p class="sample" id="projInfo"></p></form>`;
+  if (proj.ws) return renderWorkspace(d, chat, c, l);
+  body().innerHTML = `<div class="phead"><button class="btn" data-act="proj" data-p="">‹ Projects</button><b>${esc(d.name)}</b><span class="chip st ${c}">${l}</span><span class="grow"></span>
+      <button class="btn" data-act="projdone" data-done="${d.state === "done" ? 0 : 1}">${d.state === "done" ? "Open again" : "Mark done"}</button><button class="btn" data-act="projterm" title="Opens a terminal with Claude Code in this project's folder">Open in Claude Code</button><button class="btn go" data-act="wsopen" title="Files, editor and chat side by side: watch the agent work and edit along">Open workspace</button></div>
+    <div class="pgrid"><div class="pside"><h3>Overview</h3><div class="ov md">${d.overview ? md(d.overview) : note("No Overview.md yet.")}</div>
+      <h3 style="margin-top:18px">Files</h3><div class="files">${d.files.map((f) => `<div><button class="linkfile" data-act="projfile" data-f="${esc(f.path)}">${esc(f.path)}</button><small>${Math.max(1, Math.round(f.size / 1024))} KB</small></div>`).join("") || note("No files yet.")}</div><div id="projFile"></div></div>
+    <div class="pmain">${chat}</div></div>`;
   // down to the newest only when you open it, or something new came while you were at the end: never while you read further up
   const tl = body().querySelector(".tlist"), count = tl ? tl.children.length : 0;
   if (tl && tl.lastElementChild && (proj.shown !== d.name || (atEnd && count !== proj.count))) tl.lastElementChild.scrollIntoView({ block: "nearest" });
@@ -284,7 +286,7 @@ body().addEventListener("click", async (e) => {
   if (act === "mailsum") askChat(`Summarize email [${mail.open.id}] ("${mail.open.subject}") in a few sentences and tell me if I need to do anything.`, true);
   if (act === "mailreply") askChat(`Draft a reply to email [${mail.open.id}] ("${mail.open.subject}") from ${mail.open.from}. My points: `, false);
   if (act === "pfchange") $("#pfForm").innerHTML = folderForm(proj.folder);
-  if (act === "proj") { proj.sel = a.dataset.p || null; proj.preview = null; renderProjects(); body().scrollTop = 0; }
+  if (act === "proj") { proj.sel = a.dataset.p || null; proj.preview = null; closeWorkspace(); renderProjects(); body().scrollTop = 0; }
   if (act === "projdone") { await post(`/api/projects/${encodeURIComponent(proj.d.name)}/state`, { done: a.dataset.done === "1" }); renderProject(); }
   if (act === "projterm") { const r = await post(`/api/projects/${encodeURIComponent(proj.d.name)}/terminal`, {}); $("#projInfo").textContent = r.error ? "Couldn't open it: " + r.error : "Opened Claude Code in a terminal."; }
   if (act === "projfile") {
