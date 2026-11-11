@@ -124,6 +124,7 @@ CLAIM = re.compile(
 PROMISE = re.compile(
     r"\b(?:i['’]ll|i will|i am going to|i['’]m going to|let me|let['’]s)\s+(?:now\s+|go ahead and\s+)?(?:add|set|create|save|schedule|put|note|remind|mark|move|remove|delete|send|draft)\b|"
     r"\b(?:adding|setting|creating|saving|scheduling)\b.{0,40}\b(?:reminder|to-?do|note|event|appointment)\b|"
+    r"\bi['’]?\s?a?m\s+(?:now\s+)?(?:adding|setting|creating|saving|scheduling|blocking|putting|removing|moving|booking|marking|sending|deleting|updating)\b|"
     r"\bich (?:werde|setze|erstelle|trage|füge)\b.{0,60}\b(?:erinner|hinzu|ein\b|eintrag|notiz|termin)", re.I)
 FACT = re.compile(r"\b(?:you have|there are|i have|du hast|es gibt)\s+(?:no|keine)\s+(?:active\s+|open\s+|aktiven\s+|offenen\s+|unread\s+|new\s+)?(?:reminders?|to-?dos?|erinnerungen|events|appointments|termine|mails?|emails?)\b", re.I)
 
@@ -141,6 +142,28 @@ def unbacked(reply):
     return None
 
 
+def fit_args(fn, args):
+    """Only the arguments the tool has: a model sometimes invents one ("all_day"), and the whole action then fails after you approved it.
+    Returns (arguments, the names left out)."""
+    import inspect
+    try:
+        known = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return args, []
+    if any(p.kind == p.VAR_KEYWORD for p in known.values()):
+        return args, []
+    extra = [k for k in args if k not in known]
+    return {k: v for k, v in args.items() if k in known}, extra
+
+
+def failure(result):
+    """The reason, if a tool's result says it failed."""
+    m = re.match(r"\s*(?:Error:|FAILED[^:]*:|Invalid request:)\s*(.*)", result or "", re.S)
+    return m.group(1).strip()[:300] if m else ""
+
+
+FAILED_NUDGE = ("(From the system, not the user.) The action FAILED, nothing was changed: {why}. Don't say it's done. If you can fix what was wrong, "
+                "call the tool again now with correct arguments; otherwise tell the user plainly that it didn't work and why.")
 NUDGE = ("(From the system, not the user.) You answered as if it had happened, but you called no tool, so nothing has happened and you looked "
          "nothing up. Now call the tool or tools the user's last message needs. If no tool fits, or you first need to ask something, say plainly "
          "that it is not done yet. Never say it's done, added, set or saved unless a tool ran.")

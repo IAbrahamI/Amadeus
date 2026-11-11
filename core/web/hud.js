@@ -221,6 +221,7 @@ async function send(text) {
           if (aloud && Aloud.active && !own) Aloud.feed(acc, false); else { core.talk(); render(Infinity); }
         }
         if (ev === "tool") setMode("think");
+        if (ev === "say_line" && aloud) new Audio(`/api/voice/line/${data}`).play().catch(() => {});
         if (ev === "approval") { if (Aloud.active) { stopAloud(); render(Infinity); } acc = ""; started = false; counts(); subtitle(`I need your OK first: ${data.summary}`); if (curView === "approvals") loadApprovals(); }
         if (ev === "error") subtitle("That didn't work: " + data.message);
       }
@@ -430,6 +431,7 @@ body().addEventListener("click", async (e) => {
     const r = await api(`/api/approvals/${row.dataset.id}/${act}`, { method: "POST" });
     subtitle(act === "approve" ? (r.status === "failed" ? "That didn't work: " + (r.result || "") : "Done.") : "Okay, I won't do that.");
     loadApprovals(); counts();
+    if (act === "approve" && r.status === "failed") new Audio("/api/voice/line/failed").play().catch(() => {});  // never quiet about a failure
   }
   if (act === "adj" && !row.querySelector(".adjform")) {
     row.insertAdjacentHTML("beforeend", '<form class="adjform"><span>WHAT SHOULD BE DIFFERENT?</span><input placeholder="e.g. make it 16:00 and a bit warmer" aria-label="What should be different"><button class="btn go">Send</button></form>');

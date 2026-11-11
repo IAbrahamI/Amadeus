@@ -144,6 +144,7 @@ async function ask(text, spoken) {
         if (ev === "token" && !own) { acc += data; if (aloud && Aloud.active) Aloud.feed(acc, false); else { setMode("speak"); core.talk(); render(Infinity); } }
         if (ev === "tool") setMode("think");
         if (ev === "approval") { if (Aloud.active) Aloud.stop(); acc = ""; refresh(); }
+        if (ev === "say_line" && aloud) quick(data);
         if (ev === "error") acc += "\nThat didn't work: " + data.message;
       }
     }

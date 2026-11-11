@@ -112,6 +112,7 @@ CASES = [
     ("do I have unread mail?", lambda c, t: has(c, "mail_unread") or has(c, "mail_overview")),
     ("create a mail folder called Invoices", lambda c, t: has(c, "mail_create_folder", "invoices") or has(c, "mail_folders") or has(c, "mail_accounts")),
     ("search my mail for the train ticket", lambda c, t: has(c, "mail_search", "ticket")),
+    ("from saturday till tuesday I have off, block my calendar for it as holidays", lambda c, t: has(c, "calendar_block_days", "holiday") and not has(c, "calendar_block_days", "all_day")),
     ("hey how are you", lambda c, t: not c and len(t) > 3 and "haven't" not in t.lower()),
     ("what can you do?", lambda c, t: not c and len(t) > 20 and "haven't done" not in t.lower()),
     ("thanks, that's all for now", lambda c, t: not c and "haven't done" not in t.lower()),

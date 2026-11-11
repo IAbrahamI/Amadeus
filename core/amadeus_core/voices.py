@@ -71,7 +71,8 @@ def path(voice_id=None):
 
 # Short things she says, made once in the voice you picked, so they play right away: a greeting when you only say her
 # name, a word when you answer a call on the mini core.
-LINES = {"greet": ["Yes?", "How can I help you?", "Hello?", "Hi?"], "okay": ["Okay."], "done": ["Done."]}
+LINES = {"greet": ["Yes?", "How can I help you?", "Hello?", "Hi?"], "okay": ["Okay."], "done": ["Done."],
+         "approve": ["I need your OK for this.", "Please check the approval."], "failed": ["That didn't work. It's in the chat."]}
 LINES_DIR = os.path.join(VOICE_DIR, "lines")
 
 

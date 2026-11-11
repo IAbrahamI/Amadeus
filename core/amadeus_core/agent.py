@@ -523,6 +523,15 @@ def _acted(cid):
     return False
 
 
+def _last_tool_result(cid):
+    for m in reversed(db.messages(cid)):
+        if m["role"] == "user":
+            return ""
+        if m["role"] == "tool":
+            return m["content"]
+    return ""
+
+
 def _ever_acted(cid):
     return any(m["role"] == "tool" for m in db.messages(cid))
 
@@ -544,7 +553,7 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
     for _ in range(max_rounds):
         content, calls, said = "", [], None
         spoken = SayFilter()
-        held, streaming = [], acted  # the start of an answer is held for a moment: "Done." without a tool must never reach you
+        held, streaming = [], acted and not held_back and not grounding.failure(_last_tool_result(cid))  # the start of an answer is held for a moment: "Done." without a tool must never reach you
 
         def show(line, text):  # the spoken line goes to the voice, everything else to the screen
             nonlocal said
@@ -565,7 +574,16 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                     streaming = True
                     show(*spoken.feed("".join(held)))
                     held = []
-        if not calls and not acted and grounding.unbacked(content):
+        why = grounding.failure(_last_tool_result(cid)) if acted else ""
+        if not calls and why and grounding.unbacked(content) == "claim":  # "Done" after an action that failed
+            if not nudge:
+                print("answered as done after a failed action: asking again", flush=True)
+                nudge, held_back, streaming = [{"role": "assistant", "content": content},
+                                               {"role": "user", "content": grounding.FAILED_NUDGE.format(why=why)}], True, False
+                continue
+            content = f"That didn't work, so nothing was changed: {why}\n[mood:worried]"
+            held = [content]
+        elif not calls and not acted and grounding.unbacked(content):
             if not nudge:  # once: tell it nothing happened, and let it really do it
                 if streaming:
                     show(None, "\n\n(That wasn't right: nothing has been done yet. One moment.)\n\n")
@@ -601,6 +619,10 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 db.add_message(cid, "tool", f"Unknown tool {name}", {"name": name})
                 continue
             # saving memories normally needs no approval, but right after reading mail it does (no memory poisoning by emails)
+            args, left_out = grounding.fit_args(t["fn"], args)
+            if left_out:
+                print(f"{name}: left out arguments it doesn't have: {left_out}", flush=True)
+                c["arguments"] = args
             if name == "create_reminder":  # the time comes from your words, not from the model's arithmetic
                 fixed = grounding.correct_when(str(args.get("when", "")), said_by_user)
                 if fixed != args.get("when"):
@@ -654,6 +676,8 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 db.add_message(cid, "tool", result, {"name": name})
         acted = True
         if waiting:
+            if speak:
+                emit("say_line", "approve")  # a short spoken "I need your OK for this"
             emit("done", {"waiting": True})
             return
     db.add_message(cid, "assistant", "I stopped after several steps without finishing. Please rephrase or split the task.")
@@ -715,7 +739,7 @@ def decide(aid, approve):
     if approve:
         tools.CURRENT_CID = cid
         try:
-            result = str(tools.get_tool(name)["fn"](**args))
+            result = str(tools.get_tool(name)["fn"](**grounding.fit_args(tools.get_tool(name)["fn"], args)[0]))
             status = "done"
             if name in ("mail_file", "mail_move"):
                 try:

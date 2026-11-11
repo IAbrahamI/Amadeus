@@ -77,6 +77,7 @@ class Backed(unittest.TestCase):
         self.assertEqual(g.unbacked("Got it. Let's set a reminder for tomorrow evening."), "promise")
         self.assertEqual(g.unbacked("I'll add that to your todo right away."), "promise")
         self.assertEqual(g.unbacked("I have no active reminders."), "fact")
+        self.assertEqual(g.unbacked("I'm blocking your calendar from Saturday to Tuesday with an all-day entry."), "promise")
         self.assertEqual(g.unbacked("You have no open to-dos."), "fact")
 
     def test_ordinary_answers_pass(self):
@@ -132,6 +133,34 @@ class Turn(unittest.TestCase):
         cid, shown, asked, _ = self.run_with([("", [{"name": "todo_list", "arguments": {}}]), ("Done, here is your list: nothing open.", [])], "what's on my todo?")
         self.assertEqual(len(asked), 2)
         self.assertIn("here is your list", shown)
+
+    def test_an_invented_argument_is_left_out_before_you_approve(self):
+        import json
+        call = [{"name": "calendar_block_days", "arguments": {"title": "Holidays", "start_date": "2099-11-14", "end_date": "2099-11-17", "all_day": "True"}}]
+        cid, shown, asked, db = self.run_with([("", call)], "block saturday to tuesday as holidays")
+        args = json.loads(db.q("SELECT args FROM approvals WHERE conversation_id=?", (cid,))[0]["args"])
+        self.assertNotIn("all_day", args)
+        self.assertEqual(args["title"], "Holidays")
+
+    def test_done_after_a_failed_action_is_not_passed_on(self):
+        from amadeus_core import agent, db
+        cid = db.new_id()
+        db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", "m", db.now(), db.now()))
+        db.add_message(cid, "user", "block the weekend")
+        db.add_message(cid, "assistant", "", {"tool_calls": [{"name": "calendar_block_days", "arguments": {}}]})
+        db.add_message(cid, "tool", "Error: something broke", {"name": "calendar_block_days"})
+        seen = []
+
+        def model(model, messages, tools=None):
+            yield "token", "Done - your calendar is now blocked."
+            yield "done", {"content": "Done - your calendar is now blocked.", "tool_calls": []}
+        with mock.patch("amadeus_core.agent.llm.chat_stream", model):
+            agent.run(cid, "m", None, lambda kind, data: seen.append((kind, data)), curate=False)
+        said = db.messages(cid)[-1]["content"]
+        self.assertIn("didn't work", said)
+        self.assertIn("something broke", said)
+        self.assertNotIn("now blocked", said)
+        self.assertNotIn("now blocked", "".join(str(d) for k, d in seen if k == "token"))
 
     def test_a_reminders_time_is_yours(self):
         call = [{"name": "create_reminder", "arguments": {"text": "test", "when": "2099-01-01 11:00"}}]
