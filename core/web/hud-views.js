@@ -95,14 +95,13 @@ const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: nul
 async function loadMail() {
   let st;
   try { st = await (await fetch("/api/mail/status")).json(); } catch { st = { connected: false }; }
-  if (st.setup === false) {  // nothing connected yet: it starts with choosing how
+  // nothing to show yet (no account connected directly, and Thunderbird isn't running): it starts with adding an
+  // account, so the page never ends at "open Thunderbird". Thunderbird stays one of the ways, further down.
+  mail.tbDown = st.setup !== false && !st.connected;
+  if (st.setup === false || !st.connected) {
     mail.accounts = []; mail.off = []; mail.acc = "__add"; mail.open = null;
+    $("#pmeta").textContent = "No account connected";
     return renderMail();
-  }
-  if (!st.connected) {
-    body().innerHTML = note("<b>Thunderbird isn't connected.</b> Open Thunderbird (with the Amadeus Bridge add-on installed) and the mail shows up here.") +
-      '<div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>';
-    return;
   }
   mail.accounts = st.accounts; mail.off = st.off || [];
   const on = mail.accounts.filter((a) => !mail.off.includes(a.id));
@@ -134,7 +133,7 @@ async function addMailBox() {
         ${field("App password", '<input id="dPass" type="password" autocomplete="off">')}
         ${p.manual ? srv("dImap", "IMAP server and port (SSL)", "imap.example.com", "993") + srv("dSmtp", "SMTP server and port (SSL)", "smtp.example.com", "465") : ""}
         <div class="acts"><span class="grow"></span><button class="btn go">Connect</button></div></form>`;
-  return `<h3>Add a mail account</h3><h3 style="margin-top:14px">Directly with your provider</h3>
+  return `<h3>Add a mail account</h3>${mail.tbDown ? note("Thunderbird isn't running, so its accounts aren't shown. Connect an account directly below, or open Thunderbird further down.") : ""}<h3 style="margin-top:14px">Directly with your provider</h3>
     ${note("Works without other apps, and it isn't limited by what Thunderbird's add-on can do. The login stays on this PC, in a file only you can read, and only goes to that provider's server.")}
     <div class="pform"><label>Provider<select id="dProv" data-act="dprov">${Object.entries(d.providers).map(([k, v]) => `<option value="${k}" ${k === mailProvider ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label></div>
     ${note(esc(p.how) + (p.link ? ` <a href="${esc(p.link)}" target="_blank" rel="noopener">Open that page</a>` : ""))}${form}${info("dInfo")}
