@@ -255,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
             from . import mailbridge, maildirect
             return self._json({"providers": {k: {"name": v["name"], "how": v["how"], "link": v.get("link", ""), "auth": v["auth"], "manual": not v["imap"]}
                                              for k, v in maildirect.PROVIDERS.items()},
-                               "accounts": maildirect.listing(), "microsoft": bool(maildirect.ms_client_id()), "thunderbird": mailbridge.thunderbird_set_up()})
+                               "accounts": maildirect.listing(), "microsoft": bool(maildirect.ms_client_id()), "ms_redirect": maildirect.ms_redirect(), "thunderbird": mailbridge.thunderbird_set_up()})
         if p == "/api/update":  # a new version? (Settings → Assistant, the top bar and the tray)
             from . import updates
             return self._json(updates.status())
@@ -527,7 +527,7 @@ class Handler(BaseHTTPRequestHandler):
             (off.discard if b.get("read", True) else off.add)(aid)
             db.set_setting("mail_accounts_off", sorted(off))
             return self._json({"off": sorted(off)})
-        if p in ("/api/mail/direct/add", "/api/mail/direct/remove", "/api/mail/direct/microsoft"):
+        if p in ("/api/mail/direct/add", "/api/mail/direct/remove", "/api/mail/direct/microsoft", "/api/mail/direct/microsoft-app"):
             from . import maildirect
             if self._tailnet():
                 return self._json({"error": "Only on the PC."}, 403)
@@ -536,6 +536,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(maildirect.add_account(b.get("provider"), b.get("email"), b.get("password"), b.get("imap"), b.get("smtp")))
                 if p.endswith("/remove"):
                     return self._json(maildirect.remove_account(str(b.get("id", ""))))
+                if p.endswith("/microsoft-app"):
+                    return self._json(maildirect.set_ms_client_id(b.get("client_id")))
                 return self._json({"url": maildirect.ms_start()})
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)

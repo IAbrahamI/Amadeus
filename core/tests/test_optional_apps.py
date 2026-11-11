@@ -12,8 +12,6 @@ class OptionalApps(unittest.TestCase):
             self.assertIn("Not connected", tools.missing("mail"))
             names = {t["function"]["name"] for t in tools.schemas()}
             self.assertFalse(names & {t["name"] for t in tools.TOOLS if t["connector"] == "mail"})
-            background.keep_apps()
-            self.assertFalse(mailbridge._start_thunderbird())
             launch.assert_not_called()
             run.assert_not_called()
 

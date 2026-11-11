@@ -113,7 +113,14 @@ async function addMailBox() {
     field(label, `<span class="radio"><input id="${id}Host" placeholder="${host}" autocomplete="off"><input id="${id}Port" placeholder="${port}" inputmode="numeric" style="max-width:90px"></span>`);
   const form = p.auth === "microsoft"
     ? (d.microsoft ? `<div class="acts"><span class="grow"></span><button type="button" class="btn go" data-act="dms">Sign in with Microsoft</button></div>`
-      : note("Signing in with Microsoft isn't set up in this version yet. Use Thunderbird for this account for now."))
+      : `${note("Microsoft only lets apps sign in that are registered with them. It's free and takes about five minutes, once. This is from Microsoft's documentation as I know it: if a screen looks different, tell Amadeus.")}
+        <ol class="mssteps"><li>Open <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Microsoft Entra → App registrations</a> and sign in. Choose <b>New registration</b>.</li>
+        <li>Name: <b>Amadeus</b>. Account types: <b>Accounts in any organizational directory and personal Microsoft accounts</b>.</li>
+        <li>Redirect URI: platform <b>Public client/native (mobile &amp; desktop)</b>, address <code>${esc(d.ms_redirect)}</code>. Register.</li>
+        <li>Under <b>API permissions</b> → Add a permission → Microsoft Graph → Delegated: <b>IMAP.AccessAsUser.All</b>, <b>Mail.Send</b>, <b>offline_access</b>.</li>
+        <li>Copy the <b>Application (client) ID</b> from the overview and paste it here.</li></ol>
+        <form class="pform" id="msApp">${field("Application (client) ID", '<input id="msAppId" placeholder="1a2b3c4d-1234-5678-9abc-1234567890ab" autocomplete="off" spellcheck="false">')}
+        <div class="acts"><span class="grow"></span><button class="btn go">Save</button></div>${info("msInfo")}</form>`)
     : `<form class="pform" id="dForm">${field("Address", '<input id="dEmail" autocomplete="off" spellcheck="false">')}
         ${field("App password", '<input id="dPass" type="password" autocomplete="off">')}
         ${p.manual ? srv("dImap", "IMAP server and port (SSL)", "imap.example.com", "993") + srv("dSmtp", "SMTP server and port (SSL)", "smtp.example.com", "465") : ""}
@@ -315,6 +322,13 @@ body().addEventListener("click", async (e) => {
   if (act === "pvsend") toClaude(proj.preview.text, $("#projInfo"));
 });
 body().addEventListener("submit", async (e) => {
+  if (e.target.id === "msApp") {
+    e.preventDefault();
+    const r = await post("/api/mail/direct/microsoft-app", { client_id: $("#msAppId").value });
+    if (r.error) return say("msInfo", "That didn't work: " + r.error);
+    mail.acc = "__add"; loadMail();
+    return;
+  }
   if (e.target.id === "remNew") {
     e.preventDefault();
     const r = await post("/api/reminders", { text: $("#remText").value, when: $("#remWhen").value });

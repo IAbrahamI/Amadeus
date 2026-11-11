@@ -86,44 +86,6 @@ def check_calendar():
         events.add("calendar", f"{o['title']} {when}" + (f" @ {o['location']}" if o.get("location") else ""), o.get("notes", ""))
 
 
-# Apps Amadeus needs running in the background: (how to see it runs, how to start it hidden)
-KEEP_APPS = {
-    "thunderbird": (["pgrep", "-x", "thunderbird"], [os.path.expanduser("~/.local/bin/amadeus-mail-start")]),
-}
-_apps = {}
-
-
-def keep_apps():
-    """Thunderbird must run for Amadeus to see mail: if it was closed, start it again hidden after a minute (so a quick restart by you isn't interrupted). After Thunderbird comes back,
-    check the mail that came in meanwhile."""
-    from . import mailbridge
-    if not mailbridge.thunderbird_set_up():
-        return
-    now = time.time()
-    for name in CFG.get("keep_running", ["thunderbird"]):
-        if name not in KEEP_APPS or not shutil.which(name if name != "thunderbird" else "thunderbird"):
-            continue
-        check, start = KEEP_APPS[name]
-        st = _apps.setdefault(name, {"missing_since": 0, "restarted": 0})
-        if subprocess.run(check, capture_output=True).returncode == 0:
-            st["missing_since"] = 0
-            if name == "thunderbird" and st["restarted"] and now - st["restarted"] > 60:
-                st["restarted"] = 0
-                threading.Thread(target=mailwatch.check, kwargs={"force": True}, daemon=True).start()
-            continue
-        if not st["missing_since"]:
-            st["missing_since"] = now
-            continue
-        if now - st["missing_since"] < 60:
-            continue
-        print(f"{name} was closed: starting it again in the background", flush=True)
-        try:
-            tools.launch(start, name)
-        except Exception as e:
-            print(f"could not start {name}:", e, flush=True)
-        st["missing_since"], st["restarted"] = 0, now
-
-
 def clean_reports():
     """The leak-scan log keeps the last `leak_scan_days` (30) nights. Runs once a day."""
     today = datetime.date.today().isoformat()
@@ -177,7 +139,7 @@ def _check_updates():
 
 def loop():
     while True:
-        for job in (check_reminders, check_calendar, keep_apps, mailwatch.check, check_jobs,
+        for job in (check_reminders, check_calendar, mailwatch.check, check_jobs,
                     check_week_ahead, digest.check_morning, digest.check, quickchat.check, learning.check, clean_reports, events.maybe_ring, idle_stop, llm.free_gpu, _check_updates):
             try:
                 job()

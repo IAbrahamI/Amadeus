@@ -72,3 +72,25 @@ class Direct(unittest.TestCase):
     def test_nothing_about_providers_is_secret_to_show(self):
         self.assertNotIn("password", {k for p in d.PROVIDERS.values() for k in p})
         db.q("SELECT 1")
+
+
+class MicrosoftApp(unittest.TestCase):
+    def test_your_app_id_is_checked_and_kept(self):
+        from amadeus_core import maildirect
+        from amadeus_core.config import CFG
+        with self.assertRaises(ValueError):
+            maildirect.set_ms_client_id("not an id")
+        maildirect.set_ms_client_id("1A2B3C4D-1234-5678-9ABC-1234567890AB")
+        self.assertEqual(CFG["ms_client_id"], "1a2b3c4d-1234-5678-9abc-1234567890ab")
+        self.assertEqual(maildirect.ms_client_id(), "1a2b3c4d-1234-5678-9abc-1234567890ab")
+        CFG["ms_client_id"] = ""
+
+
+class NoThunderbirdStart(unittest.TestCase):
+    def test_amadeus_never_starts_thunderbird(self):
+        from unittest import mock
+        from amadeus_core import mailbridge
+        with mock.patch.object(mailbridge, "_connect", side_effect=OSError), mock.patch("subprocess.Popen") as started:
+            with self.assertRaises(mailbridge.NotRunning):
+                mailbridge._thunderbird("folders", 5, True, {})
+        started.assert_not_called()

@@ -686,3 +686,4 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .caltabs button.on { color: var(--ink); background: var(--cyan); border-color: var(--cyan); }
 .remnew { max-width: none; margin-bottom: 14px; } .remrow { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 8px; }
 @media (max-width: 700px) { .remrow { grid-template-columns: 1fr; } }
+.mssteps { margin: 0 0 14px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--text); } .mssteps code { font: 400 12px var(--mono); }

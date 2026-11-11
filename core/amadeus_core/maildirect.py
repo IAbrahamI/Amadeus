@@ -162,6 +162,20 @@ def ms_client_id():
     return CFG.get("ms_client_id", "")
 
 
+def set_ms_client_id(client_id):
+    """The id of your app registration at Microsoft (Outlook needs one, it's free). Kept in your config."""
+    cid = str(client_id or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", cid):
+        raise ValueError("That isn't an application (client) ID: it looks like 1a2b3c4d-1234-5678-9abc-1234567890ab.")
+    from .config import CONFIG_PATH
+    own = json.loads(Path(CONFIG_PATH).read_text()) if os.path.exists(CONFIG_PATH) else {}
+    own["ms_client_id"] = cid
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    Path(CONFIG_PATH).write_text(json.dumps(own, indent=2))
+    CFG["ms_client_id"] = cid
+    return {"ok": True}
+
+
 def ms_redirect():
     return f"http://localhost:{CFG['port']}/mail/oauth"
 
@@ -171,7 +185,7 @@ def ms_start():
     import secrets
     cid = ms_client_id()
     if not cid:
-        raise ValueError("Signing in with Microsoft isn't set up in this version yet.")
+        raise ValueError("Add your Microsoft application ID first (Mail → + Add account → Outlook).")
     state, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(64)
     _pending[state] = {"verifier": verifier, "at": time.time()}
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()

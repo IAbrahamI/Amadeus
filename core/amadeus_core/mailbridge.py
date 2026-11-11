@@ -33,32 +33,6 @@ def configured():
     return thunderbird_set_up() or maildirect.has_accounts()
 
 
-def _start_thunderbird():
-    """Thunderbird was closed: start it minimized and wait for the bridge (up to ~60 s)."""
-    if not thunderbird_set_up():
-        return False
-    if subprocess.run(["pgrep", "-x", "thunderbird"], capture_output=True).returncode == 0:
-        # it runs: maybe it is still starting (the add-on connects a few seconds after the window); wait a bit
-        for _ in range(30):
-            time.sleep(1)
-            try:
-                _connect(5).close()
-                return True
-            except OSError:
-                pass
-        return False  # still nothing: the add-on is missing or disabled
-    from .tools import launch
-    launch([os.path.expanduser("~/.local/bin/amadeus-mail-start")], "thunderbird")
-    for _ in range(60):
-        time.sleep(1)
-        try:
-            _connect(5).close()
-            return True
-        except OSError:
-            pass
-    return False
-
-
 def accounts_off():
     """Accounts you switched off in Mail (+ Add account): Amadeus doesn't read them, anywhere."""
     from . import db
@@ -76,12 +50,8 @@ def _hide(op, res, off):
 def _thunderbird(op, timeout, autostart, args):
     try:
         s = _connect(timeout)
-    except OSError:
-        if not autostart:
-            raise NotRunning("Thunderbird is not running.")
-        if not _start_thunderbird():
-            raise NotRunning("Thunderbird is not reachable: is the Amadeus Bridge add-on installed and enabled?")
-        s = _connect(timeout)
+    except OSError:  # Amadeus doesn't start Thunderbird: it reads it only while you have it open
+        raise NotRunning("Thunderbird isn't open, so its accounts can't be read right now.")
     with s:
         f = s.makefile("rwb")
         f.write((json.dumps({"op": op, "args": args, "timeout": timeout}) + "\n").encode())
