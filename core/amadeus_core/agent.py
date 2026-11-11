@@ -332,7 +332,8 @@ def _system(cid):
                              f"{(r['summary'] or '')[:400]}" for r in info["runs"][-3:])
             text += (f"\n\n## This chat is about the project \"{proj}\" (its folder {proj}/ in the projects folder)\n"
                      f"When the user wants Claude Code to work on it, use send_to_work / continue_project with project="
-                     f"\"{proj}\".\nOverview.md:\n{info['overview'][:3000]}" + (f"\n\nLatest Claude Code runs:\n{runs}" if runs else ""))
+                     f"\"{proj}\" (continue_project once it has a run, send_to_work for its first). In this chat it starts right away, "
+                     f"with no approval card: don't say it's waiting for an OK.\nOverview.md:\n{info['overview'][:3000]}" + (f"\n\nLatest Claude Code runs:\n{runs}" if runs else ""))
         except Exception:
             pass
     rec = quickchat.recaps()
@@ -513,6 +514,21 @@ def _playbook(cid, user_text, emit):
 HOLD = 160  # characters of an answer looked at before it starts to appear
 
 
+WORK_TOOLS = ("continue_project", "send_to_work")
+
+
+def _own_project(cid, name, args):
+    """You're in a project's own chat (its workspace) and this hands work to that same project: you're already working
+    on it there, so it runs without an approval card. The privacy filter still cleans the text first. Any other project,
+    a new one, or right after mail was read (a mail could have asked for it) still asks."""
+    if name not in WORK_TOOLS:
+        return False
+    from . import work
+    own = work.project_of_chat(cid)
+    target = str(args.get("project", "")).strip()
+    return bool(own and target and target.casefold() == own.casefold() and not _read_mail_recently(cid))
+
+
 def _acted(cid):
     """A tool ran or waits for approval since your last message."""
     for m in reversed(db.messages(cid)):
@@ -628,7 +644,11 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 if fixed != args.get("when"):
                     print(f"reminder time corrected from {args.get('when')!r} to {fixed!r}", flush=True)
                     args = c["arguments"] = {**args, "when": fixed}
-            needs = t["approval"] or (name == "remember" and _read_mail_recently(cid)) or \
+            if name in WORK_TOOLS and not str(args.get("project", "")).strip():  # in a project's chat, work goes to that project
+                from . import work
+                if work.project_of_chat(cid):
+                    args = c["arguments"] = {**args, "project": work.project_of_chat(cid)}
+            needs = (t["approval"] and not _own_project(cid, name, args)) or (name == "remember" and _read_mail_recently(cid)) or \
                 (name == "open_page" and _read_mail_recently(cid) and not tools.user_named_site(cid, str(args.get("url", ""))))
             # opening things needs no approval; only a link that may come from a mail or message (and that you never
             # named yourself) is shown to you first, so a mail can't make it open a phishing page

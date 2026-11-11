@@ -72,3 +72,20 @@ class Workspace(unittest.TestCase):
         last = json.loads(p.stdout.strip().splitlines()[-1])
         self.assertEqual((last["result"], last["session_id"], last["total_cost_usd"]), ("Wrote test.py.", "s1", 0.01))
         self.assertNotIn("job1", work.LIVE)  # nothing is left behind when it's over
+
+
+class OwnProject(unittest.TestCase):
+    """In a project's own chat, handing work to that same project runs without an approval card."""
+
+    def test_only_the_same_project_skips_approval(self):
+        from amadeus_core import agent
+        cid = work.project_chat("Example")
+        with mock.patch.object(agent, "_read_mail_recently", return_value=False):
+            self.assertTrue(agent._own_project(cid, "continue_project", {"project": "example"}))
+            self.assertTrue(agent._own_project(cid, "send_to_work", {"project": "Example"}))
+            self.assertFalse(agent._own_project(cid, "send_to_work", {"project": "Other"}))
+            self.assertFalse(agent._own_project(cid, "send_to_work", {}))
+            self.assertFalse(agent._own_project(cid, "send_mail", {"project": "Example"}))
+            self.assertFalse(agent._own_project(work.project_chat("Other") and "not-a-chat", "continue_project", {"project": "Example"}))
+        with mock.patch.object(agent, "_read_mail_recently", return_value=True):  # a mail could have asked for it
+            self.assertFalse(agent._own_project(cid, "continue_project", {"project": "Example"}))
