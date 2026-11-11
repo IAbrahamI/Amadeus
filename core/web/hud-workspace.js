@@ -34,6 +34,20 @@ function wsNumbers() {
   const t = $("#wsText"), n = t.value.split("\n").length;
   $("#wsNums").textContent = Array.from({ length: n }, (_, i) => i + 1).join("\n");
   $("#wsNums").scrollTop = t.scrollTop;
+  wsColours();
+}
+
+// the colours sit under the text you type into (the text itself is see-through, the cursor and selection stay)
+let wsHlTimer = null;
+function wsColours(now) {
+  clearTimeout(wsHlTimer);
+  const paint = () => { const t = $("#wsText"), h = $("#wsHl"); if (!t || !h) return; h.innerHTML = Highlight.html(t.value, ws.file || "") + "\n"; wsScroll(); };
+  if (now || $("#wsText").value.length < 60000) paint(); else wsHlTimer = setTimeout(paint, 150);
+}
+function wsScroll() {
+  const t = $("#wsText"), h = $("#wsHl");
+  if (h) h.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+  $("#wsNums").scrollTop = t.scrollTop;
 }
 
 function wsState(text, warn) { const e = $("#wsState"); if (e) { e.textContent = text || ""; e.classList.toggle("warn", !!warn); } }
@@ -45,6 +59,7 @@ async function wsOpen(path, quiet) {
   ws.file = path; ws.dirty = false; ws.binary = !!f.binary || !!f.error; ws.seen = f.modified || 0;
   $("#wsPath").textContent = path;
   t.readOnly = ws.binary;
+  $("#wsEdit").classList.toggle("plain", !Highlight.lang(path));
   if (!quiet || !ws.binary) { const top = t.scrollTop, same = quiet; t.value = f.error ? "" : f.binary ? "" : f.text; if (same) t.scrollTop = top; else t.scrollTop = 0; }
   wsState(f.error ? "That didn't work: " + f.error : f.binary ? "Not a text file: open it in the file manager." : quiet ? "Updated from disk" : "");
   $("#wsSave").disabled = true; $("#wsReload").hidden = true;
@@ -102,9 +117,9 @@ async function renderWorkspace(d, chat, chip, label) {
       <button class="btn" data-act="projterm" title="Opens a terminal with Claude Code in this project's folder">Open in Claude Code</button></div>
     <div class="wsgrid"><aside class="wstree"><h3>Files</h3><div id="wsTree"></div>
         <form id="wsNew"><input id="wsNewName" placeholder="+ new file, e.g. src/app.py" aria-label="New file" autocomplete="off" spellcheck="false"></form></aside>
-      <section class="wsedit"><div class="wsbar"><b id="wsPath">No file open</b><span id="wsState"></span><span class="grow"></span>
+      <section class="wsedit" id="wsEdit"><div class="wsbar"><b id="wsPath">No file open</b><span id="wsState"></span><span class="grow"></span>
           <button class="btn" id="wsReload" data-act="wsreload" hidden>Load the new version</button><button class="btn go" id="wsSave" data-act="wssave" disabled>Save</button></div>
-        <div class="wscode"><pre id="wsNums" aria-hidden="true"></pre><textarea id="wsText" spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="File contents"></textarea></div>
+        <div class="wscode"><pre id="wsNums" aria-hidden="true"></pre><div class="wsarea"><pre id="wsHl" aria-hidden="true"></pre><textarea id="wsText" spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="File contents"></textarea></div></div>
         <div id="wsLive" class="wslive" hidden></div></section>
       <aside class="wschat">${chat}</aside></div></div>`;
   ws.files = d.files; ws.last = d.files.reduce((a, f) => Math.max(a, f.modified), 0); ws.wasRunning = d.running;
@@ -129,7 +144,7 @@ body().addEventListener("input", (e) => {
   if (e.target.id === "wsText") { if (!ws.dirty) { ws.dirty = true; $("#wsSave").disabled = false; wsState("Not saved"); } wsNumbers(); }
   if (e.target.id === "wsFollow") ws.follow = e.target.checked;
 });
-body().addEventListener("scroll", (e) => { if (e.target.id === "wsText") $("#wsNums").scrollTop = e.target.scrollTop; }, true);
+body().addEventListener("scroll", (e) => { if (e.target.id === "wsText") wsScroll(); }, true);
 body().addEventListener("keydown", (e) => {
   if (e.target.id !== "wsText") return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); wsSave(); }

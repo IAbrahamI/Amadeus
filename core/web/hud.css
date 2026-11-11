@@ -687,3 +687,12 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .remnew { max-width: none; margin-bottom: 14px; } .remrow { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 8px; }
 @media (max-width: 700px) { .remrow { grid-template-columns: 1fr; } }
 .mssteps { margin: 0 0 14px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--text); } .mssteps code { font: 400 12px var(--mono); }
+
+/* code colours in the workspace (highlight.js): close to a dark code editor */
+.wsarea { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+#wsHl { position: absolute; top: 0; left: 0; margin: 0; padding: 10px 12px; font: 400 12.5px/1.55 var(--mono); tab-size: 2; white-space: pre; color: var(--text); pointer-events: none; will-change: transform; }
+.wsarea #wsText { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; color: transparent; caret-color: var(--text); background: transparent; }
+.wsarea #wsText::selection { background: rgba(var(--a),.32); color: transparent; }
+.wsedit.plain #wsHl { display: none; } .wsedit.plain #wsText { color: var(--text); }
+.hl-c { color: #6A9955; font-style: italic; } .hl-s { color: #CE9178; } .hl-n { color: #B5CEA8; } .hl-k { color: #569CD6; } .hl-o { color: #C586C0; }
+.hl-b { color: #4FC1FF; } .hl-t { color: #4EC9B0; } .hl-f { color: #DCDCAA; } .hl-d { color: #D7BA7D; } .hl-p { color: #9CDCFE; }
