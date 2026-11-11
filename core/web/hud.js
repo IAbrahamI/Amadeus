@@ -68,6 +68,7 @@ function open(v) {
   curView = VIEWS[v] ? v : "home";
   if (!VIEWS[v]) { docked = sideMode = false; app.classList.remove("docked", "side"); place(); return; }
   const V = VIEWS[v];
+  $("#ptabs").innerHTML = "";  // a view with tabs (the calendar) puts its switch here
   $("#ptitle").textContent = V.title; $("#pmeta").textContent = V.meta; body().innerHTML = "";
   sideMode = !!V.side && core.size.W >= 900; docked = !sideMode;
   app.classList.toggle("docked", docked); app.classList.toggle("side", sideMode); place();
@@ -75,6 +76,7 @@ function open(v) {
   V.load();
 }
 document.querySelectorAll(".nav").forEach((b) => (b.onclick = () => open(b.dataset.v)));
+$("#ptabs").addEventListener("click", (e) => { const a = e.target.closest('[data-act="caltab"]'); if (a) calPick(a); });  // (hud-views.js)
 document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => open(b.dataset.go)));
 $("#close").onclick = () => open("home");
 addEventListener("keydown", (e) => { if (e.key === "Escape" && curView !== "home" && !e.target.closest("input, textarea")) open("home"); });

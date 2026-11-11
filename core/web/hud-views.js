@@ -8,8 +8,12 @@ const ago = (t) => { const d = new Date(t * 1000), tm = d.toLocaleTimeString([],
 // ---------- Calendar: one week, your own changes need no approval ----------
 const cal = { week: null, occ: [], edit: null };
 const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return addDays(x, -((x.getDay() + 6) % 7)); };
-const calTabs = () => `<div class="caltabs" role="tablist"><button role="tab" class="${cal.tab === "rem" ? "" : "on"}" aria-selected="${cal.tab !== "rem"}" data-act="caltab" data-t="week">Week</button>` +
-  `<button role="tab" class="${cal.tab === "rem" ? "on" : ""}" aria-selected="${cal.tab === "rem"}" data-act="caltab" data-t="rem">Reminders</button></div>`;
+// the switch between the week and the reminders, in the panel's header: a highlight slides to the side you pick
+function calTabs() {
+  $("#ptabs").innerHTML = `<div class="seg${cal.tab === "rem" ? " right" : ""}" role="tablist" aria-label="Calendar or reminders"><i aria-hidden="true"></i>` +
+    `<button role="tab" aria-selected="${cal.tab !== "rem"}" data-act="caltab" data-t="week">Week</button><button role="tab" aria-selected="${cal.tab === "rem"}" data-act="caltab" data-t="rem">Reminders</button></div>`;
+  return "";
+}
 async function loadReminders() {
   const list = await api("/api/reminders");
   $("#pmeta").textContent = `${list.length} active`;
@@ -30,11 +34,12 @@ async function loadCalendar() {
   $("#pmeta").textContent = `Week ${wk} · ${from.toLocaleDateString([], { day: "numeric", month: "short" })} – ${addDays(from, 6).toLocaleDateString([], { day: "numeric", month: "short" })}`;
   const timed = cal.occ.filter((o) => !o.all_day), allDay = cal.occ.filter((o) => o.all_day);
   const hrs = timed.map((o) => [Number(o.occ_start.slice(11, 13)), Math.ceil(Number(o.occ_end.slice(11, 13)) + Number(o.occ_end.slice(14, 16)) / 60)]);
-  const h0 = Math.min(8, ...hrs.map((h) => h[0])), h1 = Math.max(18, ...hrs.map((h) => Math.min(24, h[1] || 24)));
+  // the whole day, 00:00 to 24:00, in a box that scrolls; it opens at the busy part (from 8:00, or the earliest event)
+  const first = Math.min(8, ...hrs.map((h) => h[0])), h0 = 0, h1 = 24;
   const H = 46, hours = [...Array(h1 - h0)].map((_, i) => h0 + i);
   let h = calTabs() + `<div class="calbar"><button class="btn" data-act="calweek" data-d="-7">‹</button><button class="btn" data-act="calweek" data-d="0">This week</button>` +
     `<button class="btn" data-act="calweek" data-d="7">›</button><span class="grow"></span><button class="btn go" data-act="calnew">+ New event</button></div>`;
-  h += `<div id="calEdit"></div><div class="weekwrap"><div class="week w7"><div class="dh"></div>` +
+  h += `<div id="calEdit"></div><div class="weekwrap weekscroll" id="calScroll"><div class="week w7"><div class="dh"></div>` +
     days.map((d) => `<div class="dh${ymd(d) === today ? " today" : ""}">${d.toLocaleDateString([], { weekday: "short" })} ${d.getDate()}</div>`).join("");
   if (allDay.length) h += `<div class="hr allday">all day</div>` + days.map((d) => `<div class="alld">${allDay.filter((o) => o.occ_start.slice(0, 10) <= ymd(d) && o.occ_end.slice(0, 10) > ymd(d))
     .map((o) => `<button class="ev mini${o.created_by === "amadeus" ? " amadeus" : ""}" data-act="calopen" data-id="${esc(o.id)}">${esc(o.title)}</button>`).join("")}</div>`).join("");
@@ -53,7 +58,11 @@ async function loadCalendar() {
     if (key === today) { const n = new Date(), y = (n.getHours() + n.getMinutes() / 60 - h0) * H; if (y > 0 && y < hours.length * H) h += `<div class="now" style="top:${y}px"></div>`; }
     h += "</div>";
   });
+  const keep = cal.scrolled && $("#calScroll") ? $("#calScroll").scrollTop : null;
   body().innerHTML = h + "</div></div>";
+  const box = $("#calScroll");
+  box.scrollTop = keep !== null ? keep : Math.max(0, (first - h0) * H - 4);
+  box.onscroll = () => (cal.scrolled = true);
   if (cal.edit) calForm(cal.edit === "new" ? null : cal.occ.find((o) => o.id === cal.edit));
 }
 function calForm(o, day) {
@@ -269,12 +278,12 @@ async function toAssistant(text) {
 }
 
 // ---------- clicks and forms of these views ----------
+function calPick(a) { if (a.dataset.act !== "caltab") return; cal.tab = a.dataset.t; cal.edit = null; cal.scrolled = false; a.closest(".seg").classList.toggle("right", cal.tab === "rem"); setTimeout(loadCalendar, 180); }
 body().addEventListener("click", async (e) => {
   const a = e.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
-  if (act === "caltab") { cal.tab = a.dataset.t; cal.edit = null; loadCalendar(); }
   if (act === "remrm") { a.disabled = true; await post(`/api/reminders/${a.dataset.id}/delete`); loadReminders(); counts(); }
-  if (act === "calweek") { const n = Number(a.dataset.d); cal.week = n ? addDays(cal.week, n) : monday(new Date()); cal.edit = null; loadCalendar(); }
+  if (act === "calweek") { cal.scrolled = false; const n = Number(a.dataset.d); cal.week = n ? addDays(cal.week, n) : monday(new Date()); cal.edit = null; loadCalendar(); }
   if (act === "calnew") { cal.edit = "new"; calForm(null); }
   if (act === "calopen") { cal.edit = a.dataset.id; calForm(cal.occ.find((o) => o.id === a.dataset.id)); body().scrollTop = 0; }
   if (act === "calcancel") { cal.edit = null; $("#calEdit").innerHTML = ""; }

@@ -43,7 +43,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 ::-webkit-scrollbar-corner { background: transparent; }
 button:focus-visible, input:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
 
-.app { height: 100%; display: grid; grid-template-columns: 64px 1fr; grid-template-rows: 52px 1fr 64px; /* bottom bar as tall as the sidebar is wide */
+.app { height: 100%; display: grid; grid-template-columns: 52px 1fr; grid-template-rows: 52px 1fr 64px; /* bottom bar as tall as the sidebar is wide */
   grid-template-areas: "rail top" "rail stage" "rail cmd"; position: relative;
   padding-right: env(safe-area-inset-right, 0px); }
 .app::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
@@ -55,16 +55,16 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--cyan); outl
 
 /* rail */
 .rail { grid-area: rail; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 14px 0 12px max(0px, env(safe-area-inset-left, 0px)); /* gear lines up with the middle of the bottom bar */ border-right: 1px solid var(--line); background: rgba(var(--vd),.7); }
+  padding: 14px 0 12px; box-sizing: border-box; /* centred: nothing pushes the icons to one side */ border-right: 1px solid var(--line); background: rgba(var(--vd),.7); }
 .mark { width: 30px; height: 30px; margin-bottom: 14px; border: 1px solid var(--cyan); border-radius: 50%; display: grid; place-items: center; }
 .mark i { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
-.nav { position: relative; width: 44px; height: 40px; display: grid; place-items: center; color: var(--dim); border-radius: 2px; }
+.nav { position: relative; width: 40px; height: 38px; display: grid; place-items: center; color: var(--dim); border-radius: 2px; }
 .nav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .nav:hover { color: var(--text); background: var(--cyan-soft); }
 .nav[aria-current="true"] { color: var(--cyan); }
-.nav[aria-current="true"]::before { content: ""; position: absolute; left: -10px; top: 9px; bottom: 9px; width: 2px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.nav[aria-current="true"]::before { content: ""; position: absolute; left: -6px; top: 9px; bottom: 9px; width: 2px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
 .nav .n { position: absolute; top: 4px; right: 4px; min-width: 15px; height: 15px; padding: 0 3px; font: 600 10px/15px var(--mono); color: #1A1000; background: var(--amber); border-radius: 1px; }
-.nav .tip { position: absolute; left: 52px; white-space: nowrap; font: 500 11px var(--display); letter-spacing: .14em; text-transform: uppercase;
+.nav .tip { position: absolute; left: 46px; white-space: nowrap; font: 500 11px var(--display); letter-spacing: .14em; text-transform: uppercase;
   background: var(--deck); border: 1px solid var(--line-hi); padding: 3px 8px; opacity: 0; pointer-events: none; transition: opacity .15s; }
 .nav:hover .tip { opacity: 1; }
 .rail .spacer { flex: 1; }
@@ -674,10 +674,6 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .wschat .tline { grid-template-columns: 52px 1fr; }
 @media (max-width: 1000px) { .wsgrid { grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); } .wschat { grid-column: 1 / -1; border-left: 0; border-top: 1px dashed rgba(var(--a),.2); padding: 10px 0 0; max-height: 38%; } }
 
-/* the calendar's tabs: the week, and the reminders */
-.caltabs { display: flex; gap: 4px; margin-bottom: 14px; }
-.caltabs button { font: 500 11px var(--display); letter-spacing: .18em; text-transform: uppercase; padding: 6px 14px; color: var(--dim); border: 1px solid rgba(var(--a),.2); }
-.caltabs button.on { color: var(--ink); background: var(--cyan); border-color: var(--cyan); }
 .remnew { max-width: none; margin-bottom: 14px; } .remrow { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 8px; }
 @media (max-width: 700px) { .remrow { grid-template-columns: 1fr; } }
 .mssteps { margin: 0 0 14px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--text); } .mssteps code { font: 400 12px var(--mono); }
@@ -719,3 +715,33 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .wsdrop { position: absolute; z-index: 5; pointer-events: none; background: rgba(var(--a),.18); border: 1px dashed rgba(var(--a),.7); transition: inset .08s; }
 .wsdrop.center { inset: 30px 0 0 0; } .wsdrop.left { inset: 30px 50% 0 0; } .wsdrop.right { inset: 30px 0 0 50%; }
 .wsdrop.top { inset: 30px 0 50% 0; } .wsdrop.bottom { inset: 50% 0 0 0; }
+
+/* the calendar: the whole day scrolls, the day names stay on top */
+.weekscroll { overflow: auto; max-height: calc(100vh - 290px); min-height: 260px; border-bottom: 1px solid rgba(var(--ln),.5); }
+.weekscroll .week .dh { position: sticky; top: 0; z-index: 3; background: rgba(var(--vd),.97); padding-top: 4px; }
+/* a switch in the panel's header: the highlight slides to the side you pick */
+#ptabs:empty { display: none; }
+.seg { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; border: 1px solid rgba(var(--a),.45); background: rgba(var(--vd),.6); }
+.seg i { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); background: var(--cyan); box-shadow: 0 0 12px rgba(var(--a),.45); transition: transform .28s cubic-bezier(.2,.8,.2,1); }
+.seg.right i { transform: translateX(100%); }
+.seg button { position: relative; z-index: 1; padding: 7px 18px; font: 600 11px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); transition: color .28s; }
+.seg button[aria-selected="true"] { color: var(--ink); }
+.seg button:hover:not([aria-selected="true"]) { color: var(--text); }
+
+/* Checkboxes: a square in the HUD's lines with a lit tick, instead of the system one */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; flex: none; margin: 0;
+  width: 15px; height: 15px; position: relative; cursor: pointer;
+  border: 1px solid var(--line-hi); border-radius: 2px; background: rgba(var(--vd),.6);
+  transition: border-color .18s, background .18s, box-shadow .18s;
+}
+input[type="checkbox"]::after {
+  content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid var(--ink); border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0); transition: transform .16s ease-out;
+}
+input[type="checkbox"]:hover { border-color: var(--cyan); }
+input[type="checkbox"]:checked { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 8px rgba(var(--a),.45); }
+input[type="checkbox"]:checked::after { transform: rotate(45deg) scale(1); }
+input[type="checkbox"]:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
+input[type="checkbox"]:disabled { opacity: .75; cursor: default; }
