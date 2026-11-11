@@ -11,6 +11,9 @@ from .config import CFG
 # The model gets at most this many CPU threads (it runs on the GPU; the threads only matter for the layers that don't
 # fit there). Using every core made the window and the desktop stutter while it wrote; half the cores is as fast.
 THREADS = CFG.get("llm_threads") or max(2, (os.cpu_count() or 8) // 4)
+# Only when you set it: a request with another thread count than the model was loaded with makes Ollama load it again (about 3 s),
+# and other programs using the same model (the memory) don't send one. install.sh puts the count into the model itself.
+THREAD_OPTION = {"num_thread": THREADS} if CFG.get("llm_threads") else {}
 KEEP = CFG.get("llm_keep_alive", "30m")  # stays loaded between questions, so it doesn't reload every few minutes
 # An idle model gives the graphics card's memory back when less than this is free (MiB), so a video or a game doesn't
 # stutter next to it. 0 turns it off.
@@ -83,7 +86,7 @@ def loaded():
 def warm(model, messages, tools=None):
     """Reads the prompt ahead without answering, so the next real answer can reuse it. Same request as a real one, one word long."""
     body = {"model": model, "messages": messages, "stream": False, "think": False, "keep_alive": KEEP,
-            "options": {"temperature": 0.3, "num_thread": THREADS, "num_predict": 1}}
+            "options": {"temperature": 0.3, **THREAD_OPTION, "num_predict": 1}}
     if tools:
         body["tools"] = tools
     req = urllib.request.Request(CFG["ollama_url"] + "/api/chat", json.dumps(body).encode(), {"content-type": "application/json"})
@@ -106,7 +109,7 @@ def chat_stream(model, messages, tools=None):
     global _used
     _used = time.time()
     body = {"model": model, "messages": messages, "stream": True, "think": False, "keep_alive": KEEP,
-            "options": {"temperature": 0.3, "num_thread": THREADS}}
+            "options": {"temperature": 0.3, **THREAD_OPTION}}
     if tools:
         body["tools"] = tools
     req = urllib.request.Request(CFG["ollama_url"] + "/api/chat", json.dumps(body).encode(),
@@ -135,7 +138,7 @@ def complete(model, messages, as_json=False):
     global _used
     _used = time.time()
     body = {"model": model, "messages": messages, "stream": False, "think": False, "keep_alive": KEEP,
-            "options": {"temperature": 0.1, "num_thread": THREADS}}
+            "options": {"temperature": 0.1, **THREAD_OPTION}}
     if as_json:
         body["format"] = "json"
     req = urllib.request.Request(CFG["ollama_url"] + "/api/chat", json.dumps(body).encode(), {"content-type": "application/json"})

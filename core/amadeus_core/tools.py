@@ -1482,6 +1482,30 @@ def missing(connector):
     return ""
 
 
-def schemas():
+# Mail is nearly half of all tools. A chat gets these few until it turns to mail, then all of them for the rest of that chat (the list
+# then stays the same, so the model doesn't have to read everything again with each message).
+MAIL_START = {"mail_overview", "mail_unread", "mail_recent", "mail_search", "mail_read", "mail_show", "mail_codes", "day_summary", "contacts_search"}
+MAIL_WORDS = re.compile(r"\b(e-?mails?|mails?|inbox|unread|sender|folders?|attachments?|spam|junk|forward|reply|draft|posteingang|postfach|ungelesen\w*|anhang|"
+                        r"anhänge|ordner|antwort\w*|weiterleiten|correos?|bandeja|adjuntos?|responde\w*|newsletter)\b", re.I)
+
+
+def all_mail_tools(cid, said=""):
+    if not cid:
+        return True
+    key = f"mail_tools:{cid}"
+    if db.get_setting(key, False):
+        return True
+    recent = db.q("SELECT role, meta FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 8", (cid,))
+    used = any(r["role"] == "tool" and str(json.loads(r["meta"] or "{}").get("name", "")).startswith(("mail_", "important_")) for r in recent)
+    if used or MAIL_WORDS.search(said or ""):
+        db.set_setting(key, True)
+        return True
+    return False
+
+
+def schemas(cid=None, said=""):
+    """The tools the model is offered. Without a chat (background jobs, tests): all of them."""
     on = enabled_connectors()
-    return [t["schema"] for t in TOOLS if on.get(t["connector"], True) and not missing(t["connector"])] + [t["schema"] for t in _mcp_tools()]
+    full = all_mail_tools(cid, said)
+    return [t["schema"] for t in TOOLS if on.get(t["connector"], True) and not missing(t["connector"])
+            and (full or t["connector"] != "mail" or t["name"] in MAIL_START)] + [t["schema"] for t in _mcp_tools()]

@@ -140,3 +140,61 @@ class Turn(unittest.TestCase):
         when = json.loads(db.q("SELECT args FROM approvals WHERE conversation_id=?", (cid,))[0]["args"])["when"]
         want = datetime.datetime.now() + datetime.timedelta(minutes=1)
         self.assertLess(abs((datetime.datetime.strptime(when, "%Y-%m-%d %H:%M") - want).total_seconds()), 61)
+
+
+class Lean(unittest.TestCase):
+    """Only what a message needs is sent to the model and looked up."""
+
+    def chat(self):
+        from amadeus_core import db
+        cid = db.new_id()
+        db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", "m", db.now(), db.now()))
+        return cid
+
+    def test_mail_tools_come_when_the_chat_turns_to_mail_and_stay(self):
+        from amadeus_core import tools
+        cid = self.chat()
+        names = lambda said="": {t["function"]["name"] for t in tools.schemas(cid, said)}  # noqa: E731
+        with mock.patch.object(tools, "missing", return_value=""):
+            everything = {t["function"]["name"] for t in tools.schemas()}
+            lean = names("add milk to my todo")
+            self.assertIn("mail_unread", lean)
+            self.assertNotIn("mail_move", lean)
+            self.assertIn("todo_add", lean)
+            self.assertLess(len(lean), len(everything) - 15)
+            self.assertEqual(names("move those mails to the invoices folder"), everything)
+            self.assertEqual(names("thanks"), everything)  # the same list from then on
+
+    def test_using_a_mail_tool_brings_the_rest(self):
+        from amadeus_core import db, tools
+        cid = self.chat()
+        with mock.patch.object(tools, "missing", return_value=""):
+            self.assertNotIn("mail_move", {t["function"]["name"] for t in tools.schemas(cid, "what's new?")})
+            db.add_message(cid, "tool", "3 unread", {"name": "mail_unread"})
+            self.assertIn("mail_move", {t["function"]["name"] for t in tools.schemas(cid, "file them")})
+
+    def test_no_memory_lookup_for_small_talk_and_plain_commands(self):
+        from amadeus_core import agent
+        for text in ("hey", "thanks a lot!", "ok", "add buy milk to my todo", "remind me in 5 minutes to stretch"):
+            self.assertFalse(agent._worth_recalling(text), text)
+        for text in ("what did I tell you about my sister?", "when is my next exam again?"):
+            self.assertTrue(agent._worth_recalling(text), text)
+
+    def test_learning_waits_until_you_are_quiet(self):
+        from amadeus_core import agent
+        done = []
+        with mock.patch.object(agent, "QUIET", 0.2), mock.patch.object(agent, "warm_up"), mock.patch.object(agent.llm, "loaded", return_value=[]):
+            agent._active = __import__("time").time()
+            agent.RUNNING.add("x")
+            agent.later(done.append, 1)
+            agent.later(done.append, 1)  # the same job twice is one job
+            __import__("time").sleep(1.3)
+            self.assertEqual(done, [])  # you're in the middle of something
+            agent.RUNNING.discard("x")
+            __import__("time").sleep(1.6)
+        self.assertEqual(done, [1])
+
+    def test_no_thread_count_unless_you_set_one(self):
+        from amadeus_core import llm
+        from amadeus_core.config import CFG
+        self.assertEqual(llm.THREAD_OPTION, {"num_thread": llm.THREADS} if CFG.get("llm_threads") else {})

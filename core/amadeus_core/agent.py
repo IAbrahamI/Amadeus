@@ -1,5 +1,6 @@
 """The assistant loop: memory recall -> local model with tools -> read-only tools run, changing tools wait
 for approval (shown in chat and on the Approvals dashboard)."""
+import collections
 import datetime
 import glob
 import json
@@ -43,7 +44,8 @@ Rules:
 - When one message asks for several things (a to-do and a reminder for it), call every tool it needs in the same turn.
   A to-do or reminder about a mail or a person is still just a to-do or reminder: save it in the user's words, don't look anything up first.
 - Times and dates: never calculate them. Give create_reminder the user's own words ("in 5 minutes", "tomorrow 09:00", "today evening").
-- Keep answers short and clear. If you don't know, say so.
+- Keep answers short and clear: a few sentences, at most about 80 words, unless the user asks for detail or a list needs more.
+  If you don't know, say so.
 - Format: clean Markdown. Lead with the answer in one plain sentence, then short lists or a small table only when they
   help. No emoji or decorative symbols, no headings for short answers.
 - End every reply with exactly one mood tag on its own line, chosen from:
@@ -366,7 +368,7 @@ def _context(cid, user_text):
             d0 = datetime.date.today()
             text += "\n\nDates (use these, don't calculate): " + ", ".join(
                 f"{(d0 + datetime.timedelta(days=i)):%a %d %b}={(d0 + datetime.timedelta(days=i)).isoformat()}" for i in range(14))
-    if user_text and tools.enabled_connectors().get("memory", True) and not tools.missing("memory"):
+    if user_text and tools.enabled_connectors().get("memory", True) and not tools.missing("memory") and _worth_recalling(user_text):
         try:
             mem = tools.recall(user_text)
             if not mem.startswith("No relevant"):
@@ -374,6 +376,15 @@ def _context(cid, user_text):
         except Exception:
             pass
     return text
+
+
+SMALL_TALK = re.compile(r"^\W*(hey|hi|hello|hallo|hola|thanks|thank you|danke|gracias|ok(ay)?|yes|no|ja|nein|sí|bye|great|cool|nice|"
+                        r"good (morning|night|evening)|guten (morgen|abend))\b[\w\s,!.?']{0,25}$", re.I)
+
+
+def _worth_recalling(text):
+    """A greeting or a plain "put X on my todo" has nothing to look up in the memory: that lookup is a third of a second each time."""
+    return len(text.split()) >= 3 and not SMALL_TALK.match(text) and not JUST_NOTE_IT.search(text)
 
 
 def _keep_context(cid, user_text):
@@ -391,7 +402,7 @@ def warm_up(cid=None, model=None):
     cid = cid or quickchat.current()
     conv = db.q("SELECT model FROM conversations WHERE id=?", (cid,), one=True) or {}
     model = model or conv.get("model") or db.get_setting("chat_model", "") or CFG["default_model"]  # the one that chat answers with
-    llm.warm(model, [_system(cid)] + _history(cid) + [{"role": "user", "content": "<context>\n</context>"}], tools.schemas())
+    llm.warm(model, [_system(cid)] + _history(cid) + [{"role": "user", "content": "<context>\n</context>"}], tools.schemas(cid))
 
 
 def load_at_start():
@@ -435,11 +446,49 @@ TODAY = "Today is {today}."
 
 def run(cid, model, user_text=None, emit=lambda *a: None, max_rounds=6, curate=True, voice=False, speak=False):
     """Runs the loop until the model answers or an approval is needed. emit(kind, data) streams to the UI."""
+    global _active
     RUNNING.add(cid)
+    _active = time.time()
     try:
         _run(cid, model, user_text, emit, max_rounds, curate, voice, speak)
     finally:
         RUNNING.discard(cid)
+        _active = time.time()
+
+
+# What Amadeus learns from a chat (your profile, how you ask for things) uses the same model. It waits until you've been quiet for a
+# moment, so your next message never queues behind it, and afterwards the chat is read ahead again.
+QUIET = 12
+_jobs = collections.deque()
+_active = 0.0
+_worker = None
+
+
+def later(fn, *args):
+    global _worker
+    if (fn, args) not in _jobs:
+        _jobs.append((fn, args))
+    if _worker is None or not _worker.is_alive():
+        _worker = threading.Thread(target=_work, daemon=True)
+        _worker.start()
+
+
+def _work():
+    while _jobs:
+        time.sleep(1)
+        if RUNNING or time.time() - _active < QUIET:
+            continue
+        while _jobs and not RUNNING:
+            fn, args = _jobs.popleft()
+            try:
+                fn(*args)
+            except Exception as e:
+                print("background job failed:", fn.__name__, e, flush=True)
+        try:
+            if not RUNNING and llm.loaded():
+                warm_up()
+        except Exception as e:
+            print("reading the chat ahead failed:", e, flush=True)
 
 
 def _playbook(cid, user_text, emit):
@@ -505,7 +554,7 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
             if text:
                 emit("token", text)
         messages = [sysmsg] + _history(cid) + nudge + ([SAY_REMINDER] if speak else [])
-        for kind, data in llm.chat_stream(model, messages, tools.schemas()):
+        for kind, data in llm.chat_stream(model, messages, tools.schemas(cid, said_by_user)):
             if kind != "token":
                 content, calls = data["content"], data["tool_calls"]
             elif streaming:
@@ -533,10 +582,9 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
             emit("token", said)
         if not calls:
             if curate and tools.enabled_connectors().get("memory", True):
-                threading.Thread(target=profile.learn_asking, args=(cid,), daemon=True).start()
+                later(profile.learn_asking, cid)
             if curate and user_text and len(user_text) >= 12 and tools.enabled_connectors().get("memory", True):
-                threading.Thread(target=profile.curate, args=(user_text, MOOD_RE.sub("", content), _read_mail_recently(cid, 8)),
-                                 daemon=True).start()
+                later(profile.curate, user_text, MOOD_RE.sub("", content), _read_mail_recently(cid, 8))
             mood = MOOD_RE.search(content)
             content = MOOD_RE.sub("", content).strip()
             db.add_message(cid, "assistant", content, {"mood": mood.group(1) if mood else "normal",
@@ -590,7 +638,7 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                     shown = f"I couldn't get your mail right now ({e})."
                 db.add_message(cid, "tool", tools._data(shown), {"name": name})
                 db.add_message(cid, "assistant", shown, {"mood": "normal"})
-                threading.Thread(target=profile.learn_asking, args=(cid,), daemon=True).start()
+                later(profile.learn_asking, cid)
                 last = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None)
                 if last and last["meta"].get("speak"):
                     emit("say", "Here's what I found.")  # what came back is shown as it is: nothing to read out
@@ -601,8 +649,8 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 emit("tool", {"name": name})
                 try:
                     result = str(t["fn"](**args))
-                except Exception as e:
-                    result = f"Error: {e}"
+                except Exception as e:  # a failure is not an empty result: "no unread mail" must never come from this
+                    result = f"FAILED, nothing was looked up or changed: {e}. Tell the user it didn't work and why; don't present this as an empty result."
                 db.add_message(cid, "tool", result, {"name": name})
         acted = True
         if waiting:

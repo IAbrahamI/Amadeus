@@ -30,8 +30,7 @@ def no_mail(*a, **k):
 mailbridge.call = no_mail
 agent.events.maybe_ring = lambda: None  # no call and no notification on your desktop from a test
 tools.missing = lambda connector: ""  # every tool is offered, like on a fully set-up PC
-agent.profile.curate = lambda *a, **k: None
-agent.profile.learn_asking = lambda *a, **k: None
+agent.later = lambda *a, **k: None  # nothing is learned from a test
 NOW = datetime.datetime.now()
 CLAIM = re.compile(r"\b(i['’]ve|i have|i just|i)\s+(now |already |just )?(added|set|created|saved|scheduled|put|noted|removed)\b|^\W*(done|added|saved)\b|"
                    r"\b(is|has been|was) (set|added|created|saved|scheduled)\b|\bhabe\b.{0,60}(hinzugefügt|erstellt|gesetzt|eingetragen)", re.I | re.M)
@@ -110,6 +109,9 @@ CASES = [
     (LONG + "remind me in 3 minutes to stretch", lambda c, t: when_of(c, 2, 4.5)),
     (LONG + "did you really add that cyberwars todo?", lambda c, t: has(c, "todo_list") or not CLAIM.search(t)),
     (LONG + "thanks", lambda c, t: not c and "haven't done" not in t.lower()),
+    ("do I have unread mail?", lambda c, t: has(c, "mail_unread") or has(c, "mail_overview")),
+    ("create a mail folder called Invoices", lambda c, t: has(c, "mail_create_folder", "invoices") or has(c, "mail_folders") or has(c, "mail_accounts")),
+    ("search my mail for the train ticket", lambda c, t: has(c, "mail_search", "ticket")),
     ("hey how are you", lambda c, t: not c and len(t) > 3 and "haven't" not in t.lower()),
     ("what can you do?", lambda c, t: not c and len(t) > 20 and "haven't done" not in t.lower()),
     ("thanks, that's all for now", lambda c, t: not c and "haven't done" not in t.lower()),
