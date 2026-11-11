@@ -55,14 +55,14 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--cyan); outl
 
 /* rail */
 .rail { grid-area: rail; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 14px 0 12px; box-sizing: border-box; /* centred: nothing pushes the icons to one side */ border-right: 1px solid var(--line); background: rgba(var(--vd),.7); }
+  padding: 14px 0 12px 1px; box-sizing: border-box; /* 1px on the left balances the border on the right: the icons sit in the true middle */ border-right: 1px solid var(--line); background: rgba(var(--vd),.7); }
 .mark { width: 30px; height: 30px; margin-bottom: 14px; border: 1px solid var(--cyan); border-radius: 50%; display: grid; place-items: center; }
 .mark i { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
 .nav { position: relative; width: 40px; height: 38px; display: grid; place-items: center; color: var(--dim); border-radius: 2px; }
 .nav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .nav:hover { color: var(--text); background: var(--cyan-soft); }
 .nav[aria-current="true"] { color: var(--cyan); }
-.nav[aria-current="true"]::before { content: ""; position: absolute; left: -6px; top: 9px; bottom: 9px; width: 2px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.nav[aria-current="true"]::before { content: ""; position: absolute; left: -6px; top: 6px; bottom: 6px; width: 3px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }  /* flush with the window's left edge */
 .nav .n { position: absolute; top: 4px; right: 4px; min-width: 15px; height: 15px; padding: 0 3px; font: 600 10px/15px var(--mono); color: #1A1000; background: var(--amber); border-radius: 1px; }
 .nav .tip { position: absolute; left: 46px; white-space: nowrap; font: 500 11px var(--display); letter-spacing: .14em; text-transform: uppercase;
   background: var(--deck); border: 1px solid var(--line-hi); padding: 3px 8px; opacity: 0; pointer-events: none; transition: opacity .15s; }
