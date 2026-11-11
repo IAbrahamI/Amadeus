@@ -3,8 +3,10 @@
 // top or bottom of an editor splits it there. Markdown shows its source next to how it reads. While Claude Code works you see each
 // step and the file it's on, and the open files follow what it changes. It's another layout of the project page (hud-views.js), so
 // the chat, the privacy preview and the approvals are the very same.
-const ws = { follow: true, poll: null, files: [], open: {}, last: 0, live: [], wasRunning: false,
-  bufs: {},          // path -> { text, seen, dirty, binary, error, conflict, gone }: one per file, shared by every tab that shows it
+const ws = { follow: true, poll: null, files: [], open: {}, last: 0, live: [], at: null, wasRunning: false, fetched: 0,
+  bufs: {},          // path -> { text, orig, seen, dirty, binary, error, conflict, gone, hist, pos, typing }: one per file, shared by
+                     // every tab that shows it. hist/pos: its own undo history (it survives tab switches and redraws, and an
+                     // agent's change can be undone too); typing: the text Claude Code is writing into it right now
   layout: null,      // { group } or { dir: "row" | "col", a, b }: how the editor is split
   groups: {},        // id -> { tabs: [path], active: path, preview: true }
   focus: null, next: 1, project: "" };
@@ -109,7 +111,7 @@ function wsTree() {
   // folders first, then files; a dot marks what changed in the last 15 seconds, a bar what the agent is on right now
   const root = {};
   for (const f of ws.files) { let at = root; const parts = f.path.split("/"); parts.slice(0, -1).forEach((p) => (at = at[p + "/"] = at[p + "/"] || {})); at[parts.at(-1)] = f; }
-  const now = Date.now() / 1000, on = ws.live.length ? ws.live.at(-1).path : "", shown = ws.focus && ws.groups[ws.focus] ? ws.groups[ws.focus].active : "";
+  const now = Date.now() / 1000, on = ws.at ? ws.at.path : ws.live.length ? ws.live.at(-1).path : "", shown = ws.focus && ws.groups[ws.focus] ? ws.groups[ws.focus].active : "";
   const level = (node, prefix, depth) => Object.keys(node).sort((a, b) => (b.endsWith("/") - a.endsWith("/")) || a.localeCompare(b)).map((k) => {
     const path = prefix + k, pad = `style="padding-left:${8 + depth * 14}px"`;
     if (k.endsWith("/")) {
@@ -117,7 +119,7 @@ function wsTree() {
       return `<button class="wsrow dir" data-act="wsdir" data-d="${esc(path)}" ${pad}><i>${wsIcon(open)}</i>${esc(k.slice(0, -1))}</button>` + (open ? level(node[k], path, depth + 1) : "");
     }
     const f = node[k], fresh = now - f.modified < 15;
-    return `<button class="wsrow${f.path === shown ? " on" : ""}${f.path === on ? " agent" : ""}" data-act="wsfile" data-f="${esc(f.path)}" draggable="true" ${pad} title="${esc(f.path)}"><i>${fresh ? "●" : ""}</i>${esc(k)}</button>`;
+    return `<button class="wsrow${f.path === shown ? " on" : ""}${f.path === on ? " agent" : ""}" data-act="wsfile" data-f="${esc(f.path)}" draggable="true" ${pad} title="${esc(f.path)}"><i>${fresh ? "●" : ""}</i>${esc(k)}${f.path === on && ws.at ? '<em class="ccme" title="Claude Code is here">C</em>' : ""}</button>`;
   }).join("");
   const el = $("#wsTree"); if (el) el.innerHTML = level(root, "", 0) || note("No files yet.");
 }
@@ -126,15 +128,41 @@ function wsTree() {
 async function load(path, force) {
   const b = ws.bufs[path];
   if (b && !force) return b;
-  const f = await api(wsApi(`/file?path=${encodeURIComponent(path)}`));
-  return (ws.bufs[path] = { text: f.text || "", seen: f.modified || 0, dirty: false, binary: !!f.binary, error: f.error || "", conflict: false, gone: false });
+  const f = await api(wsApi(`/file?path=${encodeURIComponent(path)}`)), text = f.text || "";
+  const nb = { text, orig: text, seen: f.modified || 0, dirty: false, binary: !!f.binary, error: f.error || "", conflict: false, gone: false,
+    hist: b && b.hist ? b.hist : [], pos: b && b.hist ? b.pos : -1, typing: null };
+  if (!nb.hist.length || nb.hist[nb.pos].text !== text) snap(nb, text, null, false);  // the version on disk: undo goes back past it
+  return (ws.bufs[path] = nb);
+}
+
+// ---------- undo and redo: one history per file ----------
+function snap(b, text, sel, typing) {
+  const now = Date.now(), top = b.hist[b.pos];
+  b.hist.length = b.pos + 1;  // a new change drops what was undone
+  // letters typed in a row are one step, as in an editor; a pause, a new line or a paste starts the next one
+  if (typing && top && top.typing && now - top.t < 900 && !/\n/.test(text.slice((sel || [0])[0] - 1, (sel || [0])[0]))) Object.assign(top, { text, sel, t: now });
+  else { b.hist.push({ text, sel, t: now, typing }); if (b.hist.length > 400) b.hist.shift(); }
+  b.pos = b.hist.length - 1;
+}
+function undo(id, back) {
+  const g = ws.groups[id], path = g && g.active, b = path && ws.bufs[path];
+  if (!b || b.binary || b.error || b.typing != null) return;
+  const to = b.pos + (back ? -1 : 1);
+  if (to < 0 || to >= b.hist.length) return;
+  b.pos = to; const h = b.hist[to];
+  h.typing = false;  // letters typed after an undo start a new step
+  b.text = h.text; b.dirty = b.text !== b.orig;
+  for (const other of allGroups(ws.layout)) if (ws.groups[other].active === path) fill(other);
+  const t = body().querySelector(`.wstext[data-g="${id}"]`);
+  if (t) { const at = h.sel ? h.sel[0] : h.text.length; t.focus(); t.setSelectionRange(at, h.sel ? h.sel[1] : at); }
+  refreshTabs(path);
 }
 function tabLabel(path) { return path.split("/").pop(); }
 function groupHtml(id) {
   const g = ws.groups[id], p = g.active, b = p && ws.bufs[p];
   const tabs = g.tabs.map((t) => { const tb = ws.bufs[t] || {};
     return `<div class="wstab${t === p ? " on" : ""}${tb.dirty ? " dirty" : ""}${tb.conflict ? " warn" : ""}" draggable="true" data-act="wstab" data-g="${id}" data-f="${esc(t)}" title="${esc(t)}">` +
-      `<span>${esc(tabLabel(t))}</span><button data-act="wstabx" data-g="${id}" data-f="${esc(t)}" aria-label="Close ${esc(t)}">${tb.dirty ? "●" : "×"}</button></div>`; }).join("");
+      `<span>${esc(tabLabel(t))}</span><em class="ccme" title="Claude Code is here">C</em><button data-act="wstabx" data-g="${id}" data-f="${esc(t)}" aria-label="Close ${esc(t)}">${tb.dirty ? "●" : "×"}</button></div>`; }).join("");
   const md = p && isMd(p) && g.preview;
   const state = !b ? "" : b.error ? "That didn't work: " + b.error : b.binary ? "Not a text file: open it in the file manager." : b.gone ? "This file was removed." :
     b.conflict ? (b.dirty ? "Changed on disk while you were editing." : "") : b.dirty ? "Not saved" : "";
@@ -158,7 +186,10 @@ function fill(id) {  // the open file's text, colours, line numbers and preview 
   if (!el || !g || !g.active) return;
   const b = ws.bufs[g.active], t = el.querySelector(".wstext");
   if (!b || !t) return;
-  if (t.value !== b.text) { const top = t.scrollTop, left = t.scrollLeft; t.value = b.text; t.scrollTop = top; t.scrollLeft = left; }
+  const shown = b.typing != null ? b.typing : b.text;  // while Claude Code writes into it you see its text appear (and can't type)
+  t.readOnly = b.typing != null || !!(b.binary || b.error);
+  el.classList.toggle("agenttyping", b.typing != null);
+  if (t.value !== shown) { const top = t.scrollTop, left = t.scrollLeft; t.value = shown; t.scrollTop = top; t.scrollLeft = left; }
   paint(el, g.active);
 }
 let paintTimers = {};
@@ -177,6 +208,7 @@ function scrollSync(el) {
   const t = el.querySelector(".wstext"), h = el.querySelector(".wshl"), mdv = el.querySelector(".wsmd");
   if (h) h.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
   el.querySelector(".wsnums").scrollTop = t.scrollTop;
+  const pres = el.querySelector(".wspres"); if (pres) pres.style.transform = `translate(0, ${-t.scrollTop}px)`;
   if (mdv && t.scrollHeight > t.clientHeight) mdv.scrollTop = (t.scrollTop / (t.scrollHeight - t.clientHeight)) * (mdv.scrollHeight - mdv.clientHeight);
 }
 async function drawEditors() {
@@ -186,7 +218,7 @@ async function drawEditors() {
   box.innerHTML = layoutHtml(ws.layout);
   for (const id of allGroups(ws.layout)) fill(id);
   if (keep) { const t = box.querySelector(`.wstext[data-g="${keep[0]}"]`); if (t) { t.focus(); t.setSelectionRange(keep[1], keep[2]); } }
-  wsTree();
+  wsTree();  presence(ws.at);
 }
 function refreshTabs(path) {  // the tab marks and save buttons, without touching the text you're typing in
   for (const id of allGroups(ws.layout)) {
@@ -209,22 +241,38 @@ async function save(id, overwrite) {
   const r = await post(wsApi("/file"), { path, text: b.text, seen: b.seen, overwrite: !!overwrite });
   if (r.changed) { b.conflict = true; return drawEditors(); }
   if (r.error) { b.error = ""; const st = body().querySelector(`.wsgroup[data-g="${id}"] .wsstate`); if (st) { st.textContent = "That didn't work: " + r.error; st.classList.add("warn"); } return; }
-  Object.assign(b, { seen: r.modified, dirty: false, conflict: false });
+  Object.assign(b, { seen: r.modified, dirty: false, conflict: false, orig: b.text });
   ws.last = Math.max(ws.last, r.modified);
   await drawEditors();
   const st = body().querySelector(`.wsgroup[data-g="${id}"] .wsstate`); if (st) st.textContent = "Saved";
 }
 
 // ---------- what Claude Code is doing, every two seconds ----------
+// While it runs this looks twice a second, so you see where it is and what it types as it happens; otherwise every two.
+let ticking = false;
 async function wsTick() {
   if (!proj.ws || curView !== "projects" || !$("#wsEditors")) return clearInterval(ws.poll);
+  if (ticking || (!ws.wasRunning && Date.now() - ws.fetched < 1900)) return;
+  ticking = true; ws.fetched = Date.now();
+  try { await tickOnce(); } finally { ticking = false; }
+}
+const KIND = { reading: "reading", editing: "editing", writing: "writing" };
+async function tickOnce() {
   let d; try { d = await api(wsApi("/changes")); } catch { return; }
   if (d.error) return;
   const newest = d.files.reduce((a, f) => (f.modified > (a ? a.modified : 0) ? f : a), null);
   ws.files = d.files; ws.live = d.live || [];
-  const live = $("#wsLive");
-  live.innerHTML = d.running ? `<b class="cc">Claude Code is working</b>` + (ws.live.slice(-4).map((s) => `<p>${esc(s.text)}</p>`).join("") || "<p>Starting…</p>") : "";
+  const was = ws.at; ws.at = d.running ? d.at || null : null;
+  const live = $("#wsLive"), at = ws.at;
+  live.innerHTML = d.running ? `<b class="cc">Claude Code is working</b>` +
+    (at ? `<p class="at"><i class="ccme">C</i>${KIND[at.kind] || "in"} <b>${esc(at.path)}</b> · line ${at.line}</p>` : "") +
+    (ws.live.slice(-3).map((s) => `<p>${esc(s.text)}</p>`).join("") || "<p>Starting…</p>") : "";
   live.hidden = !d.running;
+  // the text it's typing goes into that file's buffer (shown, never saved); it ends when it moves on or the file lands on disk
+  for (const [path, b] of Object.entries(ws.bufs)) {
+    const typing = at && at.path === path && at.text != null && !b.dirty ? at.text : null;
+    if (typing !== b.typing) { b.typing = typing; for (const id of allGroups(ws.layout)) if (ws.groups[id].active === path) fill(id); }
+  }
   let redraw = false;
   for (const [path, b] of Object.entries(ws.bufs)) {  // open files that changed on disk
     const f = d.files.find((x) => x.path === path);
@@ -235,11 +283,12 @@ async function wsTick() {
     }
   }
   // follow the agent: the file it's on, or the one that changed last, in the editor you used last, as long as you aren't editing it
-  const lead = ws.live.length && ws.live.at(-1).path && d.files.some((f) => f.path === ws.live.at(-1).path) ? ws.live.at(-1).path : newest && newest.modified > ws.last ? newest.path : "";
+  const lead = at && d.files.some((f) => f.path === at.path) ? at.path : ws.live.length && ws.live.at(-1).path && d.files.some((f) => f.path === ws.live.at(-1).path) ? ws.live.at(-1).path : newest && newest.modified > ws.last ? newest.path : "";
   const g = ws.focus && ws.groups[ws.focus], cur = g && g.active && ws.bufs[g.active];
   if (ws.follow && d.running && lead && (!g || lead !== g.active) && !(cur && cur.dirty)) { await openFile(lead, ws.focus); redraw = false; }
   if (newest) ws.last = Math.max(ws.last, newest.modified);
   if (redraw) await drawEditors(); else wsTree();
+  presence(was);
   if (ws.wasRunning && !d.running) renderProject();  // it finished: the result goes into the chat
   ws.wasRunning = d.running;
 }
@@ -271,7 +320,36 @@ async function renderWorkspace(d, chat, chip, label) {
   await drawEditors();
   const side = body().querySelector(".wschat"); side.scrollTop = side.scrollHeight;
   place(); setTimeout(place, 400);  // a small core in the corner under the chat (again once the panel has settled)
-  clearInterval(ws.poll); ws.poll = setInterval(wsTick, 2000); wsTick();
+  clearInterval(ws.poll); ws.poll = setInterval(wsTick, 500); wsTick();
+}
+
+// ---------- where Claude Code is: like a co-author in a shared document ----------
+// Its file carries a "C" in the list and on the tab; in the editor its lines are tinted and its cursor has a flag saying what
+// it does there. When you follow it, the editor keeps that line in view (unless you're typing in it).
+function presence(was) {
+  const at = ws.at;
+  body().querySelectorAll(".wstab").forEach((t) => t.classList.toggle("agent", !!at && t.dataset.f === at.path));
+  for (const id of allGroups(ws.layout)) {
+    const el = body().querySelector(`.wsgroup[data-g="${id}"]`), area = el && el.querySelector(".wsarea"), t = area && area.querySelector(".wstext");
+    if (!t) continue;
+    let pres = area.querySelector(".wspres");
+    if (!at || ws.groups[id].active !== at.path) { if (pres) pres.remove(); continue; }
+    if (!pres) { pres = document.createElement("div"); pres.className = "wspres"; pres.innerHTML = '<div class="band"></div><div class="caret"><span></span></div>'; area.appendChild(pres); }
+    const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 19, top = parseFloat(cs.paddingTop) || 10;
+    const from = Math.min(at.from || at.line, at.line), end = Math.max(at.end || at.line, at.line);
+    const band = pres.querySelector(".band"), caret = pres.querySelector(".caret");
+    band.style.top = top + (from - 1) * lh + "px"; band.style.height = (end - from + 1) * lh + "px";
+    caret.style.top = top + (at.line - 1) * lh + "px"; caret.style.height = lh + "px";
+    caret.querySelector("span").textContent = `Claude · ${KIND[at.kind] || "here"}`;
+    pres.className = "wspres " + (at.kind || "") + (at.line <= 1 ? " first" : "");  // on the first line the flag hangs below it
+    pres.style.transform = `translate(0, ${-t.scrollTop}px)`;
+    // keep its line in view when following, unless you're typing in this editor
+    const moved = !was || was.path !== at.path || was.line !== at.line;
+    if (ws.follow && moved && document.activeElement !== t) {
+      const y = top + (at.line - 1) * lh;
+      if (y < t.scrollTop + lh || y > t.scrollTop + t.clientHeight - 3 * lh) { t.scrollTop = Math.max(0, y - t.clientHeight / 3); scrollSync(el); }
+    }
+  }
 }
 
 // ---------- what you do ----------
@@ -298,7 +376,9 @@ body().addEventListener("input", (e) => {
   if (!e.target.classList.contains("wstext")) return;
   const id = e.target.dataset.g, path = ws.groups[id] && ws.groups[id].active, b = path && ws.bufs[path];
   if (!b) return;
-  b.text = e.target.value; b.dirty = true;
+  if (b.typing != null) return;
+  b.text = e.target.value; b.dirty = b.text !== b.orig;
+  snap(b, b.text, [e.target.selectionStart, e.target.selectionEnd], e.inputType === "insertText" || e.inputType === "deleteContentBackward");
   paint(e.target.closest(".wsgroup"), path);
   for (const other of allGroups(ws.layout)) if (other !== id && ws.groups[other].active === path) fill(other);  // the same file open twice
   refreshTabs(path);
@@ -306,7 +386,9 @@ body().addEventListener("input", (e) => {
 body().addEventListener("scroll", (e) => { if (e.target.classList && e.target.classList.contains("wstext")) scrollSync(e.target.closest(".wsgroup")); }, true);
 body().addEventListener("keydown", (e) => {
   if (!e.target.classList.contains("wstext")) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(e.target.dataset.g); }
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (mod && k === "s") { e.preventDefault(); save(e.target.dataset.g); }
+  if (mod && (k === "z" || k === "y")) { e.preventDefault(); undo(e.target.dataset.g, k === "z" && !e.shiftKey); return; }  // Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y
   if (e.key === "Tab" && !e.shiftKey) {  // Tab indents, like in an editor
     e.preventDefault(); const t = e.target, s = t.selectionStart;
     t.setRangeText("  ", s, t.selectionEnd, "end"); t.dispatchEvent(new Event("input", { bubbles: true }));

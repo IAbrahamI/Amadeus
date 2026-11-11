@@ -89,3 +89,43 @@ class OwnProject(unittest.TestCase):
             self.assertFalse(agent._own_project(work.project_chat("Other") and "not-a-chat", "continue_project", {"project": "Example"}))
         with mock.patch.object(agent, "_read_mail_recently", return_value=True):  # a mail could have asked for it
             self.assertFalse(agent._own_project(cid, "continue_project", {"project": "Example"}))
+
+
+class Presence(unittest.TestCase):
+    """Where Claude Code is while it writes a tool call, from its partial output, like a co-author's cursor."""
+
+    def setUp(self):
+        self.name, self.folder = work._folder("Presence test")
+        Path(self.folder, "f.txt").write_text("a\nb\nc\n")
+
+    def feed(self, p, *chunks, tool="Edit"):
+        p.feed({"type": "stream_event", "event": {"type": "content_block_start", "content_block": {"type": "tool_use", "name": tool, "input": {}}}})
+        for c in chunks:
+            p.last = 0
+            p.feed({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": c}}})
+        return p.at()
+
+    def test_partial_strings(self):
+        self.assertEqual(work._partial('{"a": "x\\ny', "a"), ("x\ny", False))
+        self.assertEqual(work._partial('{"a": "x\\"y"}', "a"), ('x"y', True))
+        self.assertEqual(work._partial('{"a": "x\\', "a"), ("x", False))  # an escape cut in half waits
+        self.assertIsNone(work._partial('{"b": "x"', "a"))
+
+    def test_edit_shows_line_and_the_new_text(self):
+        p = work.Presence(self.folder)
+        path = json.dumps(os.path.join(self.folder, "f.txt"))
+        at = self.feed(p, '{"file_path": ' + path, ', "old_string": "b\\nc", "new_string": "B')
+        self.assertEqual((at["path"], at["kind"], at["line"]), ("f.txt", "editing", 2))
+        self.assertEqual(at["text"], "a\nB\n")
+        self.assertTrue(p.landed())
+        self.assertIsNone(p.at()["text"])
+
+    def test_write_cursor_moves_down_as_it_types(self):
+        p = work.Presence(self.folder)
+        path = json.dumps(os.path.join(self.folder, "new.py"))
+        at = self.feed(p, '{"file_path": ' + path, ', "content": "one\\ntwo\\nthr', tool="Write")
+        self.assertEqual((at["kind"], at["line"], at["text"]), ("writing", 3, "one\ntwo\nthr"))
+
+    def test_outside_the_project_is_ignored(self):
+        p = work.Presence(self.folder)
+        self.assertIsNone(self.feed(p, '{"file_path": "/etc/passwd"}', tool="Read"))

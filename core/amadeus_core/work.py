@@ -160,9 +160,148 @@ def _step(folder, line):
     return out
 
 
+AT = {}  # job id -> where Claude Code is right now, like a co-author's cursor: see Presence.at()
+KINDS = {"Read": "reading", "Edit": "editing", "MultiEdit": "editing", "Write": "writing", "NotebookEdit": "editing"}
+PREVIEW_MAX = 400_000  # characters of a file shown while it's being typed (bigger files show the cursor only)
+
+
+def _partial(buf, key):
+    """A string value from JSON that is still arriving: (text so far, complete?). None if the key hasn't started yet."""
+    m = re.search(r'"%s"\s*:\s*"' % re.escape(key), buf)
+    if not m:
+        return None
+    out, i, n = [], m.end(), len(buf)
+    while i < n:
+        c = buf[i]
+        if c == '"':
+            return "".join(out), True
+        if c == "\\":
+            if i + 1 >= n:
+                break  # the escape is cut in half: wait for the rest
+            e = buf[i + 1]
+            if e == "u":
+                if i + 6 > n:
+                    break
+                try:
+                    out.append(chr(int(buf[i + 2:i + 6], 16)))
+                except ValueError:
+                    pass
+                i += 6
+                continue
+            out.append({"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}.get(e, e))
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out), False
+
+
+def _number(buf, key):
+    m = re.search(r'"%s"\s*:\s*(\d+)\s*[,}]' % re.escape(key), buf)
+    return int(m.group(1)) if m else None
+
+
+class Presence:
+    """Follows Claude Code's partial output (--include-partial-messages) while a tool call is still being written, so the
+    workspace can show it like a co-author in a shared document: which file, which line, and for a file being written or
+    edited, the text as it appears. Nothing here changes a file; the real change lands when the tool runs."""
+
+    def __init__(self, folder):
+        self.folder, self.tool, self.buf, self.now, self.base, self.last = folder, None, "", None, None, 0.0
+
+    def _rel(self, path):
+        real = os.path.realpath(path) if path else ""
+        root = os.path.realpath(self.folder)
+        return os.path.relpath(real, root) if real.startswith(root + os.sep) else ""
+
+    def feed(self, ev):
+        """One line of stream-json, already parsed. Returns True when the position changed."""
+        if ev.get("type") != "stream_event":
+            return False
+        e = ev.get("event") or {}
+        t = e.get("type")
+        if t == "content_block_start":
+            block = e.get("content_block") or {}
+            if block.get("type") == "tool_use":
+                self.tool, self.buf, self.base = block.get("name"), "", None
+                if self.tool in KINDS:
+                    return False  # where it goes isn't known yet: the previous position stays until it is
+                self.now = None  # running a command or searching: not in a file
+                return True
+            self.tool = None
+            return False
+        if t == "content_block_delta" and self.tool in KINDS:
+            d = e.get("delta") or {}
+            if d.get("type") != "input_json_delta":
+                return False
+            self.buf += d.get("partial_json") or ""
+            if time.time() - self.last < 0.2:  # the workspace looks twice a second; parsing every chunk would be wasted
+                return False
+            self.last = time.time()
+            return self._update()
+        if t == "content_block_stop" and self.tool in KINDS and self.buf:
+            return self._update()
+        return False
+
+    def _update(self):
+        got = _partial(self.buf, "file_path") or _partial(self.buf, "notebook_path")
+        if not got or not got[1]:
+            return False
+        rel = self._rel(got[0])
+        if not rel:
+            return False
+        kind = KINDS[self.tool]
+        if self.base is None or self.base[0] != rel:
+            try:
+                text = Path(self.folder, rel).read_text(errors="replace")
+            except OSError:
+                text = ""
+            self.base = (rel, text)
+        text = self.base[1]
+        at = {"path": rel, "kind": kind, "line": 1, "end": 1, "text": None, "t": time.time()}
+        if self.tool == "Read":
+            off, lim = _number(self.buf, "offset"), _number(self.buf, "limit")
+            total = max(1, len(text.splitlines()))
+            at["line"] = max(1, off or 1)
+            at["end"] = min(total, at["line"] + lim - 1) if lim else total
+        elif self.tool == "Write":
+            new = _partial(self.buf, "content")
+            typed = new[0] if new else ""
+            at["line"] = at["end"] = typed.count("\n") + 1
+            if len(typed) <= PREVIEW_MAX:
+                at["text"] = typed
+        else:  # Edit / MultiEdit: where the old text is, and the new text growing in its place
+            old = _partial(self.buf, "old_string")
+            if old and old[1] and old[0]:
+                i = text.find(old[0])
+                if i >= 0:
+                    first = text.count("\n", 0, i) + 1
+                    new = _partial(self.buf, "new_string")
+                    typed = new[0] if new else ""
+                    at["line"] = first + typed.count("\n")
+                    at["end"] = first + max(old[0].count("\n"), typed.count("\n"))
+                    at["from"] = first
+                    if new is not None and len(text) <= PREVIEW_MAX:
+                        at["text"] = text[:i] + typed + text[i + len(old[0]):]
+        changed = (self.now or {}).get("line") != at["line"] or (self.now or {}).get("path") != rel or at["text"] is not None
+        self.now = at
+        return changed
+
+    def landed(self):
+        """The tool ran (its result came back): the file on disk is the truth again, the cursor stays where it was."""
+        if self.now and self.now.get("text") is not None:
+            self.now = {**self.now, "text": None}
+            return True
+        return False
+
+    def at(self):
+        return self.now
+
+
 def _watched(cmd, folder, env, jid):
     """Runs it like subprocess.run, and keeps its latest steps in LIVE while it works."""
     LIVE[jid] = []
+    seen = Presence(folder)
     p = subprocess.Popen(cmd, cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
     lines, errors = [], []
     reader = threading.Thread(target=lambda: errors.append(p.stderr.read()), daemon=True)
@@ -171,6 +310,16 @@ def _watched(cmd, folder, env, jid):
     timer.start()
     try:
         for line in p.stdout:
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") == "stream_event":  # the partial chunks: only for the live position, never kept
+                if seen.feed(ev):
+                    AT[jid] = seen.at()
+                continue
+            if ev.get("type") == "user" and seen.landed():
+                AT[jid] = seen.at()
             lines.append(line)
             LIVE[jid] = (LIVE[jid] + _step(folder, line))[-40:]
         p.wait()
@@ -178,6 +327,7 @@ def _watched(cmd, folder, env, jid):
         expired = not timer.is_alive()
         timer.cancel()
         LIVE.pop(jid, None)
+        AT.pop(jid, None)
     if expired and p.returncode != 0:
         raise subprocess.TimeoutExpired(cmd, TIMEOUT)
     reader.join(timeout=5)
@@ -199,7 +349,8 @@ def changes(name):
                     pass  # gone in this moment
     files.sort(key=lambda f: f["path"].lower())
     job = db.q("SELECT id FROM work_jobs WHERE lower(project)=lower(?) AND status='running' ORDER BY created DESC LIMIT 1", (name,), one=True)
-    return {"files": files, "running": bool(job), "live": LIVE.get(job["id"], []) if job else []}
+    return {"files": files, "running": bool(job), "live": LIVE.get(job["id"], []) if job else [],
+            "at": AT.get(job["id"]) if job else None}
 
 
 class Changed(ValueError):
@@ -228,9 +379,17 @@ def save_file(name, rel, text, seen=None):
     return {"path": os.path.relpath(full, path), "modified": os.path.getmtime(full)}
 
 
+def _json_line(line):
+    try:
+        o = json.loads(line)
+        return o if isinstance(o, dict) else {}
+    except ValueError:
+        return {}
+
+
 def _run(jid, task, resume):
     j = _job(jid)
-    cmd = ["claude", "-p", task, "--output-format", "stream-json", "--verbose", "--model", MODEL, "--effort", EFFORT,
+    cmd = ["claude", "-p", task, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--model", MODEL, "--effort", EFFORT,
            "--settings", os.path.join(GUARD, "settings.json"), "--permission-mode", "acceptEdits",
            "--allowedTools", TOOLS, "--append-system-prompt", RULES]
     if resume:
@@ -239,7 +398,7 @@ def _run(jid, task, resume):
     summary, sid, cost, ok = "", resume, None, False
     try:
         p = _watched(cmd, j["folder"], env, jid)
-        out = json.loads(p.stdout.strip().splitlines()[-1]) if p.stdout.strip() else {}
+        out = next((o for o in (_json_line(x) for x in reversed(p.stdout.strip().splitlines())) if o.get("type") == "result"), {})
         sid = out.get("session_id") or sid
         cost = out.get("total_cost_usd")
         summary = (out.get("result") or "").strip() or (p.stderr.strip()[-1500:] or "The run ended without a reply.")
