@@ -116,11 +116,6 @@ const PAGES = {
         ${d.host ? `<img class="qr" id="phoneQr" src="/api/devices/qr?${Date.now()}" alt="QR code for the phone app">` : ""}</div>
       <h3 style="margin-top:22px">Paired phones</h3>${d.devices.length ? rows(d.devices.map((x) => `<div class="row"><span class="k">Phone</span><div class="t"><b>${esc(x.name)}</b><span>paired ${new Date(x.created * 1000).toLocaleDateString()} · last seen ${ago(x.last_seen)}</span></div><button class="btn" data-act="unpair" data-id="${esc(x.id)}">Remove</button></div>`)) : note("No phone paired yet.")}`;
   },
-  async reminders() {
-    const list = await api("/api/reminders");
-    body().innerHTML = head("Reminders", `What ${esc(NAME())} will remind you of. Ask in the chat to add, move or remove one.`) +
-      (list.length ? rows(list.map((r) => `<div class="row"><span class="k">${r.next_run ? ago(r.next_run) : "–"}</span><div class="t"><b>${esc(r.text)}</b><span>${esc(r.schedule)}</span></div><span></span></div>`)) : note("No reminders."));
-  },
 };
 
 // ---------- "Your day": the morning brief and the evening summary (click the clock) ----------

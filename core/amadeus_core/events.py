@@ -18,7 +18,33 @@ def _plain(text):
     return re.sub(r"[*_`>#]", "", text or "").strip()
 
 
+STOP = {"your", "you", "the", "and", "for", "with", "this", "that", "read", "ready", "today", "now", "is", "my", "a", "to", "of", "at", "on", "in"}
+SAME_WINDOW = 15 * 60
+
+
+def _words(text):
+    return {w for w in re.findall(r"[a-zäöüß]{4,}", (text or "").lower()) if w not in STOP}
+
+
+def same_as_recent(kind, title):
+    """The id of a call from the last 15 minutes that says the same thing, if there is one: a reminder "Read my morning brief" next
+    to "Your morning brief is ready", or a reminder for an entry the calendar is already announcing."""
+    mine = _words(title)
+    if kind not in ("reminder", "calendar") or len(mine) < 1:
+        return None
+    for r in db.q("SELECT id, kind, title FROM events WHERE created>? AND kind IN ('reminder','calendar','job','digest') AND kind<>?",
+                  (db.now() - SAME_WINDOW, kind)):
+        theirs = _words(r["title"])
+        if len(mine & theirs) >= min(2, len(mine)):
+            return r["id"]
+    return None
+
+
 def add(kind, title, body="", ref="", cid=""):
+    same = same_as_recent(kind, title)
+    if same:  # one thing, one call
+        print(f"{kind} joined the call that already says it", flush=True)
+        return same
     eid = db.new_id()
     db.q("INSERT INTO events(id,kind,title,body,ref,conversation_id,created) VALUES(?,?,?,?,?,?,?)",
          (eid, kind, _plain(title)[:200], _plain(body)[:1200], ref, cid, db.now()))

@@ -679,3 +679,10 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .wschat { border-left: 1px dashed rgba(var(--a),.2); padding-left: 12px; overflow: auto; }
 .wschat .tline { grid-template-columns: 52px 1fr; }
 @media (max-width: 1000px) { .wsgrid { grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); } .wschat { grid-column: 1 / -1; border-left: 0; border-top: 1px dashed rgba(var(--a),.2); padding: 10px 0 0; max-height: 38%; } }
+
+/* the calendar's tabs: the week, and the reminders */
+.caltabs { display: flex; gap: 4px; margin-bottom: 14px; }
+.caltabs button { font: 500 11px var(--display); letter-spacing: .18em; text-transform: uppercase; padding: 6px 14px; color: var(--dim); border: 1px solid rgba(var(--a),.2); }
+.caltabs button.on { color: var(--ink); background: var(--cyan); border-color: var(--cyan); }
+.remnew { max-width: none; margin-bottom: 14px; } .remrow { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 8px; }
+@media (max-width: 700px) { .remrow { grid-template-columns: 1fr; } }

@@ -496,6 +496,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(work.set_folder(b.get("path", ""), bool(b.get("move"))))
             except (ValueError, OSError) as e:
                 return self._json({"error": str(e)}, 400)
+        if p == "/api/reminders":  # the Reminders tab of the calendar: you add one yourself
+            try:
+                return self._json({"result": tools.create_reminder(str(b.get("text", "")).strip() or "Reminder", str(b.get("when", "")))})
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        m = re.fullmatch(r"/api/reminders/(\w+)/delete", p)
+        if m:  # you remove one yourself
+            return self._json({"result": tools.delete_reminder(m.group(1))})
         m = re.fullmatch(r"/api/projects/([^/]+)/file", p)
         if m:  # you save a file in the workspace view
             from . import work

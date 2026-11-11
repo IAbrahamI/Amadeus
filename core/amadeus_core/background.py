@@ -16,7 +16,7 @@ from .config import CFG
 
 
 
-def check_reminders():
+def check_reminders():  # (a reminder about something already announced joins that call: events.same_as_recent)
     for r in db.q("SELECT * FROM reminders WHERE active=1 AND next_run IS NOT NULL AND next_run<=?", (time.time(),)):
         m = re.search(r"\s*\[mail:(\d+)\]", r["text"])  # a reminder about a mail: the call opens that mail
         events.add("reminder", r["text"].replace(m.group(0), "") if m else r["text"], ref=f"mail:{m.group(1)}" if m else "")

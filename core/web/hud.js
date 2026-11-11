@@ -378,8 +378,7 @@ const TILES = [["assistant", "Assistant", "Name, personality and look", '<circle
   ["connectors", "Connectors", "What it may use, what asks first", '<path d="M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4"/>'],
   ["playbooks", "Playbooks", "Fixed recipes like plan my day", '<path d="M6 4h12v16H6zM9 9h6M9 13h6M9 17h3"/>'],
   ["memory", "Memory", "Profile, important people, lessons", '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c3 3 3 13 0 16"/>'],
-  ["phone", "Phone", "Pair a phone, private or visible", '<rect x="7" y="3" width="10" height="18"/><path d="M11 18h2"/>'],
-  ["reminders", "Reminders", "What it will remind you of", '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/>']];
+  ["phone", "Phone", "Pair a phone, private or visible", '<rect x="7" y="3" width="10" height="18"/><path d="M11 18h2"/>']];
 function loadSettings() {
   body().innerHTML = `<div class="themes"><div class="thl">Main colour</div><div class="sw">${Object.entries(THEMES).map(([id, t]) =>
     `<button data-th="${id}" class="${id === window.THEME ? "on" : ""}" style="--s:rgb(${t.a})"><i></i><span>${t.name}</span></button>`).join("")}</div>
@@ -444,7 +443,7 @@ body().addEventListener("click", async (e) => {
   if (act === "landed") {
     const l = JSON.parse(a.dataset.link);
     if (l.view === "calendar") { if (l.day) { cal.week = monday(new Date(l.day + "T00:00")); } open("calendar"); }
-    else if (l.view === "reminders") { open("settings"); settingsPage("reminders"); }
+    else if (l.view === "reminders") { cal.tab = "rem"; open("calendar"); }
     else if (l.view === "projects") { open("projects"); if (l.project) { proj.sel = l.project; renderProjects(); } }
     else open(l.view);
   }
@@ -518,7 +517,7 @@ if (!window.amadeusBridge && !(window.webkit && window.webkit.messageHandlers &&
   const h = location.hash.slice(1);
   if (VIEWS[h]) open(h);
   else if (h === "messages") open("chat");
-  else if (h === "reminders") { open("settings"); settingsPage("reminders"); }
+  else if (h === "reminders") { cal.tab = "rem"; open("calendar"); }
   else if (h === "settings=assistant") { open("settings"); settingsPage("assistant"); }
   else if (h === "mail=unread") open("mail");
   else if (/^mail=\d+$/.test(h)) {

@@ -227,3 +227,25 @@ class Lean(unittest.TestCase):
         from amadeus_core import llm
         from amadeus_core.config import CFG
         self.assertEqual(llm.THREAD_OPTION, {"num_thread": llm.THREADS} if CFG.get("llm_threads") else {})
+
+
+class OneCall(unittest.TestCase):
+    """The same thing isn't announced twice."""
+
+    def test_a_reminder_for_what_is_already_announced_joins_it(self):
+        from amadeus_core import events
+        with mock.patch.object(events, "maybe_ring"):
+            brief = events.add("job", "Your morning brief is ready.", ref="day")
+            self.assertEqual(events.add("reminder", "Read my morning brief"), brief)
+            other = events.add("reminder", "Call the dentist")
+            self.assertNotEqual(other, brief)
+            work = events.add("calendar", "Team meeting at 10:00")
+            self.assertEqual(events.add("reminder", "Team meeting"), work)
+
+    def test_reminders_you_add_and_remove_yourself(self):
+        from amadeus_core import db, tools
+        r = tools.create_reminder("Water the plants", "in 10 minutes")
+        rid = r.split("[id ")[1].rstrip("]")
+        self.assertTrue(db.q("SELECT active FROM reminders WHERE id=?", (rid,), one=True)["active"])
+        tools.delete_reminder(rid)
+        self.assertFalse(db.q("SELECT active FROM reminders WHERE id=?", (rid,), one=True)["active"])

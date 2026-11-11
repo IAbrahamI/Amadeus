@@ -8,7 +8,20 @@ const ago = (t) => { const d = new Date(t * 1000), tm = d.toLocaleTimeString([],
 // ---------- Calendar: one week, your own changes need no approval ----------
 const cal = { week: null, occ: [], edit: null };
 const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return addDays(x, -((x.getDay() + 6) % 7)); };
+const calTabs = () => `<div class="caltabs" role="tablist"><button role="tab" class="${cal.tab === "rem" ? "" : "on"}" aria-selected="${cal.tab !== "rem"}" data-act="caltab" data-t="week">Week</button>` +
+  `<button role="tab" class="${cal.tab === "rem" ? "on" : ""}" aria-selected="${cal.tab === "rem"}" data-act="caltab" data-t="rem">Reminders</button></div>`;
+async function loadReminders() {
+  const list = await api("/api/reminders");
+  $("#pmeta").textContent = `${list.length} active`;
+  const when = (r) => r.next_run ? new Date(r.next_run * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+  const how = (r) => r.schedule.startsWith("once ") ? "once" : r.schedule.replace(/^weekly (\w+)/, "every $1").replace(/^weekdays/, "weekdays at").replace(/^daily/, "every day at");
+  body().innerHTML = calTabs() + `<form class="pform remnew" id="remNew"><div class="remrow"><input id="remText" placeholder="Remind me to…" aria-label="What" autocomplete="off" required>
+      <input id="remWhen" placeholder="in 10 minutes · tomorrow 9:00 · daily 07:30" aria-label="When" autocomplete="off" required><button class="btn go">Add</button></div><p class="sample" id="remInfo"></p></form>` +
+    (list.length ? rows(list.map((r) => `<div class="row"><span class="k">${esc(when(r))}</span><div class="t"><b>${esc(r.text.replace(/\s*\[mail:\d+\]/, ""))}</b><span>${esc(how(r))}</span></div>
+      <div class="acts"><button class="btn" data-act="remrm" data-id="${esc(r.id)}">Remove</button></div></div>`)) : note("No reminders. Add one above, or ask in the chat."));
+}
 async function loadCalendar() {
+  if (cal.tab === "rem") return loadReminders();
   if (!cal.week) cal.week = monday(new Date());
   const from = cal.week, to = addDays(from, 7);
   cal.occ = await api(`/api/calendar?from=${ymd(from)}&to=${ymd(to)}`);
@@ -19,7 +32,7 @@ async function loadCalendar() {
   const hrs = timed.map((o) => [Number(o.occ_start.slice(11, 13)), Math.ceil(Number(o.occ_end.slice(11, 13)) + Number(o.occ_end.slice(14, 16)) / 60)]);
   const h0 = Math.min(8, ...hrs.map((h) => h[0])), h1 = Math.max(18, ...hrs.map((h) => Math.min(24, h[1] || 24)));
   const H = 46, hours = [...Array(h1 - h0)].map((_, i) => h0 + i);
-  let h = `<div class="calbar"><button class="btn" data-act="calweek" data-d="-7">‹</button><button class="btn" data-act="calweek" data-d="0">This week</button>` +
+  let h = calTabs() + `<div class="calbar"><button class="btn" data-act="calweek" data-d="-7">‹</button><button class="btn" data-act="calweek" data-d="0">This week</button>` +
     `<button class="btn" data-act="calweek" data-d="7">›</button><span class="grow"></span><button class="btn go" data-act="calnew">+ New event</button></div>`;
   h += `<div id="calEdit"></div><div class="weekwrap"><div class="week w7"><div class="dh"></div>` +
     days.map((d) => `<div class="dh${ymd(d) === today ? " today" : ""}">${d.toLocaleDateString([], { weekday: "short" })} ${d.getDate()}</div>`).join("");
@@ -252,6 +265,8 @@ async function toAssistant(text) {
 body().addEventListener("click", async (e) => {
   const a = e.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
+  if (act === "caltab") { cal.tab = a.dataset.t; cal.edit = null; loadCalendar(); }
+  if (act === "remrm") { a.disabled = true; await post(`/api/reminders/${a.dataset.id}/delete`); loadReminders(); counts(); }
   if (act === "calweek") { const n = Number(a.dataset.d); cal.week = n ? addDays(cal.week, n) : monday(new Date()); cal.edit = null; loadCalendar(); }
   if (act === "calnew") { cal.edit = "new"; calForm(null); }
   if (act === "calopen") { cal.edit = a.dataset.id; calForm(cal.occ.find((o) => o.id === a.dataset.id)); body().scrollTop = 0; }
@@ -300,6 +315,13 @@ body().addEventListener("click", async (e) => {
   if (act === "pvsend") toClaude(proj.preview.text, $("#projInfo"));
 });
 body().addEventListener("submit", async (e) => {
+  if (e.target.id === "remNew") {
+    e.preventDefault();
+    const r = await post("/api/reminders", { text: $("#remText").value, when: $("#remWhen").value });
+    if (r.error) return ($("#remInfo").textContent = "That didn't work: " + r.error);
+    loadReminders();
+    return;
+  }
   const f = e.target;
   if (f.id === "calForm") { e.preventDefault(); calSave(f); }
   if (f.id === "pfSet") {
