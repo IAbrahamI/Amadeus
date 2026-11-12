@@ -141,3 +141,35 @@ jobs:
       - name: The whole setup with a real Ollama and a real model
         timeout-minutes: 50
         run: python3 packaging/macos/check_setup.py
+      - name: Mail logins go into the real Keychain, never into the file
+        timeout-minutes: 5
+        run: |
+          RES="$PWD/dist/macos/Amadeus.app/Contents/Resources"
+          W="$(mktemp -d)"
+          # a keychain of its own for this check, unlocked, searched first
+          security create-keychain -p ci "$W/check.keychain"
+          security unlock-keychain -p ci "$W/check.keychain"
+          security list-keychains -d user -s "$W/check.keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s "$W/check.keychain"
+          cd "$RES/core"
+          PYTHONDONTWRITEBYTECODE=1 "$RES/python/bin/python3" - "$W" <<'PY'
+          import json, subprocess, sys
+          from unittest import mock
+          from amadeus_core import maildirect as d, secretstore as s
+          w = sys.argv[1]
+          assert s.native()
+          s.put("ci-check", "first é"); assert s.get("ci-check") == "first é"
+          s.put("ci-check", "second"); assert s.get("ci-check") == "second"
+          s.delete("ci-check"); assert s.get("ci-check") is None
+          d.ACCOUNTS_FILE = w + "/mail-accounts.json"
+          with mock.patch.object(d, "_test"):
+              acc = d.add_account("gmail", "ci@example.invalid", "pw-in-keychain")
+          assert "pw-in-keychain" not in open(d.ACCOUNTS_FILE).read()
+          shown = subprocess.run(["security", "find-generic-password", "-s", "Amadeus", "-a", f"mail:{acc['id']}"], capture_output=True, text=True)
+          assert shown.returncode == 0, shown.stderr
+          d._secrets.clear()
+          assert d._account(acc["id"])["password"] == "pw-in-keychain"
+          d.remove_account(acc["id"])
+          assert s.get(f"mail:{acc['id']}") is None
+          print("Keychain: kept, read back after a restart, removed with the account")
+          PY

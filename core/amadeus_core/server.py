@@ -867,6 +867,11 @@ def main():
             macmemory.at_start()
         except OSError as e:
             print("the memory didn't start:", e, flush=True)
+        try:
+            from . import maildirect
+            maildirect.to_keychain()
+        except Exception as e:  # mail keeps working from the file; tried again at the next start
+            print("mail logins not moved into the Keychain:", e, flush=True)
     agent.load_at_start()
     background.start()
     voices.prepare_lines()

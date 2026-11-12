@@ -21,7 +21,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from . import db
+from . import db, secretstore
 from .config import CFG
 
 ACCOUNTS_FILE = os.path.join(CFG["secrets_dir"], "mail-accounts.json")
@@ -61,19 +61,72 @@ _conns = {}
 
 
 # ---------- the accounts ----------
-def _load():
+SECRET = ("password", "refresh", "access")  # what never goes into the file where a Keychain is there
+_secrets = {}  # account id -> its secrets, read from the Keychain once
+
+
+def _read():
     try:
         return json.loads(Path(ACCOUNTS_FILE).read_text())
     except (OSError, ValueError):
         return []
 
 
+def _load():
+    """The accounts with their logins: on a Mac those come from the Keychain, the file only says which accounts."""
+    accounts = _read()
+    for a in accounts:
+        if a.get("keychain"):
+            if a["id"] not in _secrets:
+                try:
+                    _secrets[a["id"]] = json.loads(secretstore.get(f"mail:{a['id']}") or "{}")
+                except (secretstore.Unavailable, ValueError) as e:
+                    print("mail: login not readable from the Keychain:", e, flush=True)
+                    continue  # not cached: asked again next time (e.g. once the Keychain is unlocked)
+            a.update(_secrets[a["id"]])
+            del a["keychain"]
+    return accounts
+
+
 def _save(accounts):
+    """On a Mac the logins go to the Keychain and the file keeps the rest; elsewhere the file (only you can read it)."""
+    stored = []
+    if secretstore.native():
+        before = {a["id"] for a in _read()}
+        for a in accounts:
+            if a.get("keychain"):  # its login couldn't be read just now: leave it as it is in the Keychain
+                stored.append({k: v for k, v in a.items() if k not in SECRET})
+                continue
+            secret = {k: a[k] for k in SECRET if a.get(k)}
+            try:
+                if _secrets.get(a["id"]) != secret:
+                    secretstore.put(f"mail:{a['id']}", json.dumps(secret))
+                    _secrets[a["id"]] = secret
+                stored.append({**{k: v for k, v in a.items() if k not in SECRET}, "keychain": True})
+            except secretstore.Unavailable as e:
+                print("mail: Keychain not usable, the login stays in the file for now:", e, flush=True)
+                stored.append(a)
+        for gone in before - {a["id"] for a in accounts}:
+            _secrets.pop(gone, None)
+            try:
+                secretstore.delete(f"mail:{gone}")
+            except secretstore.Unavailable as e:
+                print("mail: couldn't remove a login from the Keychain:", e, flush=True)
+    else:
+        stored = accounts
     os.makedirs(os.path.dirname(ACCOUNTS_FILE), exist_ok=True)
     fd = os.open(ACCOUNTS_FILE + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump(accounts, f, indent=1)
+        json.dump(stored, f, indent=1)
     os.replace(ACCOUNTS_FILE + ".tmp", ACCOUNTS_FILE)
+
+
+def to_keychain():
+    """At start: logins an earlier version kept in the file move into the Keychain (and out of the file)."""
+    if secretstore.native() and any(k in a for a in _read() for k in SECRET):
+        with _lock:
+            _save(_load())
+        print("mail: logins moved into the Keychain", flush=True)
 
 
 def has_accounts():
