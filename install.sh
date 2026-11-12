@@ -2,8 +2,8 @@
 # Amadeus installer: everything in one go. It offers to install what's missing (Ollama, Docker, system packages), tests
 # this PC's speed and suggests three models. The first run asks a few questions (projects, mail, voice) and keeps the
 # answers in ./amadeus.env. Then it sets up Ollama (local LLM), private keys, Presidio (privacy filter), Hindsight
-# (memory), the projects folder with the guard for work runs, voice, the assistant itself (core/deploy/install.sh:
-# services, window, tray) and the Thunderbird bridge.
+# (memory), the projects folder with the guard for work runs, voice and the assistant itself (core/deploy/install.sh:
+# services, window, tray). Mail accounts are connected afterwards, on the Mail page.
 #
 # Idempotent: every step checks the current state first and skips what is already done.
 # It never deletes data. Anything it cannot fix safely is reported with the manual fix.
@@ -15,7 +15,7 @@
 #   ./install.sh --check      read-only: prerequisites and status, changes nothing
 #   ./install.sh --dry-run    print what would be done, changes nothing
 #   ./install.sh --benchmark  test this PC's speed again and pick another model
-#   ./install.sh --only ollama|secrets|presidio|hindsight|folder|work|voice|app|mail
+#   ./install.sh --only ollama|secrets|presidio|hindsight|folder|work|voice|app
 #   ./install.sh --verbose    show everything the commands print (it always goes to ~/.local/share/amadeus/install.log)
 #   ./install.sh --help
 #
@@ -31,7 +31,6 @@
 #   HINDSIGHT_WORKER_ID    stable worker id                    (default: amadeus-hindsight)
 #   AMADEUS_FOLDER         your folder, with Notes/ and Projects/ in it (asked; suggestion ~/Amadeus)
 #   AMADEUS_PROJECTS       only if the Claude Code projects should live somewhere else
-#   AMADEUS_MAIL=1         set up the Thunderbird bridge (mail)
 #   AMADEUS_VOICE=1        set up voice: speech recognition and the wake word (about 1 GB, runs on the CPU)
 #   ASSUME_YES=1           do not prompt; non-interactive onboarding
 
@@ -56,14 +55,12 @@ HINDSIGHT_WORKER_ID="${HINDSIGHT_WORKER_ID:-amadeus-hindsight}"
 HINDSIGHT_API_PORT=8888
 HINDSIGHT_UI_PORT=9999
 AMADEUS_FOLDER="${AMADEUS_FOLDER:-}"
-AMADEUS_MAIL="${AMADEUS_MAIL:-}"
 AMADEUS_PROJECTS="${AMADEUS_PROJECTS:-}"
 AMADEUS_VOICE="${AMADEUS_VOICE:-}"
 VOICE="$HOME/.local/share/amadeus/voice"
 VOSK_MODEL=vosk-model-small-en-us-0.15
-# not set: keep what an earlier install already set up (voice, the mail bridge)
+# not set: keep what an earlier install already set up (voice)
 [[ -z "$AMADEUS_VOICE" && -x "$VOICE/venv-lite/bin/python" ]] && AMADEUS_VOICE=1
-[[ -z "$AMADEUS_MAIL" && -f "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" ]] && AMADEUS_MAIL=1
 DATA="$HOME/.local/share/amadeus"          # everything private lives here, never in the repository
 SECRETS="$DATA/secrets"
 ASSUME_YES="${ASSUME_YES:-0}"
@@ -473,11 +470,7 @@ phase_setup() {
     info "Everything you and Amadeus work on stays in one folder of plain files: Notes for your to-dos and notes, Projects for Claude Code work, kept apart so a work run never sees your notes. Any notes app can open Notes. Enter keeps the suggestion."
     AMADEUS_FOLDER="$(ask "Your folder" "${out[0]}")"; AMADEUS_FOLDER="${AMADEUS_FOLDER/#\~/$HOME}"; env_set AMADEUS_FOLDER "$AMADEUS_FOLDER"
   fi
-  # 2. mail through Thunderbird
-  local m=no; have thunderbird && m=yes
-  info "Mail is optional. You can connect accounts directly later (Mail → + Add account), or read them through Thunderbird."
-  if confirm "Set up Thunderbird for that?" "$m"; then AMADEUS_MAIL=1; else AMADEUS_MAIL=0; fi; env_set AMADEUS_MAIL "$AMADEUS_MAIL"
-  # 3. voice
+  # 2. voice (mail needs no question: accounts are connected on the Mail page)
   if confirm "Talk to it? Speech recognition and wake word, about 1 GB" yes; then AMADEUS_VOICE=1; else AMADEUS_VOICE=0; fi; env_set AMADEUS_VOICE "$AMADEUS_VOICE"
 }
 
@@ -570,15 +563,6 @@ phase_app() {
   fi
 }
 
-# ---------------------------------------------------------------- mail (optional)
-phase_mail() {
-  head_ "Mail through Thunderbird"
-  if [[ "$AMADEUS_MAIL" != 1 ]]; then info "Off. You can connect mail directly on the Mail page, or set this up with ./install.sh --setup"; return; fi
-  have thunderbird || warn "Thunderbird isn't installed: install it from your distribution (not Flatpak) and add your accounts there"
-  if [[ "$MODE" != install ]]; then info "would register the bridge and build the add-on"; return; fi
-  run "$SCRIPT_DIR/core/thunderbird/install.sh" || return 0
-}
-
 # ---------------------------------------------------------------- main
 case "$MODE" in check) banner "Checking this PC. This changes nothing." ;; dry-run) banner "A dry run: showing what would happen, changing nothing." ;; *) banner "${ONLY:+Only: $ONLY}" ;; esac
 PASSTHRU=(); [[ -n "$ONLY" ]] && PASSTHRU=(--only "$ONLY")
@@ -592,7 +576,7 @@ phase_deps    # what's missing comes first: installing Docker can restart this s
 phase_setup
 phase_prereqs
 # one step failing doesn't stop the others; the summary lists everything that went wrong
-STEPS=(ollama secrets presidio hindsight folder work voice app mail)
+STEPS=(ollama secrets presidio hindsight folder work voice app)
 STEP_N=0
 step() {
   want "$1" || return 0
@@ -607,7 +591,6 @@ step folder
 step work
 step voice
 step app
-step mail
 
 if (( ERRORS > 0 )); then
   [[ "$MODE" == check ]] && title="This PC still needs a few things" || title="This needs your attention"
@@ -629,7 +612,7 @@ if [[ "$MODE" != install ]]; then
 fi
 have amadeus || NOTES+=("$HOME/.local/bin isn't in your PATH yet: open a new terminal, or run $HOME/.local/bin/amadeus")
 left=()
-[[ "$AMADEUS_MAIL" == 1 ]] && left+=("Mail: in Thunderbird, Add-ons and Themes → gear icon → Install Add-on From File… → ~/.local/share/amadeus/amadeus-bridge.xpi")
+left+=("Mail: open the Mail page and connect your accounts (+ Add account)")
 ! have claude && left+=("Work runs: install Claude Code and log in once by running: claude")
 left+=("Phone: see docs/INSTALL.md, The phone app")
 box "$C_OK" "Amadeus is ready" "Open it with:  ${C_BOLD}amadeus${C_OFF}" "Update later:  ${C_BOLD}amadeus update${C_OFF}" "${NOTES[@]/#/! }"

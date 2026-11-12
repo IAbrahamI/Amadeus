@@ -31,7 +31,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** Your open (unread) mail, by account and folder. Read from Thunderbird on your PC; nothing is stored on the phone. */
+/** Your open (unread) mail, by account and folder. Read through Amadeus on your PC; nothing is stored on the phone. */
 @Composable
 fun MailScreen(nav: Nav) {
     val data = load("mail") { api ->
@@ -101,7 +101,7 @@ fun shortDate(iso: String): String = runCatching {
     d.format(DateTimeFormatter.ofPattern(if (d.toLocalDate() == java.time.LocalDate.now()) "HH:mm" else "d MMM"))
 }.getOrDefault("")
 
-/** One mail. Opening it marks it read in Thunderbird, like any mail app. */
+/** One mail. Opening it marks it read, like any mail app. */
 @Composable
 fun MailReadScreen(nav: Nav, id: Long) {
     val ctx = LocalContext.current

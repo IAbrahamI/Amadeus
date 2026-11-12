@@ -58,7 +58,6 @@ label_of() {
     *"pip"*) echo "Installing speech recognition (a few minutes)" ;;
     "curl"*) echo "Downloading" ;;
     *deploy/install.sh*) echo "Installing the app (the first time also builds it, a few minutes)" ;;
-    *thunderbird/install.sh*) echo "Setting up the Thunderbird bridge" ;;
     *) echo "$1 ${2:-}" ;;
   esac
 }

@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import agenda, agent, background, db, desktop, devices, events, llm, macmemory, mailbridge, phoneapp, profile, system, tools, workguard
+from . import agenda, agent, background, db, desktop, devices, events, llm, macmemory, mail, phoneapp, profile, system, tools, workguard
 from .config import CFG, projects_dir
 
 DESKTOP_UA = "AmadeusDesktop/1"
@@ -252,10 +252,10 @@ class Handler(BaseHTTPRequestHandler):
                         "ORDER BY a.created DESC LIMIT 200", () if status == "all" else (status,))
             return self._json(rows)
         if p == "/api/mail/direct":  # Mail → + Add account: the providers, and what's connected this way
-            from . import mailbridge, maildirect
+            from . import maildirect
             return self._json({"providers": {k: {"name": v["name"], "how": v["how"], "link": v.get("link", ""), "auth": v["auth"], "manual": not v["imap"]}
                                              for k, v in maildirect.PROVIDERS.items()},
-                               "accounts": maildirect.listing(), "microsoft": bool(maildirect.ms_client_id()), "ms_redirect": maildirect.ms_redirect(), "thunderbird": mailbridge.thunderbird_set_up()})
+                               "accounts": maildirect.listing(), "microsoft": bool(maildirect.ms_client_id()), "ms_redirect": maildirect.ms_redirect()})
         if p == "/api/update":  # a new version? (Settings → Assistant, the top bar and the tray)
             from . import updates
             return self._json(updates.status())
@@ -553,11 +553,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"url": maildirect.ms_start()})
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
-        if p == "/api/mail/thunderbird":  # open Thunderbird (to add an account there: sign-in stays in Thunderbird)
-            from .tools import _to_front, launch
-            launch(["thunderbird"], "thunderbird")
-            _to_front(["thunderbird"])
-            return self._json({"ok": True})
         if p == "/api/dashboard/here":  # the dashboard is on screen (sent every 10 s while it's visible)
             events.dashboard_here()
             return self._json({"ok": True})
@@ -643,8 +638,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 ids = [int(i) for i in b.get("ids", [])]
                 if p.endswith("markread"):
-                    return self._json(mailbridge.call("markRead", ids=ids, read=bool(b.get("read", True))))
-                return self._json(mailbridge.call("move", ids=ids, folderId=b["folderId"]))
+                    return self._json(mail.call("markRead", ids=ids, read=bool(b.get("read", True))))
+                return self._json(mail.call("move", ids=ids, folderId=b["folderId"]))
             except Exception as e:
                 return self._json({"error": str(e)}, 502)
         if p == "/api/profile":
@@ -807,21 +802,21 @@ class Handler(BaseHTTPRequestHandler):
         arg = lambda k, d="": qs.get(k, [d])[0]
         try:
             if p == "/api/mail/status":
-                return self._json({**mailbridge.status(), "setup": mailbridge.configured()})
+                return self._json({**mail.status(), "setup": mail.configured()})
             if p == "/api/mail/recent":
-                return self._json(mailbridge.call("recent", accountId=arg("account"), folderId=arg("folder") or None,
+                return self._json(mail.call("recent", accountId=arg("account"), folderId=arg("folder") or None,
                                                   days=min(365, int(arg("days", "7"))), limit=min(500, int(arg("limit", "80")))))
             if p == "/api/mail/unread":
-                return self._json(mailbridge.call("unread", accountId=arg("account"), limit=100))
+                return self._json(mail.call("unread", accountId=arg("account"), limit=100))
             if p == "/api/mail/folders":
-                return self._json(mailbridge.call("folders", accountId=arg("account"), timeout=60))
+                return self._json(mail.call("folders", accountId=arg("account")))
             if p == "/api/mail/search":
-                return self._json(mailbridge.call("search", query=arg("q"), days=int(arg("days", "365")), limit=50,
+                return self._json(mail.call("search", query=arg("q"), days=int(arg("days", "365")), limit=50,
                                                   accountId=arg("account")))
             m = re.fullmatch(r"/api/mail/message/(\d+)", p)
             if m:
-                return self._json(mailbridge.call("read", id=int(m.group(1))))
-        except mailbridge.NotRunning as e:
+                return self._json(mail.call("read", id=int(m.group(1))))
+        except mail.NotRunning as e:
             return self._json({"error": str(e), "offline": True}, 503)
         except Exception as e:
             return self._json({"error": str(e)}, 502)

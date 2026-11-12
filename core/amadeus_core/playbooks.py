@@ -11,7 +11,7 @@ import re
 import time
 import urllib.request
 
-from . import db, llm, mailbridge, system, tools
+from . import db, llm, mail, system, tools
 from .config import CFG, NAME
 
 
@@ -34,15 +34,15 @@ def _today(offset=0):
 def _mail_counts():
     """Open (unread) mail per account, without reading any mail."""
     try:
-        accounts = {a["id"]: a["name"] for a in mailbridge.call("accounts", timeout=30, autostart=False)}
+        accounts = {a["id"]: a["name"] for a in mail.call("accounts")}
         counts = {}
-        for f in mailbridge.call("folders", timeout=60, autostart=False):
-            if any(u in mailbridge.SKIP_USES + ("junk",) for u in f.get("specialUse", [])):
+        for f in mail.call("folders"):
+            if any(u in mail.SKIP_USES + ("junk",) for u in f.get("specialUse", [])):
                 continue
             counts[accounts.get(f["accountId"], f["accountId"])] = counts.get(accounts.get(f["accountId"], f["accountId"]), 0) + (f.get("unread") or 0)
         return ", ".join(f"{n}: {c} open" for n, c in counts.items()) or "no mail accounts"
     except Exception:
-        return "mail not reachable right now (Thunderbird closed?)"
+        return "mail not reachable right now"
 
 
 def _approval(cid, tool, args, summary):
@@ -86,12 +86,12 @@ def week_ahead(cid, text=""):
 
 # ---------- inbox triage ----------
 def inbox_triage(cid, text=""):
-    accounts = {a["id"]: a["name"] for a in mailbridge.call("accounts", timeout=30)}
+    accounts = {a["id"]: a["name"] for a in mail.call("accounts")}
     rows = []
-    for f in mailbridge.call("folders", timeout=60):
-        if any(u in mailbridge.SKIP_USES for u in f.get("specialUse", [])) or not (f.get("unread") or 0):
+    for f in mail.call("folders"):
+        if any(u in mail.SKIP_USES for u in f.get("specialUse", [])) or not (f.get("unread") or 0):
             continue
-        for m in mailbridge.call("recent", folderId=f["id"], days=30, limit=40, unreadOnly=True, timeout=60):
+        for m in mail.call("recent", folderId=f["id"], days=30, limit=40, unreadOnly=True):
             rows.append(m)
     if not rows:
         return "Nothing open to sort: no unread mail in the last 30 days."
@@ -99,7 +99,7 @@ def inbox_triage(cid, text=""):
     listing = []
     for m in rows:
         try:
-            snippet = re.sub(r"\s+", " ", mailbridge.call("read", id=m["id"], timeout=30)["body"])[:300]
+            snippet = re.sub(r"\s+", " ", mail.call("read", id=m["id"])["body"])[:300]
         except Exception:
             snippet = ""
         listing.append(f"{m['id']}: from {m['from']} | {m['subject']} | {snippet}".replace("<<<", "").replace(">>>", ""))
@@ -132,10 +132,10 @@ def inbox_triage(cid, text=""):
 def newsletter_cleanup(cid, text=""):
     from . import mailwatch
     rows = []
-    for f in mailbridge.call("folders", timeout=60):
-        if any(u in mailbridge.SKIP_USES for u in f.get("specialUse", [])) or not (f.get("unread") or 0):
+    for f in mail.call("folders"):
+        if any(u in mail.SKIP_USES for u in f.get("specialUse", [])) or not (f.get("unread") or 0):
             continue
-        for m in mailbridge.call("recent", folderId=f["id"], days=60, limit=200, unreadOnly=True, timeout=60):
+        for m in mail.call("recent", folderId=f["id"], days=60, limit=200, unreadOnly=True):
             m["folderPath"] = f["path"]
             rows.append(m)
     by_sender = {}
@@ -156,7 +156,7 @@ def newsletter_cleanup(cid, text=""):
     picked = [a for a in out.get("newsletters", []) if a in candidates]
     if not picked:
         return "I looked at the senders with piled-up mail, but none of them is clearly a newsletter or ad."
-    folders = mailbridge.call("folders", timeout=60)
+    folders = mail.call("folders")
     target = {}  # per account: an existing Newsletter folder, else a new one
     for f in folders:
         if f.get("name", "").lower() in ("newsletter", "newsletters"):

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs Amadeus Core for the current user (best on KDE Plasma; other Linux desktops work with small limits):
 # systemd user services (core, tray icon, voice, wake word, nightly leak scan), the `amadeus` launcher, the app-menu entry,
-# and the KWin rule for the small window. (Thunderbird's autostart comes with the mail setup: core/thunderbird/install.sh.)
+# and the KWin rule for the small window.
 # Run it again after moving the repository. Use --dry-run to only print what would be written, and --uninstall to remove
 # everything it (and the main install.sh) put on the system, except your data in ~/.local/share/amadeus/.
 set -euo pipefail
@@ -24,7 +24,8 @@ if [ "$DRY" = "--uninstall" ]; then
   rm -fv "$BIN/amadeus" "$BIN/amadeus-mail-start" "$BIN/amadeus-leak-scan" "$BIN/amadeus-notes-snapshot" \
     "$HOME/.local/share/applications/amadeus.desktop" "$HOME/.config/autostart/amadeus-thunderbird.desktop" \
     "$HOME/.config/autostart/amadeus.desktop" "$HOME/.local/share/amadeus/kwin/minimize-thunderbird.js" \
-    "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" "$HOME/.mozilla/native-messaging-hosts/amadeus_bridge.json"
+    "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" "$HOME/.mozilla/native-messaging-hosts/amadeus_bridge.json" \
+    "$HOME/.local/share/amadeus/amadeus-bridge.xpi"
   if [ -d "$HOME/.local/share/amadeus/work-guard" ]; then chmod -R u+w "$HOME/.local/share/amadeus/work-guard"; rm -rfv "$HOME/.local/share/amadeus/work-guard"; fi
   if command -v kwriteconfig6 >/dev/null; then  # the KWin rule for the small window
     rules=$(kreadconfig6 --file kwinrulesrc --group General --key rules | tr ',' '\n' | grep -vx 'amadeus-call\|amadeus-dash' | paste -sd, -)
@@ -50,6 +51,9 @@ chmod +x "$BIN/amadeus" "$BIN/amadeus-leak-scan" "$BIN/amadeus-notes-snapshot"
 "$REPO/core/desktop-tauri/build.sh"
 systemctl --user disable --now amadeus-tray 2>/dev/null || true  # the older tray icon: now part of the desktop app
 rm -f "$HOME/.config/systemd/user/amadeus-tray.service"
+# the Thunderbird bridge of older versions: mail is connected directly now (Mail page), so its files go
+rm -f "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" "$HOME/.mozilla/native-messaging-hosts/amadeus_bridge.json" \
+  "$HOME/.local/share/amadeus/amadeus-bridge.xpi" "$HOME/.local/share/amadeus/core/mail.sock" "$HOME/.local/share/amadeus/core/mail-new"
 systemctl --user daemon-reload
 systemctl --user enable --now amadeus-core amadeus-desktop amadeus-leak-scan.timer amadeus-notes-snapshot.timer
 if [ -x "$HOME/.local/share/amadeus/voice/venv-lite/bin/python" ]; then

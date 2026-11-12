@@ -5,9 +5,9 @@ from unittest import mock
 class OptionalApps(unittest.TestCase):
     """Without an optional app only that part stays off, and its tools never reach the model."""
 
-    def test_no_thunderbird_setup_no_mail_tools_and_it_never_starts(self):
-        from amadeus_core import background, mailbridge, tools
-        with mock.patch.object(mailbridge, "configured", return_value=False), mock.patch.object(mailbridge, "thunderbird_set_up", return_value=False), \
+    def test_no_mail_account_no_mail_tools_and_nothing_starts(self):
+        from amadeus_core import mail, tools
+        with mock.patch.object(mail, "configured", return_value=False), \
                 mock.patch("subprocess.run") as run, mock.patch.object(tools, "launch") as launch:
             self.assertIn("Not connected", tools.missing("mail"))
             names = {t["function"]["name"] for t in tools.schemas()}

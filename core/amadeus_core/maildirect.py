@@ -1,7 +1,7 @@
-"""Mail directly with the provider, without Thunderbird: IMAP to read and organize, SMTP (or Microsoft Graph for Outlook) to
-send. The same operations and shapes as the Thunderbird bridge, so everything above doesn't care which way an account
-is connected. Logins live only in the secrets folder (mode 600), are never returned to the page or the model, and are
-sent only to that account's own server."""
+"""Mail directly with the provider: IMAP to read and organize, SMTP (or Microsoft Graph for Outlook) to
+send. Every operation answers in the same shapes (mail.py is the door the rest of Amadeus uses), so nothing above cares
+which provider an account is with. Logins live in the Keychain on a Mac and in the secrets folder (mode 600) elsewhere,
+are never returned to the page or the model, and are sent only to that account's own server."""
 import base64
 import datetime
 import email
@@ -13,6 +13,7 @@ import imaplib
 import json
 import os
 import re
+import socket
 import smtplib
 import ssl
 import threading
@@ -25,7 +26,7 @@ from . import db, secretstore
 from .config import CFG
 
 ACCOUNTS_FILE = os.path.join(CFG["secrets_dir"], "mail-accounts.json")
-ID_BASE = 1_000_000_000_000  # message ids from here on are ours; Thunderbird's are far smaller
+ID_BASE = 1_000_000_000_000  # message ids start here (ids below it were Thunderbird's, which Amadeus no longer uses)
 MAX_BODY = 20000
 TIMEOUT = 30
 MS_AUTH = "https://login.microsoftonline.com/common/oauth2/v2.0"
@@ -35,7 +36,7 @@ MS_SEND = "https://graph.microsoft.com/Mail.Send"
 # How to reach the big providers. "how" is shown when you add an account.
 PROVIDERS = {
     "gmail": {"name": "Gmail", "imap": ("imap.gmail.com", 993, "ssl"), "smtp": ("smtp.gmail.com", 465, "ssl"), "auth": "password",
-              "how": "Needs an app password: turn on 2-Step Verification, then create one at myaccount.google.com/apppasswords. Work accounts (Workspace) don't offer these: use Thunderbird for those.",
+              "how": "Needs an app password: turn on 2-Step Verification, then create one at myaccount.google.com/apppasswords. Work accounts (Workspace) only offer this if their admin allows it.",
               "link": "https://myaccount.google.com/apppasswords", "saves_sent": True},
     "outlook": {"name": "Outlook / Hotmail", "imap": ("outlook.office365.com", 993, "ssl"), "smtp": None, "auth": "microsoft",
                 "how": "Sign in with Microsoft in your browser. Your password never reaches Amadeus. Some work accounts need their admin to allow this.", "saves_sent": True},
@@ -385,6 +386,94 @@ def _open_smtp(acc):
         s.starttls(context=ctx)
     s.login(acc["email"], acc["password"])
     return s
+
+
+# ---------- new mail as it arrives (IMAP IDLE): the server tells us, nothing is polled ----------
+IDLE_RENEW = 25 * 60  # servers end an IDLE after about 30 minutes, so it's renewed before
+
+
+def _idle_once(acc, renew=IDLE_RENEW):
+    """Waits in IDLE on the inbox until the server says something arrived (True) or it's time to renew (False).
+    A connection of its own, never the one requests use."""
+    conn = _open_imap(acc)
+    try:
+        if "IDLE" not in conn.capabilities:
+            raise RuntimeError("this server can't tell about new mail (no IDLE)")
+        conn.select(_q(_find(conn, "inbox") or "INBOX"), readonly=True)
+        tag = conn._new_tag()
+        conn.send(tag + b" IDLE\r\n")
+        if not conn.readline().startswith(b"+"):
+            raise RuntimeError("the server didn't start IDLE")
+        # one blocking read of the server's lines; a timer ends the IDLE (DONE) to renew it, and a second one closes
+        # the connection if the server never answers, so this can't hang
+        sock, lock, done = conn.socket(), threading.Lock(), []
+        sock.settimeout(None)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+        def finish():
+            with lock:
+                if not done:
+                    done.append(True)
+                    conn.send(b"DONE\r\n")
+        renew_t = threading.Timer(renew, finish)
+        dead_t = threading.Timer(renew + 60, lambda: sock.shutdown(socket.SHUT_RDWR))
+        renew_t.start(); dead_t.start()
+        arrived = False
+        try:
+            while True:
+                line = conn.readline()
+                if not line:
+                    raise OSError("the server closed the connection")
+                if line.startswith(tag):
+                    break  # the IDLE is over
+                if line.rstrip().endswith(b"EXISTS"):  # "* 12 EXISTS": the inbox has a new message
+                    arrived = True
+                    finish()
+        finally:
+            renew_t.cancel(); dead_t.cancel()
+            sock.settimeout(TIMEOUT)
+        return arrived
+    finally:
+        try:
+            conn.logout()
+        except (imaplib.IMAP4.error, OSError, ssl.SSLError):
+            pass
+
+
+def watch_new(on_new, stop=None):
+    """One thread per connected account, each told by its server when new mail arrives; on_new() is called then.
+    Accounts added or removed later are picked up within a minute. A failing account waits and tries again, longer each
+    time (1 minute up to 30); an account whose server has no IDLE is left to the regular check."""
+    running = {}
+
+    def follow(account_id):
+        wait = 60
+        while not (stop and stop.is_set()):
+            try:
+                acc = _account(account_id)
+            except RuntimeError:
+                return  # removed
+            try:
+                if _idle_once(acc):
+                    on_new()
+                wait = 60
+            except RuntimeError as e:
+                if "IDLE" in str(e):
+                    print(f"mail: {acc['email']}: {e}; checked every few minutes instead", flush=True)
+                    return
+                time.sleep(wait); wait = min(wait * 2, 1800)
+            except (imaplib.IMAP4.error, OSError, ssl.SSLError, ValueError) as e:
+                print(f"mail: waiting for new mail on {acc['email']} failed ({str(e)[:100]}), trying again", flush=True)
+                time.sleep(wait); wait = min(wait * 2, 1800)
+        running.pop(account_id, None)
+
+    while not (stop and stop.is_set()):
+        for a in _read():
+            t = running.get(a["id"])
+            if not (t and t.is_alive()):
+                running[a["id"]] = threading.Thread(target=follow, args=(a["id"],), daemon=True)
+                running[a["id"]].start()
+        time.sleep(60)
 
 
 def _close(account_id):

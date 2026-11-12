@@ -20,14 +20,14 @@ os.makedirs(paths.CONFIG, exist_ok=True)
 MODEL = sys.argv[1] if len(sys.argv) > 1 else real.get("default_model", "qwen3.5-9b-48k")
 with open(paths.CONFIG_FILE, "w") as f:
     json.dump({"default_model": MODEL, "hindsight_url": "http://127.0.0.1:9", "folder": os.path.join(HOME, "Amadeus")}, f)
-from amadeus_core import agent, db, mailbridge, tools  # noqa: E402
+from amadeus_core import agent, db, mail, tools  # noqa: E402
 
 
 def no_mail(*a, **k):
     raise OSError("no mail in this test")
 
 
-mailbridge.call = no_mail
+mail.call = no_mail
 agent.events.maybe_ring = lambda: None  # no call and no notification on your desktop from a test
 tools.missing = lambda connector: ""  # every tool is offered, like on a fully set-up PC
 agent.later = lambda *a, **k: None  # nothing is learned from a test

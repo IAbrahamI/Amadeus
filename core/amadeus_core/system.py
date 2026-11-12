@@ -71,7 +71,7 @@ def notify(title, text):
 
 def launch(cmd, name="app"):
     """Start a program so that it belongs to your session, not to Amadeus: restarting Amadeus never closes it
-    (Thunderbird used to die with every restart)."""
+    (an app it opened used to close with every restart)."""
     if MAC:
         subprocess.Popen(list(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         return

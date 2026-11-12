@@ -25,7 +25,7 @@ You decide who your assistant is: its name, its personality, and whether it has 
   everything else, with the assistant as a living core of its memories in the middle. Type or talk (a wake word
   with its name, local speech recognition).
 - **Calendar, reminders, to-dos.** It plans your day, adds and moves appointments, and calls you before they start.
-- **Your mail, directly or through Thunderbird.** Connect Gmail, Outlook, Yahoo, iCloud, Proton (with its Bridge) and others directly, or use Thunderbird. Overviews, verification codes, drafts in your style, filing. Only urgent mail
+- **Your mail, connected directly.** Gmail, Outlook, Yahoo, iCloud, Proton (with its Bridge) and others, no other mail app needed; new mail is reported the moment it arrives. Overviews, verification codes, drafts in your style, filing. Only urgent mail
   calls you; the rest goes into a short evening summary.
 - **Memory.** A long-term memory (Hindsight) and a profile of how you work and communicate, which it adapts to.
 - **Work runs.** "Send this to work": the text is anonymised, you approve exactly what leaves, and one
@@ -62,7 +62,7 @@ flowchart LR
     ui --> core["Amadeus Core<br/>Python, 127.0.0.1"]
     core --> llm["Ollama<br/>local model"]
     core --> mem["Hindsight<br/>memory"]
-    core --> tb["Mail<br/>direct or Thunderbird"]
+    core --> tb["Mail<br/>IMAP / SMTP, directly"]
     core --> notesfiles["Notes · to-dos<br/>(plain files in your folder)"]
     core -- "send to work" --> filter["Privacy filter<br/>Presidio"]
     filter --> ok{"your<br/>approval"}
@@ -133,7 +133,7 @@ More, including the limits of the privacy filter: [docs/ARCHITECTURE.md](docs/AR
 
 | Path | What |
 |---|---|
-| `core/` | The assistant: server, web UI, desktop window and tray, voice, Thunderbird bridge, privacy filter, skills, personas |
+| `core/` | The assistant: server, web UI, desktop window and tray, voice, mail, privacy filter, skills, personas |
 | `android/` | The phone app |
 | `install.sh` | Sets up the local services |
 | `docs/` | [Install guide](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [features and settings](docs/FEATURES.md) |

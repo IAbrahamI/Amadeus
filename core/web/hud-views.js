@@ -95,9 +95,7 @@ const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: nul
 async function loadMail() {
   let st;
   try { st = await (await fetch("/api/mail/status")).json(); } catch { st = { connected: false }; }
-  // nothing to show yet (no account connected directly, and Thunderbird isn't running): it starts with adding an
-  // account, so the page never ends at "open Thunderbird". Thunderbird stays one of the ways, further down.
-  mail.tbDown = st.setup !== false && !st.connected;
+  // no account connected yet: the page starts with adding one
   if (st.setup === false || !st.connected) {
     mail.accounts = []; mail.off = []; mail.acc = "__add"; mail.open = null;
     $("#pmeta").textContent = "No account connected";
@@ -114,7 +112,7 @@ const mailRail = () => '<nav class="acc-tabs" aria-label="Accounts">' + mail.acc
   const n = mail.unread[a.id] || 0, addr = (a.identities[0] || {}).email || a.type;
   return `<button class="acc${a.id === mail.acc ? " on" : ""}" aria-current="${a.id === mail.acc}" data-act="acc" data-acc="${esc(a.id)}"><span><b>${esc(a.name)}</b><small>${esc(addr)}</small></span>${n ? `<em>${n}</em>` : ""}</button>`;
 }).join("") + `<button class="acc add${mail.acc === "__add" ? " on" : ""}" data-act="acc" data-acc="__add"><span><b>+ Add account</b></span></button></nav>`;
-// Two ways to connect an account: directly with the provider, or through Thunderbird on this PC.
+// Connecting an account directly with its provider.
 let mailProvider = "gmail";
 async function addMailBox() {
   const d = await api("/api/mail/direct"), p = d.providers[mailProvider], srv = (id, label, host, port) =>
@@ -133,16 +131,13 @@ async function addMailBox() {
         ${field("App password", '<input id="dPass" type="password" autocomplete="off">')}
         ${p.manual ? srv("dImap", "IMAP server and port", "imap.example.com", "993") + srv("dSmtp", "SMTP server and port", "smtp.example.com", "465") : ""}
         <div class="acts"><span class="grow"></span><button class="btn go">Connect</button></div></form>`;
-  return `<h3>Add a mail account</h3>${mail.tbDown ? note("Thunderbird isn't running, so its accounts aren't shown. Connect an account directly below, or open Thunderbird further down.") : ""}<h3 style="margin-top:14px">Directly with your provider</h3>
-    ${note("Works without other apps, and it isn't limited by what Thunderbird's add-on can do. The login stays on this PC, in a file only you can read, and only goes to that provider's server.")}
+  return `<h3>Add a mail account</h3>
+    ${note("Connected directly with your provider, no other app needed. The login stays on this computer (in the Keychain on a Mac, elsewhere in a file only you can read) and only goes to that provider's server.")}
     <div class="pform"><label>Provider<select id="dProv" data-act="dprov">${Object.entries(d.providers).map(([k, v]) => `<option value="${k}" ${k === mailProvider ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label></div>
     ${note(esc(p.how) + (p.link ? ` <a href="${esc(p.link)}" target="_blank" rel="noopener">Open that page</a>` : ""))}${form}${info("dInfo")}
     ${d.accounts.length ? `<h3 style="margin-top:18px">Connected directly</h3>` + rows(d.accounts.map((a) => `<div class="row"><span class="k">${esc(a.providerName)}</span><div class="t"><b>${esc(a.name || a.email)}</b>${a.name ? `<span>${esc(a.email)}</span>` : ""}</div>
       <div class="acts"><button class="btn${mail.edit === a.id ? " go" : ""}" data-act="dedit" data-id="${esc(a.id)}">Edit</button><button class="btn" data-act="drm" data-id="${esc(a.id)}" data-email="${esc(a.email)}">Remove</button></div></div>` + (mail.edit === a.id ? editMailBox(a) : ""))) : ""}
-    <h3 style="margin-top:22px">Through Thunderbird</h3>
-    ${note(`If you already use Thunderbird: your sign-in stays there. ${esc(NAME())} only sees mail while Thunderbird runs and what its add-on can reach, so some mail may not work this way, like accounts Thunderbird can't add, or mail it hasn't downloaded.`)}
-    ${d.thunderbird ? `${note("In Thunderbird: <b>☰ → Account Settings → Account Actions → Add Mail Account</b>. The account then shows up here by itself.")}<div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>`
-      : note("To use it, run <code>./install.sh --setup</code> and say yes to Thunderbird.")}`;
+`;
 }
 // Changing a connected account in place: its name, a new app password, the servers of an "Other" account,
 // or signing in to Microsoft again. Nothing is saved until the new login works.
@@ -318,7 +313,6 @@ body().addEventListener("click", async (e) => {
     if (!confirm(`Remove ${a.dataset.email}? ${NAME()} forgets the login. Your mail stays at your provider.`)) return;
     await post("/api/mail/direct/remove", { id: a.dataset.id }); return loadMail();
   }
-  if (act === "tbopen") { await post("/api/mail/thunderbird", {}); a.textContent = "Opening Thunderbird…"; }
   if (act === "mailopen") {
     const id = Number(a.dataset.id), m = await (await fetch(`/api/mail/message/${id}`)).json();
     if (m.error) { subtitle("That didn't work: " + m.error); return; }

@@ -4,35 +4,25 @@ import unittest
 from unittest import mock
 
 from . import HOME  # noqa: F401
-from amadeus_core import db, mailbridge, maildirect as d
+from amadeus_core import db, mail, maildirect as d
 
 
-class Routing(unittest.TestCase):
-    """Each account is connected one way; a request goes to the way that has it."""
+class OneDoor(unittest.TestCase):
+    """mail.py: every request goes to the directly connected accounts; switched-off ones stay hidden."""
 
-    def test_by_message_folder_and_account(self):
-        ours = d.ID_BASE + 5
-        self.assertEqual(mailbridge._route({"id": ours}), "direct")
-        self.assertEqual(mailbridge._route({"id": 12}), "thunderbird")
-        self.assertEqual(mailbridge._route({"ids": [ours, ours + 1]}), "direct")
-        self.assertEqual(mailbridge._route({"folderId": "d:abc|INBOX"}), "direct")
-        self.assertEqual(mailbridge._route({"accountId": "account3"}), "thunderbird")
-        self.assertEqual(mailbridge._route({"replyTo": ours}), "direct")
-        self.assertIsNone(mailbridge._route({"days": 2}))
-        with self.assertRaises(RuntimeError):
-            mailbridge._route({"ids": [ours, 12]})
+    def test_without_an_account_nothing_is_tried(self):
+        with mock.patch.object(d, "has_accounts", return_value=False), mock.patch.object(d, "call") as c:
+            with self.assertRaises(mail.NotRunning):
+                mail.call("recent", days=2)
+            self.assertEqual(mail.status(), {"connected": False, "accounts": [], "off": []})
+        c.assert_not_called()
 
-    def test_thunderbird_closed_does_not_hide_direct_accounts(self):
-        with mock.patch.object(mailbridge, "thunderbird_set_up", return_value=True), mock.patch.object(d, "has_accounts", return_value=True), \
-                mock.patch.object(d, "call", return_value=[{"id": 1}]), mock.patch.object(mailbridge, "_thunderbird", side_effect=mailbridge.NotRunning("closed")), \
-                mock.patch("builtins.print"):
-            self.assertEqual(mailbridge.call("recent", days=2), [{"id": 1}])
-
-    def test_without_direct_accounts_it_stays_thunderbird(self):
-        with mock.patch.object(mailbridge, "thunderbird_set_up", return_value=True), mock.patch.object(d, "has_accounts", return_value=False), \
-                mock.patch.object(mailbridge, "_thunderbird", return_value=[{"id": 2}]) as tb:
-            self.assertEqual(mailbridge.call("recent", days=2), [{"id": 2}])
-        tb.assert_called_once()
+    def test_switched_off_accounts_stay_hidden(self):
+        rows = [{"id": 1, "accountId": "d:a"}, {"id": 2, "accountId": "d:b"}]
+        with mock.patch.object(d, "has_accounts", return_value=True), mock.patch.object(d, "call", return_value=rows), \
+                mock.patch.object(mail, "accounts_off", return_value={"d:b"}):
+            self.assertEqual(mail.call("recent", days=2), [rows[0]])
+            self.assertEqual(mail.call("recent", days=2, all_accounts=True), rows)
 
 
 class Direct(unittest.TestCase):
@@ -115,11 +105,58 @@ class MicrosoftApp(unittest.TestCase):
         CFG["ms_client_id"] = ""
 
 
-class NoThunderbirdStart(unittest.TestCase):
-    def test_amadeus_never_starts_thunderbird(self):
-        from unittest import mock
-        from amadeus_core import mailbridge
-        with mock.patch.object(mailbridge, "_connect", side_effect=OSError), mock.patch("subprocess.Popen") as started:
-            with self.assertRaises(mailbridge.NotRunning):
-                mailbridge._thunderbird("folders", 5, True, {})
-        started.assert_not_called()
+class NewMailAsItArrives(unittest.TestCase):
+    """IMAP IDLE against a small stand-in server: told about new mail, renewed in time, no IDLE handled."""
+
+    def server(self, idle=True, push=True):
+        import socket
+        import threading
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen()
+        self.addCleanup(srv.close)
+
+        def run():
+            c, _ = srv.accept()
+            f = c.makefile("rwb")
+            caps = b"IMAP4rev1 IDLE" if idle else b"IMAP4rev1"
+            f.write(b"* OK [CAPABILITY " + caps + b"] ready\r\n"); f.flush()
+            for line in f:
+                tag, _, rest = line.decode().strip().partition(" ")
+                cmd = rest.split(" ")[0].upper()
+                if cmd == "CAPABILITY":
+                    f.write(b"* CAPABILITY " + caps + b"\r\n")
+                elif cmd == "LIST":
+                    f.write(b'* LIST (\\HasNoChildren) "/" INBOX\r\n')
+                elif cmd == "SELECT" or cmd == "EXAMINE":
+                    f.write(b"* 3 EXISTS\r\n* 0 RECENT\r\n")
+                elif cmd == "IDLE":
+                    f.write(b"+ idling\r\n"); f.flush()
+                    if push:
+                        f.write(b"* 0 RECENT\r\n* 4 EXISTS\r\n"); f.flush()
+                    f.readline()  # DONE
+                elif cmd == "LOGOUT":
+                    f.write(b"* BYE\r\n" + tag.encode() + b" OK done\r\n"); f.flush()
+                    break
+                f.write(tag.encode() + b" OK done\r\n"); f.flush()
+            c.close()
+        threading.Thread(target=run, daemon=True).start()
+        import imaplib
+
+        def open_(acc):
+            conn = imaplib.IMAP4("127.0.0.1", srv.getsockname()[1], timeout=5)
+            conn.login("x", "y")
+            return conn
+        return open_
+
+    def test_told_when_mail_arrives(self):
+        with mock.patch.object(d, "_open_imap", self.server()):
+            self.assertTrue(d._idle_once({"email": "x"}))
+
+    def test_renewed_when_nothing_comes(self):
+        with mock.patch.object(d, "_open_imap", self.server(push=False)):
+            self.assertFalse(d._idle_once({"email": "x"}, renew=0.5))
+
+    def test_a_server_without_idle_is_left_to_the_regular_check(self):
+        with mock.patch.object(d, "_open_imap", self.server(idle=False)), self.assertRaisesRegex(RuntimeError, "IDLE"):
+            d._idle_once({"email": "x"})

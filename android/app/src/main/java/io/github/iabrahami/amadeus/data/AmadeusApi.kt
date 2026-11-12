@@ -152,7 +152,7 @@ class AmadeusApi(private val store: DeviceStore) {
     fun todo(): List<String> = JSONObject(get("/api/todo")).getJSONArray("items").let { a -> (0 until a.length()).map { a.getString(it) } }
     fun todoDone(item: String) { post("/api/todo/done", JSONObject().put("item", item)) }
 
-    // ---------- mail (read on your PC through Thunderbird) ----------
+    // ---------- mail (read on your PC, from the accounts connected there) ----------
     fun mailStatus() = JSONObject(get("/api/mail/status", 30))
     fun mailUnread() = JSONArray(get("/api/mail/unread", 90))
     fun mailMessage(id: Long) = JSONObject(get("/api/mail/message/$id", 60))

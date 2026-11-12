@@ -105,7 +105,7 @@ def _whisper():
 # ("mark this mail as read", not "male as red"). Extra words of your own: "stt_words" in config.json.
 PROMPTS = {
     "en": "Amadeus, mark this mail as read. Move these mails to the folder. Show my unread mails in the inbox. "
-          "Reply to the email. Remind me tomorrow. Add it to my calendar. Thunderbird, Claude.",
+          "Reply to the email. Remind me tomorrow. Add it to my calendar. Claude.",
     "de": "Amadeus, markiere diese Mail als gelesen. Verschieb die Mails in den Ordner. Zeig meine ungelesenen Mails im "
           "Posteingang. Antworte auf die Mail. Erinnere mich morgen. Trag den Termin in den Kalender ein. Rechnung.",
     "es": "Amadeus, marca este correo como leído. Mueve los correos a la carpeta. Muéstrame los correos no leídos. "

@@ -1,6 +1,6 @@
 """Background mail watch: every few minutes Amadeus looks for NEW unread mail in all folders, lets the local model
 sort it by the rules in the "mail-watch" skill, and calls you for important mail. Everything stays on this PC.
-It never starts Thunderbird itself and never marks anything as read."""
+It never marks anything as read."""
 import json
 import os
 from pathlib import Path
@@ -8,7 +8,7 @@ import re
 import threading
 import time
 
-from . import db, events, llm, mailbridge, profile, tools
+from . import db, events, llm, mail, profile, tools
 from .config import CFG
 
 MAIL_CID = "mail"
@@ -17,7 +17,6 @@ _last = [0.0]
 db.q("""CREATE TABLE IF NOT EXISTS mail_day (id TEXT PRIMARY KEY, created REAL, sender TEXT, subject TEXT, summary TEXT,
         important INTEGER, urgent INTEGER, vip INTEGER, folder TEXT)""")  # for the evening summary; kept 3 days
 _busy = threading.Lock()
-NEW_MAIL = os.path.join(CFG["data_dir"], "mail-new")  # touched by the Thunderbird bridge when new mail arrives
 
 # Verification codes and "confirm your email" mails: recognized by code (fast, no model), they call right away.
 _CODE_WORDS = re.compile(r"verif|bestätig|best[äa]tigungs|confirm|\bcode\b|codigo|código|\botp\b|one[- ]time|einmal|passcode|"
@@ -72,19 +71,22 @@ def _sender(m):
 
 
 def watch():
-    """Thunderbird's new-mail signal → check right away (instead of waiting for the next 10-minute check)."""
-    while True:
-        if os.path.exists(NEW_MAIL):
-            try:
-                os.unlink(NEW_MAIL)
-            except FileNotFoundError:
-                pass
-            time.sleep(2)  # let Thunderbird finish storing the message
+    """New mail → check right away instead of waiting for the regular check: each account's server says when something
+    arrives (IMAP IDLE, maildirect.watch_new). A burst of mails is checked once."""
+    from . import maildirect
+    pending = threading.Event()
+
+    def checker():
+        while True:
+            pending.wait()
+            time.sleep(3)  # mails often come in twos and threes: one check for all of them
+            pending.clear()
             try:
                 check(force=True)
             except Exception as e:
                 print("mail watch error:", e, flush=True)
-        time.sleep(2)
+    threading.Thread(target=checker, daemon=True).start()
+    maildirect.watch_new(pending.set)
 
 
 def _rules():
@@ -138,7 +140,7 @@ def check(force=False):
 
 def _check(force=False):
     mode = CFG.get("mail_notify", "important")  # important | all | off
-    if not mailbridge.configured():
+    if not mail.configured():
         return
     if mode == "off" or (not force and time.time() - _last[0] < CFG.get("mail_check_minutes", 10) * 60):
         return
@@ -150,9 +152,9 @@ def _check(force=False):
         return
     days = max(1 / 24, (now - since) / 86400 + 0.01)  # a little overlap; duplicates are filtered below
     try:
-        unread = mailbridge.new_recent(days, limit=60, autostart=False)  # new mail, even if already read elsewhere
+        unread = mail.new_recent(days, limit=60)  # new mail, even if already read elsewhere
     except Exception:
-        return  # Thunderbird closed: try again next time
+        return  # not reachable right now: the next check tries again
     seen = set(db.get_setting("mail_seen", []))
     new = [m for m in unread if m.get("messageId") and m["messageId"] not in seen]
     db.set_setting("mail_seen", (list(seen) + [m["messageId"] for m in new])[-3000:])
@@ -163,18 +165,18 @@ def _check(force=False):
     urgent = set()
     for m in batch:
         try:
-            body = mailbridge.call("read", id=m["id"], timeout=30, autostart=False)["body"]
+            body = mail.call("read", id=m["id"])["body"]
         except Exception:
             body = ""
         m["snippet"] = body[:1200]
-        hit = _code_in(m, body) if _fresh(m) else None  # an old code (found after Thunderbird was off) is useless
+        hit = _code_in(m, body) if _fresh(m) else None  # an old code (found after mail was unreachable for a while) is useless
         if hit:  # call right away, before the (slower) model looks at the rest
             urgent.add(m["id"])
             kind, code = hit
             title = f"Code {code} from {_sender(m)}" if kind == "code" else f"Confirm-your-address mail from {_sender(m)}"
             events.add("mail_code", title, m.get("subject", ""), ref=code)
     try:
-        folders = mailbridge.call("folders", timeout=60, autostart=False)
+        folders = mail.call("folders")
     except Exception:
         folders = []
     verdicts = _triage(batch, folders)

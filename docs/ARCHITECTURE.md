@@ -29,7 +29,7 @@ flowchart TB
       ollama["Ollama<br/>Qwen 3.5 9B"]
       hindsight["Hindsight<br/>long-term memory"]
       presidio["Presidio<br/>privacy filter<br/>(Docker, no internet)"]
-      tb["Thunderbird<br/>+ Amadeus Bridge add-on"]
+      tb["Your mail providers<br/>(IMAP / SMTP, directly)"]
       notesfiles["To-dos and notes<br/>(plain files in your folder)"]
     end
 
@@ -54,7 +54,7 @@ flowchart TB
 | Web UI | `core/web/` | Plain HTML/CSS/JS, no build step: dashboard (`index.html` with `hud.js`, `hud-views.js`, `hud-settings.js`, and `core.js` drawing the core on the GPU), the small call window (`call.html`), the default avatar (`agent.svg`) |
 | Desktop | `core/desktop-tauri/` | The desktop app in Rust (Tauri): mini core, dashboard, tray icon. It shows the same web pages; the core tells it what to show through `amadeus_core/desktop.py`. `core/desktop/install-kwin-rule.sh` holds the KDE window rules |
 | Voice | `core/voice/` | `voice_server.py` (Whisper speech recognition), `wake.py` (wake word) |
-| Mail | `core/thunderbird/` | A Thunderbird add-on plus a native-messaging host; Thunderbird keeps your accounts and logins |
+| Mail | `core/amadeus_core/mail.py`, `maildirect.py`, `mailwatch.py` | Each account connected directly (IMAP to read and organize, SMTP or Microsoft Graph to send); the provider reports new mail as it arrives (IMAP IDLE); logins in the secrets folder, or the Keychain on a Mac |
 | Phone | `android/` | Kotlin + Compose; pairs with a one-time code and talks to Core over Tailscale |
 | Memory extension | `core/hindsight_ext/` | Makes every Hindsight request need your local key |
 | Your own connectors | `core/amadeus_core/mcp.py` | A small MCP client (stdio): the servers you add on Settings → Connectors, their tools always need approval |
@@ -122,7 +122,7 @@ What the design does and doesn't promise, so you can judge it yourself:
   what you approve.
 - **What does go online:** the work runs to Claude Code (only the approved text); downloads at install and update
   time (the model, container images, voices); Tailscale's coordination servers when you use the phone (your data
-  itself goes directly between your devices, encrypted); and Thunderbird talking to your mail provider, as usual.
+  itself goes directly between your devices, encrypted); and Amadeus talking to your mail providers, only to each account's own server.
 - **Not a multi-user system.** It assumes one person and their own PC. Anyone who can use your desktop session can
   use Amadeus.
 

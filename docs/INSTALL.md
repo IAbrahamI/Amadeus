@@ -20,17 +20,15 @@ and a lighter one. After you pick, it downloads that model, measures it and chec
 uses a built-in list. Run
 `./install.sh --benchmark` any time to do this again.
 
-The first run also asks three things:
+The first run also asks two things:
 
 1. **A folder for Claude Code projects** (suggested: `~/Amadeus/Projects`), so a work run never sees your notes. You
    can change it later on the Projects page.
-2. **Thunderbird for mail?** Optional: you can also connect accounts directly on the Mail page, without Thunderbird. Yes if you use Thunderbird; your logins stay there.
-3. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
+2. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
 
 Long steps show the command and its latest lines as they run, then fold away into one line. The full output stays in `~/.local/share/amadeus/install.log`, and `./install.sh --verbose` shows all of it instead. The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
-downloading the local model (about 6.6 GB). Afterwards it lists what's left to do by hand: installing the
-Thunderbird add-on (one click in Thunderbird), logging in to Claude Code for work runs, and the phone app. All three
-are optional.
+downloading the local model (about 6.6 GB). Afterwards it lists what's left to do by hand: connecting your mail
+accounts on the Mail page, logging in to Claude Code for work runs, and the phone app. All three are optional.
 
 **Updating:** `amadeus update` gets the newest version, installs it and restarts Amadeus. Your data stays. It does
 nothing when you changed files in the repository yourself, and it only runs when you start it.
@@ -47,7 +45,7 @@ opens as a normal window instead of sitting in the corner (on X11 it is still pl
 **Needed:** Ollama (the local model), Docker (memory and the privacy filter) and the packages below. On Arch, Debian/Ubuntu
 and Fedora the installer offers to install whatever is missing (it shows what and asks before using `sudo`), so you
 normally don't need to do this by hand. **Everything else
-is optional and can be added later:** Thunderbird (mail), Claude Code (work runs),
+is optional and can be added later:** your mail accounts, Claude Code (work runs),
 Tailscale (the phone app), KDE Plasma (window placement) and an NVIDIA GPU (speed). Without one of them, only that part
 stays off, and Settings → Connectors says what it needs.
 
@@ -62,8 +60,7 @@ stays off, and Settings → Connectors says what it needs.
 Enable Ollama and Docker (`sudo systemctl enable --now ollama docker`) and add yourself to the `docker` group.
 An NVIDIA GPU with ~12 GB is recommended; without one the model runs slowly on the CPU.
 
-Optional: `thunderbird` from your distribution, not Flatpak (mail),
-`tailscale` (phone), `claude` with `bubblewrap` and `socat` (work runs).
+Optional: `tailscale` (phone), `claude` with `bubblewrap` and `socat` (work runs).
 
 ## 2. What install.sh does
 
@@ -103,14 +100,12 @@ your chats over time. To give it your own name, personality, face or voice, see 
 
 ## 4. Optional: mail
 
-1. Install Thunderbird from your distribution and add your accounts there (Amadeus never sees your passwords).
-2. Say yes to mail in `./install.sh` (or run `core/thunderbird/install.sh`). It registers the bridge and builds
-   the add-on, `~/.local/share/amadeus/amadeus-bridge.xpi`.
-3. In Thunderbird: *Add-ons and Themes → gear icon → Install Add-on From File…* and pick that file.
+Nothing to install: open the Mail page and connect each account with **+ Add account** (see [Mail](#mail) for each
+provider). There you also choose which accounts Amadeus may read at all, and **Edit** changes an account later (its
+name, a new app password, its servers). New mail is reported by your provider the moment it arrives (IMAP IDLE).
 
-In the dashboard's Mail view you choose which accounts Amadeus may read at all (**+ Add account**).
-
-Thunderbird starts minimised at login. If you close it, Amadeus starts it again after a minute.
+Older versions read mail through Thunderbird. Updating removes that bridge's files; remove the Amadeus Bridge add-on in
+Thunderbird yourself (Add-ons and Themes) and connect the accounts on the Mail page.
 
 ## 5. Optional: voice
 
@@ -258,19 +253,18 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 
 ## Mail
 
-Optional. On the Mail page, **+ Add account** gives you two ways, and each account can use either:
+Optional. On the Mail page, **+ Add account** connects each account directly with its provider:
 
 | | How | Limits |
 |---|---|---|
-| **Gmail** | Directly, with an [app password](https://myaccount.google.com/apppasswords) | Personal accounts with 2-Step Verification. Workspace accounts don't offer app passwords: use Thunderbird |
+| **Gmail** | Directly, with an [app password](https://myaccount.google.com/apppasswords) | Personal accounts with 2-Step Verification. Workspace accounts only if their admin allows app passwords |
 | **Outlook / Hotmail** | Directly, by signing in with Microsoft in your browser | Some work accounts need their admin to allow it |
 | **Yahoo, iCloud, Fastmail, Zoho** | Directly, with an app password from the provider | |
 | **GMX, WEB.DE** | Directly, after turning on IMAP in their mail settings | |
 | **Proton Mail** | Directly, through [Proton Mail Bridge](https://proton.me/mail/bridge) on this PC | Bridge needs a paid Proton plan. Free accounts can't connect any other way |
 | **Any other** | Directly, with its IMAP and SMTP servers | |
-| **Thunderbird** | Add the account in Thunderbird, with its add-on from `./install.sh --setup` | Only while Thunderbird runs, and only what its add-on can reach, so some mail may not work |
 
-Direct logins stay in a file only you can read, in `~/.local/share/amadeus/secrets/`, and only go to that provider's server.
+Logins stay on this computer, in a file only you can read (`~/.local/share/amadeus/secrets/`; in the Keychain on a Mac), and only go to that provider's server.
 
 ## Updates
 
@@ -319,9 +313,9 @@ The release workflow runs the tests, builds the packages and publishes them.
 
 ```bash
 core/deploy/install.sh --uninstall            # services, the amadeus command, menu and autostart entries,
-                                              # the KWin rule, the Thunderbird bridge registration, the work-run guard
+                                              # the KWin rule, an old Thunderbird bridge's files, the work-run guard
 docker rm -f hindsight presidio-analyzer presidio-anonymizer
 ```
 
-Then remove the Amadeus Bridge add-on in Thunderbird (Add-ons and Themes). That removes the programs and keeps your data. The desktop app and Rust stay in `.tauri-build/` until you delete the repo folder. Deleting the data (`~/.local/share/amadeus/`, the
+That removes the programs and keeps your data. The desktop app and Rust stay in `.tauri-build/` until you delete the repo folder. Deleting the data (`~/.local/share/amadeus/`, the
 `hindsight-data` volume and your folder) is permanent, so back it up first.
