@@ -301,7 +301,7 @@ async function renderWorkspace(d, chat, chip, label) {
     const side = built.querySelector(".wschat"), text = $("#projText"), keep = text ? text.value : "", had = document.activeElement === text;
     const at = side.scrollTop, end = side.scrollHeight - at - side.clientHeight < 80;
     side.innerHTML = chat;
-    if ($("#projText")) { $("#projText").value = keep; if (had) $("#projText").focus(); }
+    if ($("#projText")) { $("#projText").value = keep; fitText($("#projText")); if (had) $("#projText").focus(); }
     side.scrollTop = end ? side.scrollHeight : at;
     built.querySelector(".phead .chip").className = `chip st ${chip}`; built.querySelector(".phead .chip").textContent = label;
     return;

@@ -5,7 +5,8 @@
 
   window.Voice = {
     // push-to-talk: start() on press, stop() on release → onText(text, lang)
-    // listen(true) (after the wake word): stops by itself 2 s after you stop talking (8 s if nothing is said, 60 s max)
+    // listen(true) (after a question): stops by itself 2.5 s after you stop talking (8 s if nothing is said, 3 min max)
+    // While it records, the wake word listener steps aside (hold), so it can't hear its name in what you say and cut in.
     async listen(auto = false) {
       if (V.rec) return;
       try {
@@ -17,6 +18,7 @@
         V.rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
         V.rec.ondataavailable = (e) => e.data.size && V.chunks.push(e.data);
         V.rec.onstop = async () => {
+          hold(false);
           stream.getTracks().forEach((t) => t.stop());
           const blob = new Blob(V.chunks, { type: V.rec.mimeType || "audio/webm" }); V.rec = null;
           if (blob.size < 2000) { V.busy && V.busy(false); return V.onText && V.hint && V.hint("I didn't catch that: hold the mic button while you speak."); }
@@ -30,7 +32,7 @@
           } catch (e) { console.warn("stt:", e.message); }
           V.busy && V.busy(false);
         };
-        V.rec.start();
+        V.rec.start(); hold(true);
       } catch (e) { V.hint ? V.hint("Microphone not available: " + e.message) : console.warn(e); }
     },
     release() { if (V.rec && V.rec.state === "recording") V.rec.stop(); },
@@ -43,9 +45,17 @@
     set onHint(fn) { V.hint = fn; },
   };
 
+  let holdTimer = null;
+  function hold(on) {
+    clearInterval(holdTimer); holdTimer = null;
+    const tell = (v) => fetch("/api/voice/hold", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: v }) }).catch(() => {});
+    tell(on);
+    if (on) holdTimer = setInterval(() => (V.rec ? tell(true) : hold(false)), 2000);
+  }
+
   function autoStop(stream) {
-    // Ends the recording when you're done talking: 2 s of quiet after you spoke (short pauses between words are fine),
-    // 8 s if you say nothing, 60 s at most. "Quiet" is measured against the room's own noise, so a soft voice or a
+    // Ends the recording when you're done talking: 2.5 s of quiet after you spoke (short pauses are fine),
+    // 8 s if you say nothing, 3 minutes at most. "Quiet" is measured against the room's own noise, so a soft voice or a
     // quiet microphone still counts as talking. Clicking the mic sends right away.
     const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
     an.fftSize = 1024; src.connect(an);
@@ -58,7 +68,7 @@
       level = 0.6 * level + 0.4 * rms;                      // smooth over ~0.3 s, so gaps between syllables don't count
       floor = Math.min(floor * 1.002 + 1e-5, Math.max(level, 1e-4));  // slowly follows the quietest level = room noise
       if (level > Math.max(floor * 3, 0.003)) { spoke = true; lastLoud = now; }
-      const done = (spoke && now - lastLoud > 2000) || (!spoke && now - t0 > 8000) || now - t0 > 60000;
+      const done = (spoke && now - lastLoud > 2500) || (!spoke && now - t0 > 8000) || now - t0 > 180000;
       if (done || !V.rec) { clearInterval(tick); ctx.close(); V.auto = false; document.body.classList.remove("listening"); if (V.rec) Voice.release(); }
     }, 100);
   }

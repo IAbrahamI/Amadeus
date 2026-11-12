@@ -435,6 +435,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "Only a paired phone can unpair itself."}, 400)
             devices.revoke(d["id"])
             return self._json({"ok": True})
+        if p == "/api/voice/hold":  # a window records you (its mic button): the wake word listener steps aside meanwhile
+            hold = os.path.join(CFG["data_dir"], "mic-busy")  # renewed every 2 s while recording; wake.py trusts it for 6 s
+            if b.get("on"):
+                Path(hold).touch()
+            elif os.path.exists(hold):
+                os.remove(hold)
+            return self._json({"ok": True})
         m = re.fullmatch(r"/api/voice/(on|off)", p)
         if m:  # voice input (the wake word listener) on or off, e.g. from the phone app
             from . import playbooks

@@ -297,16 +297,40 @@ const Aloud = makeAloud({  // speak.js
 function stopAloud() { Aloud.stop(); }
 addEventListener("keydown", (e) => { if (e.key === "Escape" && Aloud.active) stopAloud(); });
 
+// ---------- dictating into a box (the project's message box): what you say is written there, you send it yourself ----------
+const dictate = {  // while it's on, body.dictating lights the box's mic (it survives the page redrawing the box)
+  on: false,
+  box: () => $("#projText"),
+  toggle() {
+    if (!window.Voice) return;
+    if (Voice.recording) { Voice.release(); return; }  // the second click ends it; Whisper writes it into the box
+    stopAloud(); this.on = true; document.body.classList.add("dictating");
+    Voice.listen();
+  },
+  take(text) {
+    if (!this.on) return false;
+    const t = this.box();
+    if (t) {
+      const before = t.value && !/\s$/.test(t.value) ? t.value + " " : t.value;
+      t.value = before + text.trim(); t.dispatchEvent(new Event("input", { bubbles: true })); t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+    }
+    this.done(); return true;  // meant for the box: never sent as a chat message
+  },
+  busy(b) { document.body.classList.toggle("dictbusy", this.on && b); },
+  done() { this.on = false; document.body.classList.remove("dictating", "dictbusy"); },
+};
+
 // ---------- voice: the mic, Ctrl + Space, the wake word ----------
 if (window.Voice) {
   const mic = $("#mic");
   const listening = (on) => { mic.classList.toggle("on", on); if (on) { setMode("listen"); subtitle("Listening…", "LISTENING"); } else if (!state.busy) setMode("idle"); };
   mic.onclick = () => { stopAloud(); if (Voice.recording) { Voice.release(); listening(false); } else { Voice.listen(); listening(true); } };
-  Voice.onBusy = (b) => { if (b) subtitle("Writing down what you said…", "LISTENING"); };
-  Voice.onHint = (msg) => { listening(false); subtitle(msg); };
-  Voice.onText = (text) => { listening(false); state.spoken = true; send(text); };
+  Voice.onBusy = (b) => { dictate.busy(b); if (b) subtitle("Writing down what you said…", "LISTENING"); };
+  Voice.onHint = (msg) => { listening(false); dictate.done(); subtitle(msg); };
+  Voice.onText = (text) => { listening(false); if (dictate.take(text)) return; state.spoken = true; send(text); };
   new MutationObserver(() => listening(document.body.classList.contains("listening"))).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   window.amadeusWake = (d) => {  // the wake word while the window is open
+    if (Voice.recording && !Voice.recordingAuto) return;  // you're talking through the mic button: that's the one that counts
     const on = d.stage === "listening";
     document.body.classList.toggle("listening", on);
     if (on) return;

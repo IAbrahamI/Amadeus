@@ -247,6 +247,19 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--cyan); outl
 .tolabel { font: 600 10px var(--display); letter-spacing: .24em; color: var(--dim); text-transform: uppercase; }
 .tohint { width: 100%; order: 3; margin: 0; font: 400 11.5px var(--mono); color: var(--dim); }
 .pcomp input { order: 4; } .pcomp .psend { order: 5; }
+/* the project's message box: grows with the text (fitText in hud-views.js), with its own mic below it */
+.pcomp textarea { order: 4; flex: 1 1 100%; width: 100%; min-height: 38px; resize: none; overflow-y: auto; background: rgba(var(--vd),.8); border: 1px solid rgba(var(--a),.3); color: var(--text); font: 400 13px/1.5 var(--body); padding: 8px 10px; outline: none; caret-color: var(--cyan); }
+.pcomp textarea:focus { border-color: var(--cyan); }
+.pcomp.cc textarea { border-color: rgba(var(--ccr),.5); caret-color: var(--cc); } .pcomp.cc textarea:focus { border-color: var(--cc); }
+.pcomp .pcrow { order: 5; width: 100%; display: flex; align-items: center; gap: 10px; }
+.pcomp .pcrow .grow { flex: 1; } .pcomp .pcrow .psend { order: 0; }
+.pcomp .pmic { width: 34px; height: 32px; border: 1px solid rgba(var(--a),.3); }
+.pcomp.cc .pmic { color: var(--cc); border-color: rgba(var(--ccr),.5); }
+body.dictating .pcomp .pmic { border-color: currentColor; box-shadow: 0 0 12px rgba(var(--a),.45); } body.dictating .pcomp .pmic svg { display: none; } body.dictating .pcomp .pmic .eq { display: flex; }
+body.dictbusy .pcomp .pmic .eq i { animation-duration: 1.6s; opacity: .5; }
+.pcomp .pmhint { font: 400 11px var(--mono); color: var(--dim); }
+body.dictating .pcomp .pmhint::before { content: "Listening… click the mic again when you're done · "; color: var(--cyan); }
+body.dictbusy .pcomp .pmhint::before { content: "Writing down what you said… · "; }
 /* Claude Code mode: violet accent so it's obvious the message leaves Amadeus */
 .pcomp.cc .to button.on { background: var(--cc); border-color: var(--cc); color: var(--ccink); }
 .pcomp.cc input { border-color: rgba(var(--ccr),.5); caret-color: var(--cc); }

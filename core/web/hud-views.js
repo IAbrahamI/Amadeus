@@ -220,8 +220,9 @@ async function renderProject() {
         <button type="button" class="${proj.to === "a" ? "on" : ""}" role="radio" aria-checked="${proj.to === "a"}" data-act="to" data-who="a">${esc(NAME())}</button>
         <button type="button" class="${proj.to === "c" ? "on" : ""}" role="radio" aria-checked="${proj.to === "c"}" data-act="to" data-who="c">Claude Code</button></div>
         <p class="tohint">${proj.to === "c" ? "Starts or continues a Claude Code run in this project's folder. You see exactly what leaves the PC before it's sent." : `${esc(NAME())} knows this project and can hand work to Claude Code for you.`}</p>
-        <input id="projText" placeholder="${proj.to === "c" ? "Task or answer for Claude Code…" : `Message to ${esc(NAME())} about this project…`}" aria-label="Message" autocomplete="off">
-        <button class="btn go psend">${proj.to === "c" ? "Send to Claude Code ›" : `Send to ${esc(NAME())} ›`}</button><div id="projPreview" class="preview" hidden></div><p class="sample" id="projInfo"></p></form>`;
+        <textarea id="projText" rows="1" placeholder="${proj.to === "c" ? "Task or answer for Claude Code…" : `Message to ${esc(NAME())} about this project…`}" aria-label="Message" autocomplete="off" spellcheck="true"></textarea>
+        <div class="pcrow"><button type="button" class="mic pmic" data-act="pmic" title="Talk: click to start, click again when you're done. The text goes into the box, you send it."><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></button>
+        <small class="pmhint">Enter sends · Shift+Enter new line</small><span class="grow"></span><button class="btn go psend">${proj.to === "c" ? "Send to Claude Code ›" : `Send to ${esc(NAME())} ›`}</button></div><div id="projPreview" class="preview" hidden></div><p class="sample" id="projInfo"></p></form>`;
   if (proj.ws) return renderWorkspace(d, chat, c, l);
   body().innerHTML = `<div class="phead"><button class="btn" data-act="proj" data-p="">‹ Projects</button><b>${esc(d.name)}</b><span class="chip st ${c}">${l}</span><span class="grow"></span>
       <button class="btn" data-act="projdone" data-done="${d.state === "done" ? 0 : 1}">${d.state === "done" ? "Open again" : "Mark done"}</button><button class="btn" data-act="projterm" title="Opens a terminal with Claude Code in this project's folder">Open in Claude Code</button><button class="btn go" data-act="wsopen" title="Files, editor and chat side by side: watch the agent work and edit along">Open workspace</button></div>
@@ -325,7 +326,8 @@ body().addEventListener("click", async (e) => {
       (f.error ? note("That didn't work: " + esc(f.error)) : f.binary ? note("Not a text file: open it in the file manager.") : /\.md$/i.test(a.dataset.f) ? `<div class="md">${md(f.text)}</div>` : `<pre>${esc(f.text)}</pre>`) + "</div>";
   }
   if (act === "projfileclose") $("#projFile").innerHTML = "";
-  if (act === "to") { proj.to = a.dataset.who; proj.preview = null; const keep = $("#projText").value; await renderProject(); $("#projText").value = keep; $("#projText").focus(); }
+  if (act === "to") { proj.to = a.dataset.who; proj.preview = null; const keep = $("#projText").value; await renderProject(); $("#projText").value = keep; fitText($("#projText")); $("#projText").focus(); }
+  if (act === "pmic") dictate.toggle();
   if (act === "pvcancel") { proj.preview = null; $("#projPreview").hidden = true; }
   if (act === "pvsend") toClaude(proj.preview.text, $("#projInfo"));
 });
@@ -363,10 +365,22 @@ body().addEventListener("submit", async (e) => {
   }
   if (f.id === "projAnswer" || f.id === "projSend") {
     e.preventDefault();
-    const inp = f.querySelector("input"), text = inp.value.trim(); if (!text) return;
+    const inp = f.querySelector("input, textarea"), text = inp.value.trim(); if (!text) return;
     if (f.id === "projAnswer" || proj.to === "c") return toClaude(text, $("#projInfo"));
-    inp.value = ""; toAssistant(text);
+    inp.value = ""; fitText(inp); toAssistant(text);
   }
+});
+
+// The project's message box grows with what you write (up to about half the screen, then it scrolls), like a chat box
+function fitText(t) {
+  if (!t || t.tagName !== "TEXTAREA") return;
+  t.style.height = "auto";
+  t.style.height = Math.min(t.scrollHeight + 2, Math.max(120, innerHeight * 0.45)) + "px";
+}
+document.addEventListener("input", (e) => { if (e.target.id === "projText") fitText(e.target); });
+document.addEventListener("keydown", (e) => {
+  if (e.target.id !== "projText" || e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+  e.preventDefault(); e.target.form.requestSubmit();
 });
 
 // Adding a mail account directly

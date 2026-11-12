@@ -27,6 +27,16 @@ from amadeus_core import paths  # noqa: E402
 DATA, VOICE = paths.DATA, paths.VOICE
 MODEL = os.path.join(VOICE, "models/vosk-model-small-en-us-0.15")
 OFF = os.path.join(DATA, "wake-off")
+HOLD = os.path.join(DATA, "mic-busy")  # a window is recording you (its mic button): renewed every 2 s while it does
+
+
+def held():
+    """True while a window records you with its own mic button. The wake word then steps aside: it doesn't listen for
+    the name and doesn't send anything, so it never cuts in on what you're saying there."""
+    try:
+        return time.time() - os.path.getmtime(HOLD) < 6
+    except OSError:
+        return False
 CFG_FILE = paths.CONFIG_FILE
 RATE, CHUNK = 16000, 1600  # 100 ms of 16-bit mono
 GREETINGS = ["hey", "okay", "ok", "hi"]
@@ -157,9 +167,9 @@ if sys.platform == "darwin":
     Mic = MacMic  # noqa: F811
 
 
-def record_request(mic, audio, start_wait=80, quiet_end=15, max_len=300):
-    """Keep recording until the user is done: `quiet_end` chunks of quiet after speech (1.5 s), or nothing at all
-    for `start_wait` chunks (8 s), or `max_len` chunks (30 s)."""
+def record_request(mic, audio, start_wait=80, quiet_end=25, max_len=1800):
+    """Keep recording until the user is done: `quiet_end` chunks of quiet after speech (2.5 s, so a pause to think
+    doesn't end it), or nothing at all for `start_wait` chunks (8 s), or `max_len` chunks (3 minutes)."""
     spoke, quiet, n = bool(audio), 0, 0
     while n < max_len:
         buf, loud = mic.read()
@@ -196,6 +206,10 @@ def handle(mic, word, phrase_audio):
         tell_window(stage="cancel")
         return
     if os.path.exists(OFF):  # you switched it off while it was still listening: what it heard is dropped
+        tell_window(stage="cancel", quiet=True)
+        return
+    if held():  # meanwhile you started talking with a window's mic button: that recording is the one that counts
+        print("wake: dropped, a window's mic is recording", flush=True)
         tell_window(stage="cancel", quiet=True)
         return
     print(f"wake request: {len(text.split())} words", flush=True)
@@ -236,6 +250,9 @@ def listen():
     try:
         while not os.path.exists(OFF):
             buf, loud = mic.read()
+            if held():  # a window records you: keep the microphone drained, but don't listen for the name
+                pre.clear()
+                continue
             if not loud:
                 pre.append(buf)
                 continue
@@ -248,7 +265,7 @@ def listen():
             rec.SetWords(True)
             for b in phrase:
                 rec.AcceptWaveform(b)
-            while quiet < 6 and len(phrase) < 30 and not os.path.exists(OFF):  # (off: stop right away, even mid-sentence)
+            while quiet < 6 and len(phrase) < 30 and not os.path.exists(OFF) and not held():  # (off or held: stop right away)
                 buf, loud = mic.read()
                 phrase.append(buf)
                 quiet = 0 if loud else quiet + 1
@@ -259,7 +276,7 @@ def listen():
                         break
             if not word:
                 word = called(json.loads(rec.FinalResult()), words, min_conf)
-            if word and not os.path.exists(OFF):
+            if word and not os.path.exists(OFF) and not held():
                 print(f"wake: {word}", flush=True)
                 handle(mic, word, phrase)
             elif len(phrase) >= 30:  # a long sentence without the name at its start: skip until the next pause

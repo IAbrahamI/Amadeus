@@ -174,6 +174,7 @@ if (window.Voice) {
   Voice.onText = (text) => { listening(false); if (adjusting) return adjustWith(text); ask(text, true); };
   new MutationObserver(() => listening(document.body.classList.contains("listening"))).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   window.amadeusWake = (d) => {  // the wake word
+    if (Voice.recording && !Voice.recordingAuto) return;  // you're talking through the mic button: that's the one that counts
     const on = d.stage === "listening";
     document.body.classList.toggle("listening", on);
     if (on) return;
