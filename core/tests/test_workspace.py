@@ -171,3 +171,15 @@ class SeenOnScreen(unittest.TestCase):
         self.assertEqual((seen[old], seen[new], seen[other]), (1, 1, 0))
         self.assertEqual(ring.call_count, 2)  # the first and the other project's; not the one on screen
         events.VIEWING.clear()
+
+    def test_dashboard_on_screen_counts_as_seen(self):
+        from amadeus_core import events, db
+        with mock.patch.object(events, "maybe_ring") as ring:
+            events.dashboard_here()
+            eid = events.add("work", "Chat Project: done", "answered while you chatted")
+            events.DASHBOARD["at"] = 0
+            later = events.add("work", "Chat Project: questions for you", "after you closed it")
+        seen = {r["id"]: r["seen"] for r in db.q("SELECT id, seen FROM events WHERE id IN (?,?)", (eid, later))}
+        self.assertEqual((seen[eid], seen[later]), (1, 0))
+        self.assertEqual(ring.call_count, 1)
+        events.VIEWING.clear()

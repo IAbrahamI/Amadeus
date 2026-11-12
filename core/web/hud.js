@@ -23,6 +23,11 @@ function tick() {
 }
 tick(); setInterval(tick, 1000);
 
+// While the dashboard is on screen it tells the core so, every 10 s: a work run's result that lands here (in the chat or
+// the project's timeline) is then seen, and the mini core doesn't call about it once you close the dashboard.
+const here = () => { if (document.visibilityState === "visible") post("/api/dashboard/here", {}).catch(() => {}); };
+here(); setInterval(here, 10000); document.addEventListener("visibilitychange", here);
+
 // ---------- the core and where it sits ----------
 const core = Core.start(stage);
 let docked = false, sideMode = false, curView = "home";

@@ -553,6 +553,9 @@ class Handler(BaseHTTPRequestHandler):
             launch(["thunderbird"], "thunderbird")
             _to_front(["thunderbird"])
             return self._json({"ok": True})
+        if p == "/api/dashboard/here":  # the dashboard is on screen (sent every 10 s while it's visible)
+            events.dashboard_here()
+            return self._json({"ok": True})
         m = re.fullmatch(r"/api/projects/([^/]+)/seen", p)
         if m:  # the project's page is open: its finished runs are on screen, so they don't call you later
             return self._json({"cleared": events.seen_project(urllib.parse.unquote(m.group(1)))})
