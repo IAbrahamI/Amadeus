@@ -1,8 +1,10 @@
 // Reading answers aloud while they are written (the dashboard and the mini core): every finished sentence goes to
 // the voice right away and the next one is prepared while the current one plays, with a short breath in between.
 // The server turns each piece into what a person would say (speech.py). Code, tables and long lists stay in the chat,
-// and after a couple of short sentences (about 250 characters) it says the rest is in the chat. Normally the
-// model opens with its own spoken line (speech.py): then only that is said, and the screen has the full answer. The text can type in, in step with the voice.
+// Normally the model opens with its own spoken line (speech.py): then only that is said, and the screen has the full
+// answer. Without one, nothing is read while the answer comes in: once it's complete, a short answer is read as it is,
+// and for a long one the server sends a spoken overview (agent._overview) before it ends, so you hear what it did, not
+// its first lines. (Only if that overview fails: a couple of sentences, then "the rest is in the chat".)
 // Hooks: busy() (the answer is still coming), talk() (a voice pulse), speaking(on), idle(), failed(error), strip(text).
 window.makeAloud = (h) => {
   const A = {
@@ -21,6 +23,8 @@ window.makeAloud = (h) => {
     // the reply so far; done = it's complete (the last piece needs no full stop)
     feed(text, done) {
       if (!this.active || this.cut) return;
+      if (!done) { if (this.reveal) this.reveal(Infinity); return; }  // shown as it comes; what's said is decided at the end
+      this.reveal = null;  // it's on screen already: nothing types in again
       const t = h.strip(text);
       for (;;) {
         const rest = t.slice(this.taken), nl = rest.indexOf("\n");

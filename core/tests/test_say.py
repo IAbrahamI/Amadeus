@@ -115,3 +115,19 @@ class PromptOrder(unittest.TestCase):
             first = agent._history(cid)[0]["content"]
             db.add_message(cid, "user", "x" * 10)
             self.assertEqual(agent._history(cid)[0]["content"], first)
+
+
+class Overview(unittest.TestCase):
+    """A long answer without its own spoken line is summed up when spoken, never cut after its first lines."""
+
+    def test_overview_is_cleaned(self):
+        from unittest import mock
+        from amadeus_core import agent
+        with mock.patch.object(agent.llm, "complete", return_value='<say>"I set up the backup and the report."</say> [mood: happy]'):
+            self.assertEqual(agent._overview("m", [], "long answer"), "I set up the backup and the report.")
+        with mock.patch.object(agent.llm, "complete", side_effect=OSError("down")):
+            self.assertEqual(agent._overview("m", [], "long answer"), "")
+
+    def test_plain_counts_only_words(self):
+        from amadeus_core import speech
+        self.assertEqual(speech.plain("**Hi** [docs](https://x.y)\n```py\nprint(1)\n```"), "Hi docs")

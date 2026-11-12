@@ -71,6 +71,15 @@ def _months(lang):
     return "|".join(MONTHS[lang] + [m[:3] for m in MONTHS[lang]])
 
 
+def plain(text):
+    """The answer as words, to tell how long it would be to say: no code, tables, links, Markdown or tags."""
+    t = re.sub(r"```.*?```", " ", str(text or ""), flags=re.S)
+    t = re.sub(r"^\s*\|.*$", " ", t, flags=re.M)
+    t = re.sub(r"!?\[([^\]]+)\]\([^)]+\)", r"\1", t)
+    t = re.sub(r"<?https?://\S+>?|<[^>]+>|[*_#>`|]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
 def speech_text(text, lang="en", limit=600):
     lang = lang if lang in SAY else "en"
     s = SAY[lang]

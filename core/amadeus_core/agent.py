@@ -10,7 +10,7 @@ import re
 import threading
 import time
 
-from . import db, events, grounding, learning, llm, profile, tools
+from . import db, events, grounding, learning, llm, profile, speech, tools
 from .config import CFG, NAME
 from .speech import SAY_RE, SayFilter
 
@@ -297,6 +297,23 @@ answer for the screen as you normally would, with all the details. (Before you c
   them all out.
 - If the answer is already one short sentence, the line is just that sentence.
 Example: <say>Three things tomorrow: work from seven to four, then the dentist at five, and your mum's birthday.</say>"""
+
+
+SPOKEN_MAX = 220  # characters of an answer read out as they are; a longer one is summed up when spoken (see _overview)
+OVERVIEW_ASK = ("Now say what you just answered out loud, as you would to a friend: one or two short spoken sentences, at most "
+                "30 words. Give the overall picture and what matters most (what you did, found or suggest), not the first "
+                "lines or items. Plain speech in the user's language: no lists, Markdown, links, ids or intro. Only the sentences.")
+
+
+def _overview(model, messages, answer):
+    """The spoken overview of a long answer, when the model didn't open it with its own <say> line."""
+    try:
+        line = llm.complete(model, messages + [{"role": "assistant", "content": answer}, {"role": "user", "content": OVERVIEW_ASK}])
+    except Exception as e:
+        print(f"overview: {e}", flush=True)
+        return ""
+    line = re.sub(r"</?say>|\[mood:\s*\w*\]", "", MOOD_RE.sub("", line or "")).strip().strip('"')
+    return line if 0 < len(line) <= 400 else ""
 
 
 # A long system prompt alone isn't enough for a small model on long answers: this comes right before it answers.
@@ -619,6 +636,13 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
         if said and content == said:  # only the line came: that's the answer on screen too
             emit("token", said)
         if not calls:
+            if speak and not said and len(speech.plain(MOOD_RE.sub("", content))) > SPOKEN_MAX:
+                # a long answer without its spoken line: she says a short overview of it, never its first lines and
+                # "the rest is in the chat". It continues the same conversation, so the model reads nothing twice
+                line = _overview(model, [sysmsg] + _history(cid) + nudge, content)
+                if line:
+                    said = line
+                    emit("say", line)
             if curate and tools.enabled_connectors().get("memory", True):
                 later(profile.learn_asking, cid)
             if curate and user_text and len(user_text) >= 12 and tools.enabled_connectors().get("memory", True):
