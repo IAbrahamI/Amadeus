@@ -262,6 +262,16 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/folder":  # Settings → Connectors: where your notes and projects are
             from . import notesfolder
             return self._json(notesfolder.status())
+        if p == "/api/improve":  # Amadeus' own project: the ideas, and whether it can be used here
+            from . import selfimprove
+            return self._json({"ideas": selfimprove.refresh(), "available": selfimprove.available(), "project": selfimprove.PROJECT})
+        m = re.fullmatch(r"/api/improve/(\w+)/review", p)
+        if m:  # the change and Amadeus' own test run on the copy
+            from . import selfimprove
+            try:
+                return self._json(selfimprove.review(m.group(1)))
+            except (ValueError, RuntimeError) as e:
+                return self._json({"error": str(e)}, 400)
         if p == "/api/memory/source":  # Settings → Connectors: which Hindsight, and whether it answers (never its key)
             from . import memory
             return self._json(memory.status())
@@ -696,6 +706,27 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(mcp.add(b.get("name", ""), b.get("command", ""), b.get("env") or {}))
             except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        m = re.fullmatch(r"/api/improve(?:/(\w+)/(start|install|discard|drop))?", p)
+        if m:  # Amadeus' own project: only from this PC, each step your own click
+            from . import selfimprove
+            if self._tailnet():
+                return self._json({"error": "Only on this computer."}, 403)
+            try:
+                if not m.group(1):
+                    return self._json(selfimprove.add_idea(b.get("title"), b.get("why"), "you"))
+                iid, act = m.group(1), m.group(2)
+                if act == "start":  # first the exact text that leaves (privacy-filtered), then your confirm
+                    clean, findings, hold = tools.send_to_work_preview(selfimprove.brief(iid))
+                    if hold:
+                        return self._json({"error": "Not sendable: it contains something from your deny-list or a canary marker."}, 400)
+                    if not b.get("confirm"):
+                        return self._json({"preview": clean, "findings": findings})
+                    if clean != b.get("preview"):
+                        return self._json({"error": "The text changed; check the preview again."}, 409)
+                    return self._json(selfimprove.start(iid, clean))
+                return self._json({"install": selfimprove.install, "discard": selfimprove.discard, "drop": selfimprove.drop_idea}[act](iid))
+            except (ValueError, RuntimeError) as e:
                 return self._json({"error": str(e)}, 400)
         if p == "/api/memory/source":  # use a Hindsight you already run, or the one on this computer again
             from . import memory

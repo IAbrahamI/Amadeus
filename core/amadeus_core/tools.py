@@ -771,6 +771,11 @@ def held_why(findings):
     return "Not sent: the text contains something from your deny-list or a canary marker."
 
 
+def suggest_improvement(title, why):
+    from . import selfimprove
+    return selfimprove.suggest(title, why)
+
+
 def send_to_work_preview(task):
     clean, findings, hold = _scrub(task, keep=("ORGANIZATION",))
     return clean, findings, hold
@@ -1433,6 +1438,11 @@ TOOLS = [
       + send_to_work_preview(a.get("text", ""))[0]),
     T("work_status", "List the recent work runs (projects) and whether they are running, done or stopped.", {}, [],
       work_status, "work"),
+    T("suggest_improvement", "Note something about YOURSELF (Amadeus) that should work better: a request you couldn't "
+      "handle well, a tool that's missing or failed, a repeated mistake. It goes on the list of your own project, where "
+      "the user may pick it for Claude Code; nothing starts by itself. title: a few words. why: what happened and what "
+      "would be better. Never for the user's own tasks.",
+      {"title": S, "why": S}, ["title", "why"], suggest_improvement, "work"),
 ]
 BY_NAME = {t["name"]: t for t in TOOLS}
 CONNECTORS = {

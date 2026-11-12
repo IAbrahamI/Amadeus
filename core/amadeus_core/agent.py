@@ -300,7 +300,10 @@ def about_me():
         lines.append("- Work (cloud): send_to_work starts ONE Claude Code run on a project (coding, writing, research), privacy-filtered and\n"
                      "  approved; it works only in its own project folder (outside the user's notes) and reports back when done. If it ends with \"## Questions\",\n"
                      "  the user's answers go back with continue_project (same session). work_status lists the runs. The new-project\n"
-                     "  playbook (interview → spec → approval) starts a bigger one.")
+                     "  playbook (interview → spec → approval) starts a bigger one.\n"
+                     "- Your own project: when you notice something about yourself that should work better (a request you\n"
+                     "  couldn't handle, a missing or failing tool, a repeated mistake), note it with suggest_improvement and\n"
+                     "  tell the user in one short sentence. Nothing starts by itself; the user picks ideas under Projects.")
     lines.append("- You CANNOT: search the internet or look up current facts (prices, news, weather), run scripts or code yourself, read or send\n"
                  "  WhatsApp/Discord messages, see the user's screen, or act without approval. Say so plainly instead of guessing.")
     return "\n\n## What you are and can do — use this when asked about yourself; never invent other abilities\n" + "\n".join(lines)

@@ -191,14 +191,46 @@ async function renderProjects() {
       <div class="acts"><button class="btn go">Start the interview</button></div></form></div>`;
     return;
   }
+  if (proj.sel === "__self") return renderSelf();
   if (proj.sel) return renderProject();
-  const [list, fo] = await Promise.all([api("/api/projects"), api("/api/projects/folder")]);
+  const [all, fo, imp] = await Promise.all([api("/api/projects"), api("/api/projects/folder"), api("/api/improve")]);
+  const list = all.filter((p) => p.name !== imp.project), open = imp.ideas.filter((i) => i.status !== "installed");
+  const waiting = open.find((i) => i.status === "ready"), working = open.find((i) => i.status === "working");
   proj.folder = fo;
   $("#pmeta").textContent = fo.path.replace(/^\/home\/[^/]+/, "~");
   body().innerHTML = folderBar(fo) + `<div class="rows"><button class="row pick newp" data-act="proj" data-p="new"><span class="k">+</span><div class="t"><b>New project</b><span>${esc(NAME())} interviews you and writes the overview</span></div><span></span></button>` +
+    `<button class="row pick ps selfp ${waiting ? "st-wait" : working ? "st-active" : "st-idle"}" data-act="selfopen"><span class="k">◆</span><div class="t"><b>${esc(imp.project)}</b><span>What ${esc(NAME())} would like to do better · ${open.length} idea${open.length === 1 ? "" : "s"}</span></div><span class="chip st ${waiting ? "st-wait" : working ? "st-active" : "st-idle"}">${waiting ? "Review" : working ? "Active" : "Ideas"}</span></button>` +
     list.map((p) => { const [c, l] = ST[p.state] || ST.idle;
       return `<button class="row pick ps ${c}" data-act="proj" data-p="${esc(p.name)}"><span class="k">▸</span><div class="t"><b>${esc(p.name)}</b><span>${p.files} file${p.files === 1 ? "" : "s"} · changed ${ago(p.updated)}${p.last_run ? " · last run " + ago(p.last_run) : ""}</span></div><span class="chip st ${c}">${l}</span></button>`; }).join("") + "</div>" +
     '<div class="stlegend"><span class="st-wait">Needs you</span><span class="st-active">Active</span><span class="st-idle">Idle</span><span class="st-done">Done</span></div>';
+}
+// ---------- Amadeus' own project: its ideas, a run on a copy of its code, your review, your install ----------
+const IST = { open: ["st-idle", "Idea"], working: ["st-active", "Claude Code is on it"], ready: ["st-wait", "Review it"], installed: ["st-done", "Installed"] };
+async function renderSelf() {
+  clearInterval(proj.poll);
+  const d = await api("/api/improve"), busy = d.ideas.find((i) => i.status === "working" || i.status === "ready");
+  $("#pmeta").textContent = `${d.ideas.length} idea${d.ideas.length === 1 ? "" : "s"}`;
+  const row = (i) => { const [c, l] = IST[i.status] || IST.open;
+    return `<div class="row ps ${c}"><span class="k">${i.source === "you" ? "you" : esc(NAME())}</span><div class="t"><b>${esc(i.title)}</b><span class="wrap">${esc(i.why || "")}${i.commit ? ` · commit ${esc(i.commit)}` : ""}</span></div>
+      <div class="acts"><span class="chip st ${c}">${l}</span>${i.status === "open" ? `${busy ? "" : `<button class="btn go" data-act="selfstart" data-id="${esc(i.id)}">Start</button>`}<button class="btn" data-act="selfdrop" data-id="${esc(i.id)}">Remove</button>`
+        : i.status === "ready" ? `<button class="btn go" data-act="selfreview" data-id="${esc(i.id)}">Review</button>` : ""}</div></div>`; };
+  body().innerHTML = `<div class="phead"><button class="btn" data-act="proj" data-p="">‹ Projects</button><b>${esc(d.project)}</b><span class="grow"></span>
+      <button class="btn" data-act="proj" data-p="${esc(d.project)}" title="Its timeline, files and workspace">Open its folder</button></div>
+    ${note(`What ${esc(NAME())} would like to do better, and why. Nothing starts by itself: you pick one, Claude Code works on a copy of ${esc(NAME())}'s code (never on the one running), and you see the change and the test results. Only your OK installs it.`)}
+    ${d.available ? note(esc(d.available)) : ""}<div id="selfPanel"></div>
+    <h3 style="margin-top:14px">Ideas</h3>${d.ideas.length ? rows(d.ideas.slice().reverse().map(row)) : note(`No ideas yet. ${esc(NAME())} adds one when it notices it couldn't do something well, or add your own below.`)}
+    <h3 style="margin-top:22px">+ Your own idea</h3><form class="pform" id="selfAdd">${field("What should work better", '<input id="selfTitle" placeholder="e.g. Read PDFs that are scans" autocomplete="off">')}
+      ${field("Why (what happened, what would be better)", '<textarea id="selfWhy" rows="2"></textarea>')}<div class="acts"><span class="grow"></span><button class="btn go">Add</button></div>${info("selfInfo")}</form>`;
+  if (d.ideas.some((i) => i.status === "working")) proj.poll = setInterval(async () => { const x = await api("/api/improve"); if (!x.ideas.some((i) => i.status === "working") && proj.sel === "__self" && curView === "projects") renderSelf(); }, 5000);
+}
+async function selfReview(id, panel) {
+  panel.innerHTML = note("Running the tests on the copy… (about a minute)");
+  const r = await api(`/api/improve/${id}/review`);
+  if (r.error) { panel.innerHTML = note("That didn't work: " + esc(r.error)); return; }
+  panel.innerHTML = `<div class="selfrev"><h3>The change</h3><pre class="updnotes">${esc(r.stat || "No change was made.")}</pre>
+    <h3>Tests (run by ${esc(NAME())} on the copy)</h3>${note(r.tests_ok ? "They pass." : "They don't pass, so it can't be installed.")}<pre class="updnotes">${esc(r.tests)}</pre>
+    <details class="memext"><summary>Show the whole change</summary><pre class="updnotes diff">${esc(r.diff)}</pre></details>
+    <div class="acts"><button class="btn" data-act="selfdiscard" data-id="${esc(id)}">Discard it</button><span class="grow"></span>${r.tests_ok ? `<button class="btn go" data-act="selfinstall" data-id="${esc(id)}">Install and restart</button>` : ""}</div>${info("selfRevInfo")}</div>`;
 }
 // where the projects live: shown on top, changed here (or with ./install.sh --setup); amber while still among your notes
 const folderBar = (fo) => fo.in_notes
@@ -324,6 +356,31 @@ body().addEventListener("click", async (e) => {
   if (act === "mailsum") askChat(`Summarize email [${mail.open.id}] ("${mail.open.subject}") in a few sentences and tell me if I need to do anything.`, true);
   if (act === "mailreply") askChat(`Draft a reply to email [${mail.open.id}] ("${mail.open.subject}") from ${mail.open.from}. My points: `, false);
   if (act === "pfchange") $("#pfForm").innerHTML = folderForm(proj.folder);
+  if (act === "selfopen") { proj.sel = "__self"; closeWorkspace(); renderProjects(); body().scrollTop = 0; }
+  if (act === "selfreview") selfReview(a.dataset.id, $("#selfPanel"));
+  if (act === "selfdrop") { await post(`/api/improve/${a.dataset.id}/drop`, {}); renderSelf(); }
+  if (act === "selfdiscard") { if (!confirm("Throw this change away? The idea stays on the list.")) return; await post(`/api/improve/${a.dataset.id}/discard`, {}); renderSelf(); }
+  if (act === "selfinstall") {
+    if (!confirm(`Install this change into ${NAME()} and restart it?`)) return;
+    a.disabled = true; const r = await post(`/api/improve/${a.dataset.id}/install`, {});
+    say("selfRevInfo", r.error ? "That didn't work: " + r.error : `Installed (commit ${r.commit}). ${NAME()} restarts…`);
+  }
+  if (act === "selfstart") {  // first exactly what leaves (privacy-filtered), then your confirm
+    const pv = await post(`/api/improve/${a.dataset.id}/start`, {}), panel = $("#selfPanel");
+    if (pv.error) { panel.innerHTML = note("That didn't work: " + esc(pv.error)); return; }
+    proj.selfPv = { id: a.dataset.id, preview: pv.preview };
+    panel.innerHTML = `<div class="preview"><b>Exactly this goes to Claude Code${pv.findings.length ? ` (the privacy filter replaced: ${esc(pv.findings.join(", "))})` : ""}:</b><div>${esc(pv.preview)}</div>
+      <div class="acts"><button type="button" class="btn" data-act="selfcancel">Cancel</button><button type="button" class="btn go cc" data-act="selfgo">Send it</button></div></div>`;
+    panel.scrollIntoView({ block: "nearest" });
+  }
+  if (act === "selfcancel") { proj.selfPv = null; $("#selfPanel").innerHTML = ""; }
+  if (act === "selfgo") {
+    a.disabled = true; $("#selfPanel").insertAdjacentHTML("beforeend", note("Making a fresh copy of the code…"));
+    const r = await post(`/api/improve/${proj.selfPv.id}/start`, { confirm: true, preview: proj.selfPv.preview });
+    proj.selfPv = null;
+    if (r.error) { $("#selfPanel").innerHTML = note("That didn't work: " + esc(r.error)); return; }
+    subtitle("Claude Code started on it."); renderSelf();
+  }
   if (act === "proj") { proj.sel = a.dataset.p || null; proj.preview = null; closeWorkspace(); renderProjects(); body().scrollTop = 0; }
   if (act === "projdone") { await post(`/api/projects/${encodeURIComponent(proj.d.name)}/state`, { done: a.dataset.done === "1" }); renderProject(); }
   if (act === "projterm") { const r = await post(`/api/projects/${encodeURIComponent(proj.d.name)}/terminal`, {}); $("#projInfo").textContent = r.error ? "Couldn't open it: " + r.error : "Opened Claude Code in a terminal."; }
@@ -339,6 +396,12 @@ body().addEventListener("click", async (e) => {
   if (act === "pvsend") toClaude(proj.preview.text, $("#projInfo"));
 });
 body().addEventListener("submit", async (e) => {
+  if (e.target.id === "selfAdd") {
+    e.preventDefault();
+    const r = await post("/api/improve", { title: $("#selfTitle").value, why: $("#selfWhy").value });
+    if (r.error) return say("selfInfo", "That didn't work: " + r.error);
+    return renderSelf();
+  }
   if (e.target.id === "msApp") {
     e.preventDefault();
     const r = await post("/api/mail/direct/microsoft-app", { client_id: $("#msAppId").value });
