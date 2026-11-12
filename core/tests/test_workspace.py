@@ -155,3 +155,19 @@ class Report(unittest.TestCase):
         hist = agent._history(cid)
         self.assertTrue(any(h["role"] == "user" and "don't repeat it" in h["content"] and "cargo run" in h["content"] for h in hist))
         self.assertEqual(work._job(jid)["status"], "done")  # the result line is found even when it isn't the last line
+
+
+class SeenOnScreen(unittest.TestCase):
+    """A run's result doesn't call you when you were looking at that project on the dashboard."""
+
+    def test_viewed_project_results_arrive_seen(self):
+        from amadeus_core import events, db
+        with mock.patch.object(events, "maybe_ring") as ring:
+            old = events.add("work", "Seen Test: done", "earlier result")
+            self.assertEqual(events.seen_project("seen test"), 1)  # opening the page clears what's there
+            new = events.add("work", "Seen Test: questions for you", "while you look")
+            other = events.add("work", "Other Project: done", "not on screen")
+        seen = {r["id"]: r["seen"] for r in db.q("SELECT id, seen FROM events WHERE id IN (?,?,?)", (old, new, other))}
+        self.assertEqual((seen[old], seen[new], seen[other]), (1, 1, 0))
+        self.assertEqual(ring.call_count, 2)  # the first and the other project's; not the one on screen
+        events.VIEWING.clear()

@@ -2,6 +2,7 @@
 Each new event makes Amadeus "call" you through the desktop app (desktop.py), except in quiet hours: then the call
 waits until the morning."""
 import datetime
+import time
 import re
 import threading
 
@@ -46,10 +47,34 @@ def add(kind, title, body="", ref="", cid=""):
         print(f"{kind} joined the call that already says it", flush=True)
         return same
     eid = db.new_id()
-    db.q("INSERT INTO events(id,kind,title,body,ref,conversation_id,created) VALUES(?,?,?,?,?,?,?)",
-         (eid, kind, _plain(title)[:200], _plain(body)[:1200], ref, cid, db.now()))
-    maybe_ring()
+    on_screen = kind in WORK_KINDS and _viewed(title)  # a run's result while you're looking at that project
+    db.q("INSERT INTO events(id,kind,title,body,ref,conversation_id,created,seen) VALUES(?,?,?,?,?,?,?,?)",
+         (eid, kind, _plain(title)[:200], _plain(body)[:1200], ref, cid, db.now(), int(on_screen)))
+    if not on_screen:
+        maybe_ring()
     return eid
+
+
+WORK_KINDS = ("work", "job_failed")
+VIEWING = {}  # project name (casefolded) -> when its page or workspace on the dashboard last said it's open
+VIEW_SECONDS = 20
+
+
+def _viewed(title):
+    name = str(title).split(":", 1)[0].strip().casefold()
+    return time.time() - VIEWING.get(name, 0) < VIEW_SECONDS
+
+
+def seen_project(name):
+    """A project's page is open on the dashboard: what its runs reported is in its timeline there, so those events are
+    seen, and new ones arrive seen while it stays open (otherwise the mini core called you about them as soon as you
+    closed the dashboard)."""
+    VIEWING[str(name).strip().casefold()] = time.time()
+    rows = [r for r in db.q("SELECT id, title FROM events WHERE seen=0 AND kind IN ('work','job_failed')")
+            if r["title"].casefold().startswith(str(name).casefold() + ":")]
+    for r in rows:
+        db.q("UPDATE events SET seen=1 WHERE id=?", (r["id"],))
+    return len(rows)
 
 
 def unseen():

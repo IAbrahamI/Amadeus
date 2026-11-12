@@ -204,6 +204,7 @@ const folderForm = (fo, suggest) => `<form class="pform pfform" id="pfSet"><div 
 async function renderProject() {
   clearInterval(proj.poll);  // (each refresh starts its own: without this the old ones kept refreshing the page forever)
   const d = proj.d = await api(`/api/projects/${encodeURIComponent(proj.sel)}`);
+  if (!d.error) post(`/api/projects/${encodeURIComponent(proj.sel)}/seen`, {}).catch(() => {});  // its results are on screen: no call about them later
   if (d.error) { proj.sel = null; return renderProjects(); }
   const [c, l] = ST[d.state] || ST.idle, last = d.runs[d.runs.length - 1];
   const items = d.messages.map((m) => ({ t: m.created, h: m.role === "user" ? `<div class="tline you"><span class="ts">${ago(m.created)}</span><div><b>You → ${esc(NAME())}</b><p>${esc(m.content)}</p></div></div>`
@@ -234,7 +235,7 @@ async function renderProject() {
   if (tl && tl.lastElementChild && (proj.shown !== d.name || (atEnd && count !== proj.count))) tl.lastElementChild.scrollIntoView({ block: "nearest" });
   else body().scrollTop = readAt;
   proj.shown = d.name; proj.count = count;
-  if (d.running) proj.poll = setInterval(async () => { const x = await api(`/api/projects/${encodeURIComponent(d.name)}`); if (!x.running && proj.sel === d.name && curView === "projects") renderProject(); }, 5000);
+  if (d.running) proj.poll = setInterval(async () => { post(`/api/projects/${encodeURIComponent(d.name)}/seen`, {}).catch(() => {}); const x = await api(`/api/projects/${encodeURIComponent(d.name)}`); if (!x.running && proj.sel === d.name && curView === "projects") renderProject(); }, 5000);
 }
 // to Claude Code: first the privacy filter's preview (exactly what leaves), then the send you confirm
 async function toClaude(text, info) {

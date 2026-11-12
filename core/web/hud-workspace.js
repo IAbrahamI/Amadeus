@@ -258,6 +258,7 @@ async function wsTick() {
 }
 const KIND = { reading: "reading", editing: "editing", writing: "writing" };
 async function tickOnce() {
+  if (Date.now() - (ws.seenAt || 0) > 5000) { ws.seenAt = Date.now(); post(wsApi("/seen"), {}).catch(() => {}); }  // you're looking at it: its results don't call you
   let d; try { d = await api(wsApi("/changes")); } catch { return; }
   if (d.error) return;
   const newest = d.files.reduce((a, f) => (f.modified > (a ? a.modified : 0) ? f : a), null);
