@@ -325,12 +325,23 @@ phase_presidio() {
   if docker image inspect amadeus/presidio-analyzer:en-de >/dev/null 2>&1; then ok "analyzer image built"
   else info "building the analyzer image with the German model (a few minutes)"
     run docker build -t amadeus/presidio-analyzer:en-de "$SCRIPT_DIR/core/privacy/presidio" || return 0; fi
-  if docker container inspect presidio-analyzer >/dev/null 2>&1; then ok "container presidio-analyzer exists"
-  else run docker create --name presidio-analyzer --restart unless-stopped --network amadeus-private --ip 172.30.77.10 \
-    amadeus/presidio-analyzer:en-de; fi
-  if docker container inspect presidio-anonymizer >/dev/null 2>&1; then ok "container presidio-anonymizer exists"
-  else run docker create --name presidio-anonymizer --restart unless-stopped --network amadeus-private --ip 172.30.77.11 \
-    mcr.microsoft.com/presidio-anonymizer:latest; fi
+  presidio_container presidio-analyzer 172.30.77.10 amadeus/presidio-analyzer:en-de
+  presidio_container presidio-anonymizer 172.30.77.11 mcr.microsoft.com/presidio-anonymizer:latest
+}
+
+# One Presidio container. Gunicorn's control socket stays off: with it, a stopped and restarted container hung on
+# start about one time in five (its socket file from the last run stays behind), which made sending a project wait
+# minutes. The containers keep no data, so an older one without the setting is simply created again.
+presidio_container() {
+  local name="$1" ip="$2" image="$3"
+  if docker container inspect "$name" >/dev/null 2>&1; then
+    if docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" | grep -q -- '--no-control-socket'; then
+      ok "container $name exists"; return; fi
+    info "$name: creating it again with the fix for hanging on start (it keeps no data)"
+    run docker rm -f "$name" >/dev/null
+  fi
+  run docker create --name "$name" --restart unless-stopped --network amadeus-private --ip "$ip" \
+    -e GUNICORN_CMD_ARGS=--no-control-socket "$image"
 }
 
 # ---------------------------------------------------------------- Hindsight memory

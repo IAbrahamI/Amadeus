@@ -191,6 +191,8 @@ def _spec_md(s):
 def new_project(cid, text, state):
     """Interactive: 1) what should be built, 2) a few targeted questions, 3) the spec to confirm, 4) one approval."""
     stage = state.get("stage", "start")
+    from . import privacy
+    privacy.warm_up()  # the spec is checked by the privacy filter before it can leave: have it running by then
     if stage == "start":
         goal = re.sub(r"(?i)^.*?(new (work )?project|start a project|projekt)\W*", "", text).strip()
         if len(goal) < 15:

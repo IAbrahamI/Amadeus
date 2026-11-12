@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import threading
 import time
 import urllib.request
 
@@ -100,9 +101,14 @@ def _ner(text, keep=()):
     return merged
 
 
+_starting = threading.Lock()
+
+
 def ensure_presidio():
     """Presidio runs on demand: start the containers if they are stopped (Amadeus stops them when idle).
-    Either container sometimes hangs on a cold start (gunicorn without a worker): restart that one."""
+    Both are up within a few seconds normally (the analyzer loads its language models in about five). Now and then one
+    hangs on a cold start (gunicorn opens its port but never boots a worker), so one that isn't healthy after 20 s is
+    restarted right away, instead of waiting minutes for it."""
     if system.MAC:
         return macfilter.start()
     os.makedirs(os.path.dirname(LAST_USED), exist_ok=True)
@@ -116,16 +122,42 @@ def ensure_presidio():
             return True
         except Exception:
             return False
+
+    def wait(seconds):
+        end = time.time() + seconds
+        while time.time() < end:
+            if all(up(u) for u in services.values()):
+                return True
+            time.sleep(1)
+        return False
     if all(up(u) for u in services.values()):
         return
-    subprocess.run(["docker", "start", *services], capture_output=True, timeout=60)
-    for _ in range(2):
-        for _ in range(25):
-            if all(up(u) for u in services.values()):
+    with _starting:  # a warm-up and a real request at the same time start it once
+        if all(up(u) for u in services.values()):
+            return
+        t0 = time.time()
+        subprocess.run(["docker", "start", *services], capture_output=True, timeout=60)
+        for _ in range(3):
+            if wait(20):
+                print(f"privacy filter ready in {time.time() - t0:.0f}s", flush=True)
                 return
-            time.sleep(2)
-        hung = [name for name, url in services.items() if not up(url)]
-        subprocess.run(["docker", "restart", *hung], capture_output=True, timeout=90)
+            hung = [name for name, url in services.items() if not up(url)]
+            print(f"privacy filter: {', '.join(hung)} hung on start, restarting it", flush=True)
+            subprocess.run(["docker", "restart", "-t", "2", *hung], capture_output=True, timeout=60)
+
+
+def warm_up():
+    """Start it in the background ahead of time (e.g. while you answer a new project's questions), so the moment
+    something has to be checked it's already running."""
+    if filter_available():
+        threading.Thread(target=lambda: _quiet(ensure_presidio), daemon=True).start()
+
+
+def _quiet(fn):
+    try:
+        fn()
+    except Exception as e:
+        print(f"privacy filter warm-up: {e}", flush=True)
 
 
 def filter_available():

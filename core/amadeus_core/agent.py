@@ -347,6 +347,8 @@ def _system(cid):
     from . import quickchat, work
     proj = work.project_of_chat(cid)
     if proj:  # a project's own conversation: it knows the project and its latest Claude Code results
+        from . import privacy
+        privacy.warm_up()  # work handed to Claude Code is checked by the privacy filter first: have it running
         try:
             info = work.project(proj)
             runs = "\n".join(f"- {time.strftime('%d %b %H:%M', time.localtime(r['created']))} ({r['status']}): "
