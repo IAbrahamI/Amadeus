@@ -91,7 +91,7 @@ async function calSave(f) {
 }
 
 // ---------- Mail: one inbox per account, never mixed ----------
-const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: null, days: 30 };
+const mail = { acc: null, accounts: [], off: [], unread: {}, list: [], open: null, days: 30, edit: null };
 async function loadMail() {
   let st;
   try { st = await (await fetch("/api/mail/status")).json(); } catch { st = { connected: false }; }
@@ -131,17 +131,28 @@ async function addMailBox() {
         <div class="acts"><span class="grow"></span><button class="btn go">Save</button></div>${info("msInfo")}</form>`)
     : `<form class="pform" id="dForm">${field("Address", '<input id="dEmail" autocomplete="off" spellcheck="false">')}
         ${field("App password", '<input id="dPass" type="password" autocomplete="off">')}
-        ${p.manual ? srv("dImap", "IMAP server and port (SSL)", "imap.example.com", "993") + srv("dSmtp", "SMTP server and port (SSL)", "smtp.example.com", "465") : ""}
+        ${p.manual ? srv("dImap", "IMAP server and port", "imap.example.com", "993") + srv("dSmtp", "SMTP server and port", "smtp.example.com", "465") : ""}
         <div class="acts"><span class="grow"></span><button class="btn go">Connect</button></div></form>`;
   return `<h3>Add a mail account</h3>${mail.tbDown ? note("Thunderbird isn't running, so its accounts aren't shown. Connect an account directly below, or open Thunderbird further down.") : ""}<h3 style="margin-top:14px">Directly with your provider</h3>
     ${note("Works without other apps, and it isn't limited by what Thunderbird's add-on can do. The login stays on this PC, in a file only you can read, and only goes to that provider's server.")}
     <div class="pform"><label>Provider<select id="dProv" data-act="dprov">${Object.entries(d.providers).map(([k, v]) => `<option value="${k}" ${k === mailProvider ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label></div>
     ${note(esc(p.how) + (p.link ? ` <a href="${esc(p.link)}" target="_blank" rel="noopener">Open that page</a>` : ""))}${form}${info("dInfo")}
-    ${d.accounts.length ? `<h3 style="margin-top:18px">Connected directly</h3>` + rows(d.accounts.map((a) => `<div class="row"><span class="k">${esc(a.providerName)}</span><div class="t"><b>${esc(a.email)}</b></div><button class="btn" data-act="drm" data-id="${esc(a.id)}" data-email="${esc(a.email)}">Remove</button></div>`)) : ""}
+    ${d.accounts.length ? `<h3 style="margin-top:18px">Connected directly</h3>` + rows(d.accounts.map((a) => `<div class="row"><span class="k">${esc(a.providerName)}</span><div class="t"><b>${esc(a.name || a.email)}</b>${a.name ? `<span>${esc(a.email)}</span>` : ""}</div>
+      <div class="acts"><button class="btn${mail.edit === a.id ? " go" : ""}" data-act="dedit" data-id="${esc(a.id)}">Edit</button><button class="btn" data-act="drm" data-id="${esc(a.id)}" data-email="${esc(a.email)}">Remove</button></div></div>` + (mail.edit === a.id ? editMailBox(a) : ""))) : ""}
     <h3 style="margin-top:22px">Through Thunderbird</h3>
     ${note(`If you already use Thunderbird: your sign-in stays there. ${esc(NAME())} only sees mail while Thunderbird runs and what its add-on can reach, so some mail may not work this way, like accounts Thunderbird can't add, or mail it hasn't downloaded.`)}
     ${d.thunderbird ? `${note("In Thunderbird: <b>☰ → Account Settings → Account Actions → Add Mail Account</b>. The account then shows up here by itself.")}<div class="acts"><button class="btn go" data-act="tbopen">Open Thunderbird</button></div>`
       : note("To use it, run <code>./install.sh --setup</code> and say yes to Thunderbird.")}`;
+}
+// Changing a connected account in place: its name, a new app password, the servers of an "Other" account,
+// or signing in to Microsoft again. Nothing is saved until the new login works.
+function editMailBox(a) {
+  const srv = (id, label, v) => field(label, `<span class="radio"><input id="${id}Host" value="${esc(v ? v[0] : "")}" autocomplete="off"><input id="${id}Port" value="${esc(v ? v[1] : "")}" inputmode="numeric" style="max-width:90px"></span>`);
+  return `<form class="pform editacc" id="eForm" data-id="${esc(a.id)}">${field("Name shown for it (optional)", `<input id="eName" value="${esc(a.name || "")}" placeholder="${esc(a.email)}" autocomplete="off">`)}
+    ${a.auth === "microsoft" ? `<div class="acts"><button type="button" class="btn" data-act="dms">Sign in with Microsoft again</button></div>`
+      : field("New app password (leave empty to keep the current one)", '<input id="ePass" type="password" autocomplete="new-password">')}
+    ${a.provider === "other" ? srv("eImap", "IMAP server and port", a.imap) + srv("eSmtp", "SMTP server and port", a.smtp) : ""}
+    <div class="acts"><button type="button" class="btn" data-act="dedit" data-id="${esc(a.id)}">Cancel</button><span class="grow"></span><button class="btn go">Save</button></div>${info("eInfo")}</form>`;
 }
 const when = (d) => { const x = new Date(d), t = new Date(); return x.toDateString() === t.toDateString() ? x.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   : x.toDateString() === addDays(t, -1).toDateString() ? "Yesterday" : x.toLocaleDateString([], { day: "numeric", month: "short" }); };
@@ -302,6 +313,7 @@ body().addEventListener("click", async (e) => {
     window.open(r.url, "_blank");
     say("dInfo", "Finish signing in in your browser, then come back here.");
   }
+  if (act === "dedit") { mail.edit = mail.edit === a.dataset.id ? null : a.dataset.id; return renderMail(); }
   if (act === "drm") {
     if (!confirm(`Remove ${a.dataset.email}? ${NAME()} forgets the login. Your mail stays at your provider.`)) return;
     await post("/api/mail/direct/remove", { id: a.dataset.id }); return loadMail();
@@ -384,6 +396,19 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault(); e.target.form.requestSubmit();
 });
 
+// Saving a changed account (the login is tried first)
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "eForm") return;
+  e.preventDefault();
+  const v = (id) => { const x = document.getElementById(id); return x ? x.value.trim() : ""; }, pass = document.getElementById("ePass");
+  const server = (id) => v(id + "Host") ? { host: v(id + "Host"), port: Number(v(id + "Port")) } : null;
+  say("eInfo", pass && pass.value ? "Trying to sign in…" : "Saving…");
+  const r = await post("/api/mail/direct/update", { id: e.target.dataset.id, name: v("eName"), password: pass ? pass.value : "", imap: server("eImap"), smtp: server("eSmtp") });
+  if (pass) pass.value = "";
+  if (r.error) return say("eInfo", "That didn't work: " + r.error);
+  mail.edit = null; loadMail();
+});
+
 // Adding a mail account directly
 document.addEventListener("change", (e) => { if (e.target.id === "dProv") { mailProvider = e.target.value; renderMail(); } });
 document.addEventListener("submit", async (e) => {
@@ -392,7 +417,7 @@ document.addEventListener("submit", async (e) => {
   const v = (id) => { const x = document.getElementById(id); return x ? x.value.trim() : ""; }, pass = document.getElementById("dPass");
   say("dInfo", "Trying to sign in…");
   const r = await post("/api/mail/direct/add", { provider: mailProvider, email: v("dEmail"), password: pass.value,
-    imap: { host: v("dImapHost"), port: Number(v("dImapPort") || 993), security: "ssl" }, smtp: { host: v("dSmtpHost"), port: Number(v("dSmtpPort") || 465), security: "ssl" } });
+    imap: { host: v("dImapHost"), port: Number(v("dImapPort") || 993) }, smtp: { host: v("dSmtpHost"), port: Number(v("dSmtpPort") || 465) } });
   pass.value = "";
   if (r.error) return say("dInfo", "That didn't work: " + r.error);
   mail.acc = null; loadMail();

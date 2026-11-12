@@ -54,6 +54,35 @@ class Direct(unittest.TestCase):
         d.remove_account(acc["id"])
         self.assertFalse(d.has_accounts())
 
+    def test_edit_in_place_keeps_the_id_and_tries_a_new_login_first(self):
+        with mock.patch.object(d, "_test"):
+            acc = d.add_account("other", "b@example.invalid", "old", {"host": "imap.example.invalid", "port": 993},
+                                {"host": "smtp.example.invalid", "port": 587})
+        saved = d._account(acc["id"])
+        self.assertEqual((saved["imap"][2], saved["smtp"][2]), ("ssl", "starttls"))  # security follows the port
+        with mock.patch.object(d, "_test", side_effect=ValueError("no")), self.assertRaises(ValueError):
+            d.update_account(acc["id"], password="wrong")
+        self.assertEqual(d._account(acc["id"])["password"], "old")  # a failed new login changes nothing
+        with mock.patch.object(d, "_test") as t:
+            d.update_account(acc["id"], name="Work", imap_server={"host": "imap.example.invalid", "port": 993},
+                             smtp_server={"host": "smtp.example.invalid", "port": "587"})  # only the name changed: no login
+            t.assert_not_called()
+            d.update_account(acc["id"], password="new", smtp_server={"host": "mail.example.invalid", "port": 465})
+            t.assert_called_once()
+        now = d._account(acc["id"])
+        self.assertEqual((now["password"], now["smtp"], now["name"]), ("new", ["mail.example.invalid", 465, "ssl"], "Work"))
+        self.assertEqual(d.op_accounts()[0]["name"], "Work")
+        self.assertNotIn("new", json.dumps(d.listing()))
+        with mock.patch.object(d, "_test"):  # adding the same address again keeps its id and its name
+            self.assertEqual(d.add_account("other", "B@example.invalid", "x", {"host": "imap.example.invalid", "port": 993},
+                                           {"host": "smtp.example.invalid", "port": 465})["id"], acc["id"])
+        self.assertEqual(d._account(acc["id"])["name"], "Work")
+        d.update_account(acc["id"], name="")
+        self.assertEqual(d.op_accounts()[0]["name"], "B@example.invalid")  # a cleared name shows the address again
+        with self.assertRaises(ValueError):
+            d.update_account("d:gone", name="x")
+        d.remove_account(acc["id"])
+
     def test_errors_hide_the_login(self):
         self.assertNotIn("hunter2", d._clean(Exception("bad login hunter2"), {"password": "hunter2"}))
 

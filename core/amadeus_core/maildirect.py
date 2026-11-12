@@ -86,8 +86,10 @@ def is_ours(account_id):
 
 def listing():
     """For the page: never a password or token."""
-    return [{"id": a["id"], "email": a["email"], "provider": a.get("provider", "other"),
-             "providerName": PROVIDERS.get(a.get("provider"), PROVIDERS["other"])["name"]} for a in _load()]
+    return [{"id": a["id"], "email": a["email"], "name": a.get("name", ""), "provider": a.get("provider", "other"),
+             "providerName": PROVIDERS.get(a.get("provider"), PROVIDERS["other"])["name"], "auth": a.get("auth", "password"),
+             "imap": a.get("imap") if a.get("provider") == "other" else None,
+             "smtp": a.get("smtp") if a.get("provider") == "other" else None} for a in _load()]
 
 
 def _account(account_id):
@@ -98,8 +100,10 @@ def _account(account_id):
 
 
 def _server(value, what):
-    """Host, port, security from what you typed for a custom server."""
-    host, port, sec = str(value.get("host", "")).strip(), int(value.get("port") or 0), value.get("security", "ssl")
+    """Host, port, security from what you typed for a custom server. Without a security given it follows the port:
+    993 and 465 are encrypted from the start (ssl), 143, 587 and the rest start plain and switch over (starttls)."""
+    host, port = str(value.get("host", "")).strip(), int(value.get("port") or 0)
+    sec = value.get("security") or ("ssl" if port in (993, 465) else "starttls")
     if not re.fullmatch(r"[A-Za-z0-9.\-]{1,253}", host) or not 0 < port < 65536 or sec not in ("ssl", "starttls"):
         raise ValueError(f"The {what} server settings don't look right.")
     return (host, port, sec)
@@ -115,13 +119,64 @@ def add_account(provider, address, password, imap_server=None, smtp_server=None)
         raise ValueError("Fill in the address and the password.")
     imap = p["imap"] or _server(imap_server or {}, "IMAP")
     smtp = p["smtp"] or _server(smtp_server or {}, "SMTP")
-    acc = {"id": "d:" + db.new_id()[:10], "email": address, "provider": provider, "imap": list(imap), "smtp": list(smtp),
+    acc = {"id": _same_id(address), "email": address, "provider": provider, "imap": list(imap), "smtp": list(smtp),
            "auth": "password", "password": password}
     _test(acc)
-    with _lock:
-        rest = [a for a in _load() if a["email"].lower() != address.lower()]
-        _save(rest + [acc])
+    _replace(acc)
     return {"id": acc["id"], "email": address}
+
+
+def _same_id(address):
+    """Adding an address again (a new password, signing in again) keeps its id, so what refers to it (an account you
+    switched off, a mail Amadeus is to remind you of) still does."""
+    old = next((a for a in _load() if a["email"].lower() == address.lower()), None)
+    return old["id"] if old else "d:" + db.new_id()[:10]
+
+
+def _replace(acc, keep_name=True):
+    """Saves acc in its place. keep_name: signing in again keeps the name you gave it."""
+    with _lock:
+        old = next((a for a in _load() if a["id"] == acc["id"]), None)
+        if keep_name and old and old.get("name") and not acc.get("name"):
+            acc["name"] = old["name"]
+        _close(acc["id"])  # the next request signs in with what's new
+        accounts = [a for a in _load() if a["id"] == acc["id"] or a["email"].lower() != acc["email"].lower()]
+        at = next((i for i, a in enumerate(accounts) if a["id"] == acc["id"]), None)
+        if at is None:
+            accounts.append(acc)
+        else:
+            accounts[at] = acc  # it keeps its place in the list
+        _save(accounts)
+
+
+def update_account(account_id, name=None, password=None, imap_server=None, smtp_server=None):
+    """Change a connected account in place: the name shown for it, a new (app) password, or the servers of an
+    "Other" account. A new login is tried before it's saved; the old one keeps working if it fails."""
+    try:
+        acc = dict(_account(str(account_id or "")))
+    except RuntimeError as e:
+        raise ValueError(str(e)) from None
+    if name is not None:
+        name = str(name).strip()
+        if len(name) > 60:
+            raise ValueError("Keep the name under 60 characters.")
+        acc["name"] = name
+    login = False
+    if password:
+        if acc.get("auth") != "password":
+            raise ValueError("This account signs in with Microsoft: use “Sign in again”.")
+        acc["password"], login = str(password), True
+    if acc.get("provider") == "other":
+        for key, value, what in (("imap", imap_server, "IMAP"), ("smtp", smtp_server, "SMTP")):
+            if value and value.get("host"):
+                new = list(_server(value, what))
+                if new[:2] == list(acc[key][:2]) and not value.get("security"):
+                    continue  # unchanged (the page sends host and port only): keep its security as it is
+                login, acc[key] = True, new
+    if login:
+        _test(acc)
+    _replace(acc, keep_name=False)
+    return {"id": acc["id"], "email": acc["email"], "name": acc.get("name", "")}
 
 
 def remove_account(account_id):
@@ -213,11 +268,10 @@ def ms_finish(state, code):
     address = claims.get("email") or claims.get("preferred_username") or ""
     if not address:
         raise ValueError("Microsoft didn't say which address this is.")
-    acc = {"id": "d:" + db.new_id()[:10], "email": address, "provider": "outlook", "imap": list(PROVIDERS["outlook"]["imap"]), "smtp": [],
+    acc = {"id": _same_id(address), "email": address, "provider": "outlook", "imap": list(PROVIDERS["outlook"]["imap"]), "smtp": [],
            "auth": "microsoft", "refresh": t["refresh_token"], "access": t["access_token"], "expires": time.time() + int(t.get("expires_in", 3000))}
     _test(acc)
-    with _lock:
-        _save([a for a in _load() if a["email"].lower() != address.lower()] + [acc])
+    _replace(acc)
     return {"id": acc["id"], "email": address}
 
 
@@ -815,7 +869,7 @@ def op_forward(id=None, to=None, body="", accountId="", **_):
 
 
 def op_accounts(**_):
-    return [{"id": a["id"], "name": a["email"], "type": "imap", "identities": [{"id": a["id"], "email": a["email"], "name": ""}]} for a in _load()]
+    return [{"id": a["id"], "name": a.get("name") or a["email"], "type": "imap", "identities": [{"id": a["id"], "email": a["email"], "name": ""}]} for a in _load()]
 
 
 def op_ping(**_):

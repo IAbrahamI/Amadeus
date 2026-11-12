@@ -537,13 +537,15 @@ class Handler(BaseHTTPRequestHandler):
             (off.discard if b.get("read", True) else off.add)(aid)
             db.set_setting("mail_accounts_off", sorted(off))
             return self._json({"off": sorted(off)})
-        if p in ("/api/mail/direct/add", "/api/mail/direct/remove", "/api/mail/direct/microsoft", "/api/mail/direct/microsoft-app"):
+        if p in ("/api/mail/direct/add", "/api/mail/direct/update", "/api/mail/direct/remove", "/api/mail/direct/microsoft", "/api/mail/direct/microsoft-app"):
             from . import maildirect
             if self._tailnet():
                 return self._json({"error": "Only on the PC."}, 403)
             try:
                 if p.endswith("/add"):
                     return self._json(maildirect.add_account(b.get("provider"), b.get("email"), b.get("password"), b.get("imap"), b.get("smtp")))
+                if p.endswith("/update"):
+                    return self._json(maildirect.update_account(b.get("id"), b.get("name"), b.get("password"), b.get("imap"), b.get("smtp")))
                 if p.endswith("/remove"):
                     return self._json(maildirect.remove_account(str(b.get("id", ""))))
                 if p.endswith("/microsoft-app"):
