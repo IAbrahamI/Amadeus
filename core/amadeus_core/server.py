@@ -262,6 +262,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/folder":  # Settings → Connectors: where your notes and projects are
             from . import notesfolder
             return self._json(notesfolder.status())
+        if p == "/api/memory/source":  # Settings → Connectors: which Hindsight, and whether it answers (never its key)
+            from . import memory
+            return self._json(memory.status())
         if p == "/api/connectors":
             from . import mcp
             on = tools.enabled_connectors()
@@ -695,6 +698,16 @@ class Handler(BaseHTTPRequestHandler):
             from . import mcp
             try:
                 return self._json(mcp.add(b.get("name", ""), b.get("command", ""), b.get("env") or {}))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if p == "/api/memory/source":  # use a Hindsight you already run, or the one on this computer again
+            from . import memory
+            if self._tailnet():
+                return self._json({"error": "Only on this computer."}, 403)
+            try:
+                if b.get("action") == "local":
+                    return self._json(memory.use_local())
+                return self._json(memory.use_external(b.get("url", ""), b.get("bank", ""), b.get("key", "")))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
         if p == "/api/connectors/remove":

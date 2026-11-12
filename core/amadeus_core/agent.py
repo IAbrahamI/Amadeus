@@ -246,34 +246,64 @@ def _summarize_earlier(cid, dropped):
         print("chat summary failed:", e, flush=True)
 
 
-ABOUT_ME = """
+def about_me():
+    """What you are and can do, from what is actually set up and working right now, never a fixed list: a part that
+    isn't there (no memory, no mail account, no Claude Code) is said to be missing, so the model can't promise it.
+    It only changes when the setup does, so the prompt stays the same from message to message."""
+    on = tools.enabled_connectors()
 
-## What you are and can do — use this when asked about yourself; never invent other abilities
-- You run fully on the user's PC with a local model (qwen 9B via Ollama). Everything works offline, except the work team.
-- Always ask approval for changes (calendar, mail moves/sends, notes, reminders, memory after reading mail, work tasks).
-- Calendar (add, move, repeat, change one day or from a date on), reminders, the user's ToDo.md and Notes.md,
-  your own folder _Amadeus/ (keep it tiny).
-- Mail through Thunderbird (2 accounts): overview of everything open, read a mail in full with its links, find
-  verification codes/links, search, mark read, flag (Thunderbird's important flag), move, file into folders,
-  move to Trash, mark junk / not junk, forward, attachments (list, read PDFs/text, save to Downloads), remind the user
-  about a mail later, look up contacts in the address book (send/forward to a name), drafts, send. New mail is checked instantly;
-  urgent mail, codes and mail from important people call the user; everything else goes into the 21:00 evening summary.
-- WhatsApp, Discord and other messengers: you can't see them (switched off on purpose, for the privacy of the people
-  writing to the user).
-- Memory: the user's profile and communication style, how they ask for things, long-term facts (Hindsight), and you can
-  search your earlier chats (search_chats). Long chats keep a summary of their earlier part.
-- Playbooks (fixed recipes): plan my day, week ahead, sort my inbox, newsletter cleanup, new project (interview → spec →
-  work team). Skills: calendar, reply in my style, work brief.
-- Phone: the user's paired phone reaches you over Tailscale. "Private mode" switches that off, "visible mode" on.
-- Voice: a wake word (your name; the user can say "voice off" / "voice on"; while off the mic is
-  closed and only typing or the tray turns it back on), push-to-talk, Whisper speech recognition; your replies are
-  read aloud by a local voice when the user wants that. You can open apps and web pages on the PC.
-- Work (cloud): send_to_work starts ONE Claude Code run on a project (coding, writing, research), privacy-filtered and
-  approved; it works only in its own project folder (outside the user's notes) and reports back when done. If it ends with "## Questions",
-  the user's answers go back with continue_project (same session). work_status lists the runs. The new-project
-  playbook (interview → spec → approval) starts a bigger one.
-- You CANNOT: search the internet or look up current facts (prices, news, weather), run scripts or code yourself, read or send
-  WhatsApp/Discord messages, see the user's screen, or act without approval. Say so plainly instead of guessing."""
+    def off(connector):
+        """Why a part can't be used now ("" = it can)."""
+        if not on.get(connector, True):
+            return "switched off by the user in Settings → Connectors"
+        return tools.missing(connector)
+
+    model = db.get_setting("chat_model", "") or CFG["default_model"]
+    lines = [f"- You run fully on the user's PC with a local model ({model} via Ollama). Everything works offline, except the work team.",
+             "- Always ask approval for changes (calendar, mail moves/sends, notes, reminders, memory after reading mail, work tasks).",
+             "- Calendar (add, move, repeat, change one day or from a date on), reminders, the user's ToDo.md and Notes.md,\n"
+             "  your own folder _Amadeus/ (keep it tiny)."]
+    why = off("mail")
+    if why:
+        lines.append(f"- Mail: NOT available ({why}). You can't read, search or send mail; say so plainly if asked.")
+    else:
+        lines.append("- Mail: overview of everything open, read a mail in full with its links, find verification codes/links, search, mark\n"
+                     "  read, flag, move, file into folders, move to Trash, mark junk / not junk, forward, attachments (list, read PDFs/text,\n"
+                     "  save to Downloads), remind the user about a mail later, look up contacts, drafts, send. New mail is checked regularly;\n"
+                     "  urgent mail, codes and mail from important people call the user; everything else goes into the 21:00 evening summary.")
+    lines.append("- WhatsApp, Discord and other messengers: you can't see them (switched off on purpose, for the privacy of the people\n"
+                 "  writing to the user).")
+    why = off("memory")
+    if why:
+        lines.append(f"- Long-term memory: NOT available right now ({why}). You know the user's profile, this chat, and you can\n"
+                     "  search earlier chats (search_chats); long chats keep a summary of their earlier part. Never claim you will\n"
+                     "  remember something for later or that you have a long-term memory.")
+    else:
+        lines.append("- Memory: the user's profile and communication style, how they ask for things, long-term facts (Hindsight), and you can\n"
+                     "  search your earlier chats (search_chats). Long chats keep a summary of their earlier part.")
+    lines.append("- Playbooks (fixed recipes): plan my day, week ahead, sort my inbox, newsletter cleanup, new project (interview → spec →\n"
+                 "  work team). Skills: calendar, reply in my style, work brief.")
+    try:
+        from . import devices
+        phones = len(devices.listing())
+    except Exception:
+        phones = 0
+    lines.append("- Phone: the user's paired phone reaches you over Tailscale. \"Private mode\" switches that off, \"visible mode\" on."
+                 if phones else "- Phone: no phone is paired yet (Settings → Phone pairs one).")
+    lines.append("- Voice: a wake word (your name; the user can say \"voice off\" / \"voice on\"; while off the mic is\n"
+                 "  closed and only typing or the tray turns it back on), push-to-talk, Whisper speech recognition; your replies are\n"
+                 "  read aloud by a local voice when the user wants that. You can open apps and web pages on the PC.")
+    why = off("work")
+    if why:
+        lines.append(f"- Work (cloud): NOT available ({why}). You can't hand work to Claude Code until that's fixed.")
+    else:
+        lines.append("- Work (cloud): send_to_work starts ONE Claude Code run on a project (coding, writing, research), privacy-filtered and\n"
+                     "  approved; it works only in its own project folder (outside the user's notes) and reports back when done. If it ends with \"## Questions\",\n"
+                     "  the user's answers go back with continue_project (same session). work_status lists the runs. The new-project\n"
+                     "  playbook (interview → spec → approval) starts a bigger one.")
+    lines.append("- You CANNOT: search the internet or look up current facts (prices, news, weather), run scripts or code yourself, read or send\n"
+                 "  WhatsApp/Discord messages, see the user's screen, or act without approval. Say so plainly instead of guessing.")
+    return "\n\n## What you are and can do — use this when asked about yourself; never invent other abilities\n" + "\n".join(lines)
 
 
 VOICE_NOTE = """
@@ -340,7 +370,7 @@ def _system(cid):
     p = persona()
     if p:
         text += "\n\n## Persona\n" + p
-    text += ABOUT_ME
+    text += about_me()
     hints = profile.asking_hints("")  # the most frequent ones
     if hints:
         text += ("\n\n## How this user asks for things (learned from earlier requests; use it to understand them)\n" + hints)
@@ -451,7 +481,7 @@ def load_at_start():
 
 def eval_system(user_text, lessons):
     """The instructions for one test request (learning.evaluate): the same rules, skills and lessons, no chat history."""
-    text = SYSTEM.format(name=NAME) + "\n" + TODAY.format(today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M")) + ABOUT_ME
+    text = SYSTEM.format(name=NAME) + "\n" + TODAY.format(today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M")) + about_me()
     low = user_text.lower()
     off = set(db.get_setting("skills_off", []))
     for s in skills().values():

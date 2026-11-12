@@ -12,7 +12,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from . import agenda, db, grounding, macmemory, mailbridge, system
+from . import agenda, db, grounding, mailbridge, system
 from .config import CFG, NAME
 
 
@@ -29,11 +29,8 @@ def _inside_notes(path):
 
 # ---------- memory (Hindsight, private bank) ----------
 def _hs(path, body):
-    key = json.loads(Path(CFG["hindsight_key_file"]).read_text())[CFG["hindsight_key_name"]]
-    bank = urllib.parse.quote(CFG["hindsight_bank"], safe="")
-    req = urllib.request.Request(f"{CFG['hindsight_url']}/v1/default/banks/{bank}{path}", json.dumps(body).encode(),
-                                 {"content-type": "application/json", "authorization": f"Bearer {key}"})
-    return json.load(urllib.request.urlopen(req, timeout=120))
+    from . import memory
+    return memory.request(path, body)
 
 
 def recall(query):
@@ -85,10 +82,8 @@ def core_stats():
 
 
 def _hs_get(path):
-    key = json.loads(Path(CFG["hindsight_key_file"]).read_text())[CFG["hindsight_key_name"]]
-    bank = urllib.parse.quote(CFG["hindsight_bank"], safe="")
-    req = urllib.request.Request(f"{CFG['hindsight_url']}/v1/default/banks/{bank}{path}", headers={"authorization": f"Bearer {key}"})
-    return json.load(urllib.request.urlopen(req, timeout=60))
+    from . import memory
+    return memory.request(path, None, timeout=60)
 
 
 def remember(fact):
@@ -1475,8 +1470,10 @@ def missing(connector):
     if connector == "mail":
         from . import mailbridge
         return "" if mailbridge.configured() else "Not connected yet. Add an account on the Mail page."
-    if connector == "memory" and system.MAC and not macmemory.ready():
-        return "Not set up yet: Settings → Connectors → Memory."
+    if connector == "memory":
+        from . import memory
+        ok, why = memory.check()
+        return "" if ok else why
     if connector == "work" and not shutil.which("claude"):
         return "Needs Claude Code: install it and log in once by running claude."
     return ""

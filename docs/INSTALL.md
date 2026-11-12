@@ -78,6 +78,8 @@ It sets up, in this order:
    on an internal Docker network without internet access. Amadeus starts them when it needs them.
 4. **Memory.** A Hindsight container that only answers requests carrying your key, with its data in the Docker
    volume `hindsight-data`. The first start downloads embedding models and can take a few minutes.
+   Already running Hindsight somewhere else? Enter its address, memory bank and key under **Settings → Connectors →
+   Long-term memory → Use a Hindsight you already run**, then you can remove the container this step made. The key is kept in `secrets/`, never in `config.json`.
 5. **One folder for your files.** The install asks where (suggested `~/Amadeus`). `Notes/` holds your to-dos and notes
    as plain Markdown, so any notes app can open it, with nothing to connect. `Projects/` holds Claude
    Code's work, kept apart so a work run never sees your notes. An hourly snapshot of `Notes/` lets you undo any change.

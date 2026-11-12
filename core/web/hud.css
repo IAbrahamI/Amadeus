@@ -632,7 +632,7 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
   background-size: 26px 2px, 2px 26px, 26px 2px, 2px 26px, 26px 2px, 2px 26px, 26px 2px, 2px 26px;
   background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%; }
 .setup-head { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px dashed var(--line-hi); }
-.setup-tag { font: 600 12px var(--display); letter-spacing: .24em; padding: 6px 12px; background: var(--cyan); color: var(--ink); }
+.setup-tag { font: 600 12px var(--display); letter-spacing: .24em; padding: 6px 12px; background: var(--cyan); color: var(--cyan); }
 .setup-sub { font: 400 13px var(--mono); color: var(--dim); }
 .setup-steps { list-style: none; display: flex; gap: 6px; margin: 16px 0 18px; padding: 0; counter-reset: su; }
 .setup-steps li { flex: 1; counter-increment: su; font: 500 10.5px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); padding-top: 8px; border-top: 2px solid var(--line-hi); }
@@ -762,7 +762,7 @@ button.mark { cursor: pointer; padding: 0; } button.mark:hover { box-shadow: 0 0
 .seg i { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); background: var(--cyan); box-shadow: 0 0 12px rgba(var(--a),.45); transition: transform .28s cubic-bezier(.2,.8,.2,1); }
 .seg.right i { transform: translateX(100%); }
 .seg button { position: relative; z-index: 1; padding: 7px 18px; font: 600 11px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); transition: color .28s; }
-.seg button[aria-selected="true"] { color: var(--ink); }
+.seg button[aria-selected="true"] { color: var(--cyan); }
 .seg button:hover:not([aria-selected="true"]) { color: var(--text); }
 
 /* Checkboxes: a square in the HUD's lines with a lit tick, instead of the system one */
@@ -782,3 +782,9 @@ input[type="checkbox"]:checked { background: var(--cyan); border-color: var(--cy
 input[type="checkbox"]:checked::after { transform: rotate(45deg) scale(1); }
 input[type="checkbox"]:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
 input[type="checkbox"]:disabled { opacity: .75; cursor: default; }
+/* Settings → Connectors: a section you open when you need it */
+.memext { margin: 10px 0 4px; max-width: 560px; }
+.memext > summary { cursor: pointer; font: 600 10px var(--display); letter-spacing: .22em; text-transform: uppercase; color: var(--dim); padding: 6px 0; list-style: none; }
+.memext > summary::before { content: "+ "; color: var(--cyan); }
+.memext[open] > summary::before { content: "− "; }
+.memext > summary:hover { color: var(--text); }

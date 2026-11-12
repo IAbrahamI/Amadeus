@@ -65,7 +65,7 @@ const PAGES = {
         <div class="acts"><input type="file" id="skFile" accept=".md"><span class="grow"></span><button class="btn go">Add skill</button></div>${info("skInfo")}</form>`;
   },
   async connectors() {
-    const [list, fo, su] = await Promise.all([api("/api/connectors"), api("/api/folder"), api("/api/setup")]);
+    const [list, fo, su, ms] = await Promise.all([api("/api/connectors"), api("/api/folder"), api("/api/setup"), api("/api/memory/source")]);
     const filterBusy = (su.job || {}).kind === "filter" && !su.job.done, memoryBusy = (su.job || {}).kind === "memory" && !su.job.done;
     if (filterBusy || memoryBusy) setTimeout(() => set.page === "connectors" && PAGES.connectors(), 2000);
     body().innerHTML = head("Connectors", "What it may use. Anything that changes something always asks you first.") +
@@ -75,6 +75,7 @@ const PAGES = {
         : `${note(memoryBusy ? esc((su.job || {}).text || "Setting it up…") : ((su.job || {}).kind === "memory" && su.job.error ? esc(su.job.error) + " " : "") + "So Amadeus remembers what you've told it from one day to the next. About 4 GB. It runs here, and macOS seals it off from the internet and your other files.")}${memoryBusy ? "" : '<div class="acts"><span class="grow"></span><button class="btn go" data-act="msetup">Set up the memory</button></div>'}`}` : "") +
       (su.claude && su.claude.signed_in !== undefined ? `<h3>Claude Code</h3>${su.claude.signed_in ? note("Signed in. Projects can run.")
         : `${note(su.claude.installed ? "Not signed in, so projects can't run. A Terminal window opens where you sign in on Anthropic's page. Amadeus never sees your login." : "Not installed. Projects need it. A Terminal window opens with Anthropic's own installer, then you sign in on Anthropic's page.")}<div class="acts"><span class="grow"></span><button class="btn go" data-act="csetup">${su.claude.installed ? "Sign in" : "Install and sign in"}</button></div>`}` : "") +
+      memorySource(ms) +
       `<h3>Your folder</h3>${note(`Your to-dos and notes are plain Markdown files in this folder, so you can open it in any notes app. Every hour a snapshot is saved, so any change can be undone. Your projects are in ${esc(fo.projects)}.`)}
        <form class="pform" id="folderForm">${field("Your notes", `<input id="folderNotes" value="${esc(fo.notes)}" autocomplete="off" spellcheck="false">`)}<div class="acts"><span class="grow"></span><button class="btn go">Use this folder</button></div>${info("folderInfo")}</form>` +
       `<h3 style="margin-top:22px">What it may use</h3>` +
@@ -148,6 +149,7 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "asreset") { if (!confirm("Use the default assistant (default name, personality and icon)? Your own files are kept.")) return; await post("/api/assistant/reset", {}); restarted(); }
   if (act === "vuse") { await post("/api/voice/voices/select", { id: d.v }); PAGES.voice(); }
+  if (act === "memlocal") { await post("/api/memory/source", { action: "local" }); PAGES.connectors(); return; }
   if (act === "msetup") { await post("/api/setup", { action: "memory" }); setTimeout(() => PAGES.connectors(), 300); return; }
   if (act === "csetup") { await post("/api/setup", { action: "claude" }); setTimeout(() => PAGES.connectors(), 8000); return; }
   if (act === "fsetup") { await post("/api/setup", { action: "filter" }); setTimeout(() => PAGES.connectors(), 300); return; }
@@ -224,6 +226,12 @@ body().addEventListener("submit", async (e) => {
       const r = await post("/api/skills/add", file ? { file: await file.text(), name: $("#skName").value } : { name: $("#skName").value, description: $("#skDesc").value, triggers: $("#skTrig").value, body: $("#skBody").value });
       if (r.error) return say("skInfo", "That didn't work: " + r.error); PAGES.skills();
     },
+    async memExt() {
+      say("memInfo", "Testing…");
+      const r = await post("/api/memory/source", { url: $("#memUrl").value, bank: $("#memBank").value, key: $("#memKey").value });
+      if (r.error) return say("memInfo", "That didn't work: " + r.error);
+      PAGES.connectors();
+    },
     async connAdd() {
       const env = Object.fromEntries($("#connEnv").value.split("\n").map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]));
       say("connInfo", "Starting it to check…");
@@ -258,4 +266,19 @@ async function speakText(text, btn) {
     setMode("speak"); await speaking.play(); btn.textContent = "■ Stop";
   } catch (x) { btn.textContent = label; subtitle("Can't read it aloud: " + (x.message.includes("No text-to-speech") ? "no voice installed (see the install guide)." : x.message)); }
   btn.disabled = false;
+}
+
+// Settings → Connectors: the long-term memory on this computer, or a Hindsight you already run
+function memorySource(ms) {
+  const state = ms.ready ? (ms.mode === "external" ? `Connected to your Hindsight at ${esc(ms.url)}, memory bank “${esc(ms.bank)}”.` : "The memory on this computer is running.")
+    : `${esc(ms.error || "It doesn't answer right now.")} Until it works, ${esc(NAME())} tells you it has no long-term memory instead of pretending.`;
+  const warn = ms.leaves_pc ? note(`What ${esc(NAME())} remembers is sent to that computer${ms.plain_http ? ", unencrypted (http). Use https, or reach it through Tailscale," : ""} so keep it on a machine only you control.`) : "";
+  return `<h3>Long-term memory</h3>${note(state)}${warn}
+    ${ms.mode === "external" ? `<div class="acts"><span class="grow"></span><button class="btn" data-act="memlocal">Use the memory on this computer again</button></div>` : ""}
+    <details class="memext"><summary>${ms.mode === "external" ? "Change the address or key" : "Use a Hindsight you already run"}</summary>
+      ${note(`${esc(NAME())} then remembers there instead of on this computer. What the other one stores stays there; nothing is copied over.`)}
+      <form class="pform" id="memExt">${field("Address", `<input id="memUrl" placeholder="http://192.168.1.20:8888" value="${ms.mode === "external" ? esc(ms.url) : ""}" autocomplete="off" spellcheck="false">`)}
+        ${field("Memory bank", `<input id="memBank" placeholder="amadeus-private" value="${ms.mode === "external" ? esc(ms.bank) : ""}" autocomplete="off" spellcheck="false">`)}
+        ${field("API key (empty if it has none)", '<input id="memKey" type="password" autocomplete="off">')}
+        <div class="acts"><span class="grow"></span><button class="btn go">Test and use</button></div>${info("memInfo")}</form></details>`;
 }

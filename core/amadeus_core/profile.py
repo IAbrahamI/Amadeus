@@ -59,8 +59,12 @@ def _curate(user_text, reply, used_mail):
     out = json.loads(llm.complete(CFG["default_model"], prompt, as_json=True) or "{}")
     facts = [f.strip() for f in out.get("facts", []) if isinstance(f, str) and 8 < len(f.strip()) < 300][:5]
     style = [f.strip() for f in out.get("style", []) if isinstance(f, str) and 8 < len(f.strip()) < 300][:3]
-    for f in facts:
-        tools.remember(f)
+    for f in facts:  # without a working memory they still reach the profile below
+        try:
+            tools.remember(f)
+        except Exception as e:
+            print("fact not kept in long-term memory:", str(e)[:120], flush=True)
+            break
     pending = db.get_setting("profile_pending", []) + [f"[fact] {f}" for f in facts] + [f"[style] {s}" for s in style]
     db.set_setting("profile_pending", pending[-60:])
     if len(pending) >= MERGE_EVERY:
