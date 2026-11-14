@@ -183,8 +183,23 @@ def suggest_latest(hw, latest, speed=None):
     return sorted(picks[:3], key=lambda p: p["model"] not in {m for m, _, _ in CATALOG})  # what's proven with Amadeus comes first
 
 
-TOOL_TRIES = ["What time is it in Paris? Use the tool.", "Use get_time to find the current time in Paris.",
-              "Call the get_time tool with the city Paris, then tell me the result."]
+# What the setup asks a model before recommending it: Amadeus' own kind of work, in small. A model passes if it picks the
+# right tool (or none) and answers from a tool's result: the failures seen with real use were wrong picks (a calendar
+# event for the morning brief), tools for small talk, and no answer after a tool.
+_S = {"type": "string"}
+CHECK_TOOLS = [{"type": "function", "function": {"name": n, "description": d, "parameters": {"type": "object", "properties": p, "required": list(p)}}}
+               for n, d, p in (
+                   ("todo_add", "Add items to the user's to-do list.", {"items": {"type": "array", "items": _S}}),
+                   ("todo_list", "Show the open items on the user's to-do list.", {}),
+                   ("calendar_add", "Add an event to the user's calendar.", {"title": _S, "start": _S}),
+                   ("create_reminder", "Remind the user at a time.", {"text": _S, "when": _S}),
+                   ("brief_change", "Change what goes into the morning brief the assistant writes for the user every day. "
+                                    "It is not a calendar event or a reminder.", {"which": _S, "add": {"type": "array", "items": _S}}))]
+TOOL_CASES = [  # (what the user says, the tool that's right or None for no tool, a word its arguments must hold)
+    ("Put buy milk on my to-do list.", "todo_add", "milk"),
+    ("Thanks, that's all for now!", None, ""),
+    ("Please put the weather for my town into the morning brief you write me every day.", "brief_change", "weather"),
+]
 
 
 def _ollama_says(e):
@@ -197,12 +212,11 @@ def _ollama_says(e):
 
 def tool_check(model):
     """Can Amadeus work with it? ("ok" | "no" | "unknown", why). "unknown" means the check itself couldn't run, which says
-    nothing about the model. It has to do what Amadeus does: call a tool with the right argument, then answer from the result."""
-    tool = {"type": "function", "function": {"name": "get_time", "description": "The current time in a city.", "parameters": {
-        "type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}
-    chat = lambda messages: _api("/api/chat", {"model": model, "stream": False, "think": False, "keep_alive": "1m", "tools": [tool],  # noqa: E731
+    nothing about the model. It has to do Amadeus' kind of work: the right tool with the right argument, no tool for
+    small talk, the morning brief instead of the calendar, and an answer from a tool's result. Each case gets two tries."""
+    chat = lambda messages: _api("/api/chat", {"model": model, "stream": False, "think": False, "keep_alive": "1m", "tools": CHECK_TOOLS,  # noqa: E731
                                                "options": {"temperature": 0}, "messages": messages}, timeout=600)["message"]
-    trouble = ""
+    trouble, answered = "", False
     try:
         try:
             caps = _api("/api/show", {"model": model}).get("capabilities")
@@ -210,22 +224,31 @@ def tool_check(model):
             caps = None  # (an older Ollama doesn't say: the real test below decides)
         if caps is not None and "tools" not in caps:
             return "no", "Ollama says this model has no tool support"
-        answered = False
-        for prompt in TOOL_TRIES:
-            try:
-                first = [{"role": "user", "content": prompt}]
-                said = chat(first)
-                answered = True
-                call = next((c["function"] for c in said.get("tool_calls") or [] if c["function"]["name"] == "get_time"), None)
-                if not call or "paris" not in str((call.get("arguments") or {}).get("city", "")).lower():
-                    continue
-                final = chat(first + [said, {"role": "tool", "content": "14:05"}])
-                if final.get("content", "").strip():
-                    return "ok", ""
-            except (OSError, ValueError, KeyError) as e:
-                trouble = _ollama_says(e)
-        if answered and not trouble:
-            return "no", "in three tries it didn't use the tool correctly"
+        for said, right, word in TOOL_CASES:
+            passed = False
+            for _ in range(2):
+                try:
+                    first = [{"role": "user", "content": said}]
+                    reply = chat(first)
+                    answered = True
+                    calls = [c["function"] for c in reply.get("tool_calls") or []]
+                    if right is None:
+                        passed = not calls and bool(reply.get("content", "").strip())
+                    elif calls and calls[0]["name"] == right and word in json.dumps(calls[0].get("arguments") or {}).lower():
+                        # and it answers from what the tool said
+                        final = chat(first + [reply, {"role": "tool", "content": "Done: it's saved."}])
+                        passed = bool(final.get("content", "").strip())
+                except (OSError, ValueError, KeyError) as e:
+                    trouble = _ollama_says(e)
+                if passed:
+                    break
+            if not passed:
+                if trouble and not answered:
+                    break
+                return "no", ("it used a tool where none was needed" if right is None else
+                              f"it didn't pick the right tool for \"{said}\"")
+        if answered:
+            return "ok", ""
         return "unknown", trouble or "Ollama didn't answer"
     finally:
         try:

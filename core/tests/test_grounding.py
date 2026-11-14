@@ -212,9 +212,9 @@ class Lean(unittest.TestCase):
         cid = self.chat()
         db.add_message(cid, "user", "is anything new for me?")
         with mock.patch.object(tools, "missing", return_value=""), mock.patch.object(tools, "CURRENT_CID", cid):
-            self.assertNotIn("mail_unread", {t["function"]["name"] for t in tools.schemas(cid, "is anything new for me?")})
+            self.assertNotIn("mail_look", {t["function"]["name"] for t in tools.schemas(cid, "is anything new for me?")})
             self.assertIn("ready", tools.more_tools("mail"))
-            self.assertIn("mail_unread", {t["function"]["name"] for t in tools.schemas(cid, "is anything new for me?")})
+            self.assertIn("mail_look", {t["function"]["name"] for t in tools.schemas(cid, "is anything new for me?")})
             with self.assertRaises(ValueError):
                 tools.more_tools("games")
 
@@ -278,15 +278,15 @@ class PickFromAList(unittest.TestCase):
 
         def fake(model, messages, schema, tools=None):
             asked.append(schema)
-            return {"tool": "todo_add"} if "tool" in schema["properties"] else {"items": ["milk"]}
+            return {"tools": ["todo_add", "made_up", "todo_add"]} if "tools" in schema["properties"] else {"items": ["milk"]}
         with mock.patch.object(agent.llm, "structured", side_effect=fake):
-            self.assertEqual(agent._pick_tool("m", [], offered), {"name": "todo_add", "arguments": {"items": ["milk"]}})
-        self.assertEqual(asked[0]["properties"]["tool"]["enum"], ["todo_add", "todo_list", "none"])  # only these, or none
+            self.assertEqual(agent._pick_tool("m", [], offered), [{"name": "todo_add", "arguments": {"items": ["milk"]}}])
+        self.assertEqual(asked[0]["properties"]["tools"]["items"]["enum"], ["todo_add", "todo_list"])  # only these (or none)
         self.assertEqual(asked[1]["required"], ["items"])  # that tool's own fields
-        with mock.patch.object(agent.llm, "structured", return_value={"tool": "none"}):
+        with mock.patch.object(agent.llm, "structured", return_value={"tools": []}):
             self.assertIsNone(agent._pick_tool("m", [], offered))  # none: it answers the normal way
         with mock.patch.object(agent.llm, "structured", side_effect=OSError("down")), mock.patch("builtins.print"):
             self.assertIsNone(agent._pick_tool("m", [], offered))
-        with mock.patch.object(agent.llm, "structured", return_value={"tool": "todo_list"}) as s:
-            self.assertEqual(agent._pick_tool("m", [], offered), {"name": "todo_list", "arguments": {}})
+        with mock.patch.object(agent.llm, "structured", return_value={"tools": ["todo_list"]}) as s:
+            self.assertEqual(agent._pick_tool("m", [], offered), [{"name": "todo_list", "arguments": {}}])
             self.assertEqual(s.call_count, 1)  # no fields to fill: no second step

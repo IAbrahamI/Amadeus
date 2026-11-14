@@ -51,6 +51,14 @@ CHAT = [("user", "hey, how's it going?"), ("assistant", "Good, thanks. What can 
 LONG = "(after a long chat) "
 
 
+def _real(name, args):
+    """mail_look / mail_change / mail_write are judged by the tool behind them."""
+    try:
+        return tools.resolve(name, args)
+    except ValueError:
+        return name, args
+
+
 def run(text):
     cid = db.new_id()
     db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", MODEL, db.now(), db.now()))
@@ -61,7 +69,7 @@ def run(text):
     shown = []
     agent.run(cid, MODEL, text, lambda kind, data: shown.append(data) if kind == "token" else None, curate=False)
     calls = [(json.loads(m["meta"] if isinstance(m["meta"], str) else json.dumps(m["meta"])).get("tool_calls") or []) for m in db.messages(cid) if m["role"] == "assistant"]
-    calls = [(c["name"], c.get("arguments") or {}) for cs in calls for c in cs]
+    calls = [_real(c["name"], c.get("arguments") or {}) for cs in calls for c in cs]
     for a in db.q("SELECT tool,args FROM approvals WHERE conversation_id=?", (cid,)):  # what you'd be asked to approve (after any correction)
         calls.append(("approved:" + a["tool"], json.loads(a["args"])))
     return calls, "".join(str(s) for s in shown)

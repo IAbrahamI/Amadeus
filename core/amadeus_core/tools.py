@@ -1431,6 +1431,80 @@ def more_tools(area):
     return f"The {area} tools are ready now: call the one you need."
 
 
+# ---------- mail in three tools (what the model sees): each names an action and is turned into the tool behind it ----------
+# 29 mail tools were too many for a small model to choose from. It now picks among three (look, change, write) and
+# names what to do; resolve() turns that into the real tool before anything else happens, so approvals, the cards'
+# wording, what's shown directly and every check stay exactly as they are for that tool.
+def _ids(which):
+    return [str(x).strip() for x in (which if isinstance(which, list) else [which]) if str(x).strip()]
+
+
+def _one(which):
+    w = _ids(which)
+    return w[0] if w else ""
+
+
+LOOK = {  # what -> (the tool, its arguments from the facade's)
+    "overview": ("mail_overview", lambda a: {}),
+    "unread": ("mail_unread", lambda a: {"account": a.get("account"), "days": a.get("days")}),
+    "recent": ("mail_recent", lambda a: {"account": a.get("account"), "days": a.get("days")}),
+    "search": ("mail_search", lambda a: {"query": a.get("query"), "days": a.get("days")}),
+    "show": ("mail_show", lambda a: {"which": _one(a.get("which"))}),
+    "read": ("mail_read", lambda a: {"message_id": _one_mail(_one(a.get("which")))}),  # (an overview number or words work too)
+    "codes": ("mail_codes", lambda a: {"days": a.get("days")}),
+    "folders": ("mail_folders", lambda a: {"account": a.get("account")}),
+    "folder": ("mail_list_folder", lambda a: {"folder": a.get("folder"), "account": a.get("account"), "days": a.get("days")}),
+    "accounts": ("mail_accounts", lambda a: {}),
+    "attachments": ("mail_attachments", lambda a: {"which": _one(a.get("which"))}),
+    "attachment": ("mail_attachment_read", lambda a: {"which": _one(a.get("which")), "name": a.get("name")}),
+    "contacts": ("contacts_search", lambda a: {"query": a.get("query")}),
+    "important_people": ("important_people", lambda a: {}),
+    "day": ("day_summary", lambda a: {}),
+}
+CHANGE = {
+    "mark_read": ("mail_mark_read", lambda a: {"message_ids": _ids(a.get("which")), "read": True}),
+    "mark_unread": ("mail_mark_read", lambda a: {"message_ids": _ids(a.get("which")), "read": False}),
+    "flag": ("mail_flag", lambda a: {"which": _ids(a.get("which")), "flagged": True}),
+    "unflag": ("mail_flag", lambda a: {"which": _ids(a.get("which")), "flagged": False}),
+    "trash": ("mail_trash", lambda a: {"which": _ids(a.get("which"))}),
+    "junk": ("mail_junk", lambda a: {"which": _ids(a.get("which")), "junk": True}),
+    "not_junk": ("mail_junk", lambda a: {"which": _ids(a.get("which")), "junk": False}),
+    "move": ("mail_move", lambda a: {"message_ids": _ids(a.get("which")), "folder": a.get("folder"), "account": a.get("account")}),
+    "create_folder": ("mail_create_folder", lambda a: {"name": a.get("name") or a.get("folder"), "parent_folder": a.get("parent_folder"),
+                                                       "account": a.get("account")}),
+    "save_attachment": ("mail_attachment_save", lambda a: {"which": _one(a.get("which")), "name": a.get("name")}),
+    "remind": ("mail_remind", lambda a: {"which": _one(a.get("which")), "when": a.get("when"), "note": a.get("note")}),
+    "add_important": ("important_add", lambda a: {"people": _ids(a.get("people") or a.get("name"))}),
+    "remove_important": ("important_remove", lambda a: {"people": _ids(a.get("people") or a.get("name"))}),
+}
+WRITE = {
+    "draft": ("mail_draft", lambda a: {k: a.get(k) for k in ("to", "subject", "body", "account", "reply_to_id")}),
+    "send": ("mail_send", lambda a: {k: a.get(k) for k in ("to", "subject", "body", "account", "reply_to_id")}),
+    "forward": ("mail_forward", lambda a: {"which": _one(a.get("which")), "to": a.get("to"), "note": a.get("note") or a.get("body"),
+                                           "account": a.get("account")}),
+}
+FACADES = {"mail_look": ("what", LOOK), "mail_change": ("action", CHANGE), "mail_write": ("action", WRITE)}
+
+
+def resolve(name, args):
+    """mail_look / mail_change / mail_write -> (the real tool, its arguments). Any other tool comes back as it is."""
+    if name not in FACADES:
+        return name, args
+    key, table = FACADES[name]
+    what = str((args or {}).get(key, "")).strip().lower()
+    if what not in table:
+        raise ValueError(f"{key} is one of: {', '.join(table)}.")
+    real, make = table[what]
+    return real, {k: v for k, v in make(args or {}).items() if v not in (None, "", [])}
+
+
+def _facade(name):
+    def fn(**args):
+        real, real_args = resolve(name, args)
+        return BY_NAME[real]["fn"](**real_args)
+    return fn
+
+
 def T(name, desc, props, required, fn, connector, approval=False, summary=None):
     return {"name": name, "fn": fn, "connector": connector, "approval": approval, "summary": summary,
             "schema": {"type": "function", "function": {"name": name, "description": desc,
@@ -1620,6 +1694,25 @@ TOOLS = [
       + send_to_work_preview(a.get("text", ""))[0]),
     T("work_status", "List the recent work runs (projects) and whether they are running, done or stopped.", {}, [],
       work_status, "work"),
+    T("mail_look", "Look at the user's mail (nothing changes). what: overview (everything open, by account and folder), "
+      "unread, recent, search (query), show (one mail shown to the user: which), read (one mail's full text for you: which), "
+      "codes (verification codes and links), folders, folder (one folder's mails: folder), accounts, attachments (which), "
+      "attachment (read one attachment: which, name), contacts (names and addresses: query), important_people, day (today's mail). "
+      "which: a mail id from [brackets] or a number from the last overview.",
+      {"what": {"type": "string", "enum": list(LOOK)}, "which": S, "query": S, "folder": S, "name": S, "account": S, "days": {"type": "integer"}},
+      ["what"], _facade("mail_look"), "mail"),
+    T("mail_change", "Change mails (the user approves first). action: mark_read, mark_unread, flag, unflag, trash (never "
+      "deleted for good), junk, not_junk, move (to folder), create_folder (name, parent_folder), save_attachment (to "
+      "Downloads: which, name), remind (remind the user about a mail: which, when, note), add_important / remove_important "
+      "(people whose mail always calls). which: mail ids from [brackets], overview numbers, or a few words of sender / subject.",
+      {"action": {"type": "string", "enum": list(CHANGE)}, "which": {"type": "array", "items": S}, "folder": S, "name": S,
+       "parent_folder": S, "when": S, "note": S, "people": {"type": "array", "items": S}, "account": S},
+      ["action"], _facade("mail_change"), "mail"),
+    T("mail_write", "Write mail (the user approves first). action: draft (saved to Drafts), send, forward (which, to, note). "
+      "to: addresses or names of people the user has mailed with. reply_to_id: the id of the mail you answer.",
+      {"action": {"type": "string", "enum": list(WRITE)}, "to": {"type": "array", "items": S}, "subject": S, "body": S,
+       "which": S, "note": S, "account": S, "reply_to_id": S},
+      ["action"], _facade("mail_write"), "mail"),
     T("brief_show", "Show what goes into the user's morning brief and evening summary (the reports under \"Your day\"), "
       "when they come and what the user added. Use this, not the calendar, for anything about the brief.", {}, [], brief_show, "reminders"),
     T("brief_change", "Change the morning brief or evening summary. which: morning or evening. add: things the user wants "
@@ -1699,7 +1792,7 @@ def missing(connector):
 BASE = ["todo_list", "todo_add", "todo_done", "list_reminders", "create_reminder", "delete_reminder", "calendar_list",
         "calendar_add", "open_app", "open_page", "suggest_improvement", "more_tools"]
 AREAS = {
-    "mail": [t["name"] for t in TOOLS if t["connector"] == "mail"],
+    "mail": ["mail_look", "mail_change", "mail_write"],
     "calendar": [t["name"] for t in TOOLS if t["connector"] == "calendar"],
     "notes": ["notes_add", "list_notes", "search_notes", "read_note", "write_note"],
     "web": ["web_search", "web_read", "learn_from_web"],
@@ -1752,7 +1845,8 @@ def schemas(cid=None, said=""):
     (background jobs, tests): all of them. Your own connectors (MCP) always."""
     on = enabled_connectors()
     usable = lambda t: on.get(t["connector"], True) and not missing(t["connector"])  # noqa: E731
-    if cid is None:
-        return [t["schema"] for t in TOOLS if usable(t) and t["name"] != "more_tools"] + [t["schema"] for t in _mcp_tools()]
+    if cid is None:  # (background jobs: the single tools, never the area picker or the mail facades)
+        return [t["schema"] for t in TOOLS if usable(t) and t["name"] != "more_tools" and t["name"] not in FACADES] + \
+            [t["schema"] for t in _mcp_tools()]
     wanted = set(BASE) | set(AREAS.get(area_for(cid, said), []))
     return [t["schema"] for t in TOOLS if t["name"] in wanted and usable(t)] + [t["schema"] for t in _mcp_tools()]
