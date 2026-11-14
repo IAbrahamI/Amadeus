@@ -68,6 +68,14 @@ found = json.load(urllib.request.urlopen(req, timeout=120)).get("results", [])
 print(f"memory service found {len(found)} memories in {time.time() - t:.1f}s", flush=True)
 assert found, "the memory service found nothing"
 print(call({"action": "finish"}))
-time.sleep(5)
-assert not call()["needed"], "the setup is over"
+for _ in range(60):  # finishing restarts the core (it reads your folder at start): wait until it answers again
+    time.sleep(2)
+    try:
+        after = call()
+        break
+    except OSError:
+        continue
+else:
+    sys.exit("the core didn't come back after the setup")
+assert not after["needed"], "the setup is over"
 print("setup finished")

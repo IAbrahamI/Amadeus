@@ -69,7 +69,17 @@ def status():
     latest, installed = db.get_setting("update_latest", {}) or {}, _version_file()
     return {"version": RUNNING, "installed": installed, "enabled": enabled(), "latest": latest.get("version", ""), "notes": latest.get("notes", ""),
             "available": newer(latest.get("version", ""), installed), "restart": newer(installed, RUNNING),
-            "mode": "git" if os.path.isdir(os.path.join(ROOT, ".git")) else "package"}
+            "mode": mode()}
+
+
+def mode():
+    """How this copy is updated: git (./install.sh --update), mac (the app updates itself, signed, from GitHub
+    releases: core/desktop-tauri), or package (the system's package manager)."""
+    if os.path.isdir(os.path.join(ROOT, ".git")):
+        return "git"
+    if system.MAC and ".app/Contents/Resources" in ROOT:
+        return "mac"
+    return "package"
 
 
 def run():
