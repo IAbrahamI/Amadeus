@@ -23,7 +23,8 @@ const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, l
 const MW: f64 = 300.0;
 const MH: f64 = 340.0;
 const MH_TALL: f64 = 480.0;
-const BUBBLE_H: f64 = 150.0; // a little more when it sits below the core: that's how the page knows (web/mini.css)
+const BUBBLE_H: f64 = 150.0; // the bubble window's height until the page says how much its text needs (bubble-size)
+const BUBBLE_MAX_SHARE: f64 = 0.6; // at most this part of the screen's height, whatever she says
 const BUBBLE_TITLE: &str = "Amadeus bubble";
 const MINI_TITLE: &str = "Amadeus core";
 const DASH_TITLE: &str = "Amadeus";
@@ -93,6 +94,35 @@ fn is_local(url: &tauri::Url) -> bool {
 static CALLING: AtomicBool = AtomicBool::new(false);
 static SPEAKING: AtomicBool = AtomicBool::new(false);
 static PILL_TOP: AtomicBool = AtomicBool::new(false); // the core is so low that there's no room under it
+static BUBBLE_HT: AtomicU32 = AtomicU32::new(BUBBLE_H as u32); // what the bubble's text needs now (logical px)
+static BUBBLE_BELOW: AtomicBool = AtomicBool::new(false); // the bubble sits under the core (no room above it)
+
+fn bubble_h() -> f64 {
+    BUBBLE_HT.load(Ordering::Relaxed) as f64
+}
+
+/// The page draws the bubble's tail up or down: it points at the core, above or below.
+fn tell_bubble_side(app: &AppHandle, below: bool) {
+    BUBBLE_BELOW.store(below, Ordering::Relaxed);
+    if let Some(b) = app.get_webview_window("bubble") {
+        let _ = b.eval(&format!("window.amadeusBubbleSide && window.amadeusBubbleSide({below})"));
+    }
+}
+
+/// The bubble's page says how tall its text is: the window grows (or shrinks) to it, at most BUBBLE_MAX_SHARE of the
+/// screen. (On KDE the KWin script then puts it above or below the core again; elsewhere place_around_core does.)
+fn size_bubble(app: &AppHandle, wanted: f64) {
+    let Some(b) = app.get_webview_window("bubble") else { return };
+    let screen_h = b.current_monitor().ok().flatten().map(|m| m.work_area().size.height as f64 / m.scale_factor()).unwrap_or(900.0);
+    let h = wanted.clamp(60.0, (screen_h * BUBBLE_MAX_SHARE).max(BUBBLE_H)).round();
+    if (h - bubble_h()).abs() < 1.0 {
+        return;
+    }
+    BUBBLE_HT.store(h as u32, Ordering::Relaxed);
+    let _ = b.set_size(tauri::LogicalSize::new(MW, h));
+    #[cfg(not(target_os = "linux"))]
+    place_around_core(app);
+}
 
 #[derive(Default)]
 struct Shared {
@@ -265,6 +295,12 @@ impl KwinBridge {
         let a = self.0.clone();
         let _ = self.0.run_on_main_thread(move || tell_pill(&a));
     }
+
+    #[zbus(name = "BubbleBelow")]
+    fn bubble_below(&self, below: bool) {
+        let a = self.0.clone();
+        let _ = self.0.run_on_main_thread(move || tell_bubble_side(&a, below));
+    }
 }
 
 /// Keeps the name on the session bus while the app runs.
@@ -295,17 +331,19 @@ fn load_bubble_script() {
     let file = data_dir().join("place-bubble.js");
     let script = format!(
         r#"function find(t) {{ return workspace.windowList().find((w) => w.resourceClass == "amadeus-call" && w.caption == t); }}
-let low = null;
+let low = null, below = null;
 function place() {{
   const core = find("{MINI_TITLE}"), b = find("{BUBBLE_TITLE}");
   if (!core) return;
-  const g = core.frameGeometry, a = workspace.clientArea(KWin.MaximizeArea, core.output, workspace.currentDesktop), up = g.y - a.y >= {BUBBLE_H};
+  const g = core.frameGeometry, a = workspace.clientArea(KWin.MaximizeArea, core.output, workspace.currentDesktop);
   const isLow = g.y + g.height > a.y + a.height;
   if (isLow !== low) {{ low = isLow; callDBus("com.amadeus.Desktop", "/", "com.amadeus.Desktop", "PillOnTop", isLow); }}
   if (!b) return;
   b.keepAbove = true; b.skipTaskbar = true; b.skipPager = true; b.skipSwitcher = true;
-  const y = up ? g.y - {BUBBLE_H} : g.y + g.height, h = up ? {BUBBLE_H} : {BUBBLE_H} + 6, f = b.frameGeometry;
-  if (Math.abs(f.x - g.x) > 1 || Math.abs(f.y - y) > 1 || Math.abs(f.height - h) > 1) b.frameGeometry = {{ x: g.x, y: y, width: g.width, height: h }};
+  // its height is the app's (as tall as the text needs); here only where it goes: above the core, or below if there's no room
+  const f = b.frameGeometry, h = f.height, up = g.y - a.y >= h, y = up ? g.y - h : g.y + g.height;
+  if (below !== !up) {{ below = !up; callDBus("com.amadeus.Desktop", "/", "com.amadeus.Desktop", "BubbleBelow", below); }}
+  if (Math.abs(f.x - g.x) > 1 || Math.abs(f.y - y) > 1 || Math.abs(f.width - g.width) > 1) b.frameGeometry = {{ x: g.x, y: y, width: g.width, height: h }};
 }}
 // a new window has no class or title yet when KWin announces it, so ours are looked for a few times a second
 const seen = {{}};
@@ -403,10 +441,13 @@ fn place_around_core(app: &AppHandle) {
         tell_pill(app);
     }
     let Some(bubble) = app.get_webview_window("bubble") else { return };
-    let tall = (BUBBLE_H * scale) as i32;
+    let tall = (bubble_h() * scale) as i32;
     let up = at.y - area.position.y >= tall;
-    let _ = bubble.set_size(tauri::LogicalSize::new(MW, if up { BUBBLE_H } else { BUBBLE_H + 6.0 }));
+    let _ = bubble.set_size(tauri::LogicalSize::new(MW, bubble_h()));
     let _ = bubble.set_position(tauri::PhysicalPosition::new(at.x, if up { at.y - tall } else { at.y + size.height as i32 }));
+    if BUBBLE_BELOW.load(Ordering::Relaxed) == up {
+        tell_bubble_side(app, !up);
+    }
 }
 
 /// Wayland apps can't place themselves or come to the front: on KDE a short KWin script does. (The mini core also has
@@ -711,6 +752,11 @@ fn native(app: AppHandle, window: WebviewWindow, msg: String) {
             Ok(())
         } else if m == "speaking:1" || m == "speaking:0" {
             SPEAKING.store(m.ends_with('1'), Ordering::Relaxed);
+            Ok(())
+        } else if let Some(h) = m.strip_prefix("bubble-size:") {
+            if let Ok(h) = h.parse::<f64>() {
+                size_bubble(&a, h);
+            }
             Ok(())
         } else if m == "update" {
             #[cfg(target_os = "macos")]

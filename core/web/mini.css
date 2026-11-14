@@ -45,10 +45,11 @@ body.minibody::before, body.minibody::after { display: none; }
 .bubblebody .bubbles { left: 10px; right: 10px; bottom: 4px; opacity: 0; transition: opacity .18s; }
 .bubblebody .bubbles.in { opacity: 1; }
 .bubblebody .bubble { opacity: 1; transform: none; }
-@media (min-height: 153px) {
-  .bubblebody .bubbles { bottom: auto; top: 8px; }
-  .bubblebody .bubble::after { bottom: auto; top: -8px; transform: rotate(225deg); }
-}
+/* its own window grows with the text (bubble.js, up to part of the screen): the whole answer shows, cut only at that limit */
+.bubblebody .bubble .tx { max-height: calc(100vh - 44px); }
+.bubblebody.measuring .bubble .tx { max-height: none; }
+.bubblebody.below .bubbles { bottom: auto; top: 8px; }
+.bubblebody.below .bubble::after { bottom: auto; top: -8px; transform: rotate(225deg); }
 /* in the mini core it's only the source for that window */
 .separate #bubbles { visibility: hidden; left: -9999px; right: auto; width: 280px; }
 /* a call's text is cut to fit, its buttons always show */
