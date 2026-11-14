@@ -18,3 +18,9 @@ with open(os.path.join(paths.SECRETS, "denylist.txt"), "w") as f:
 from amadeus_core import agent  # noqa: E402
 
 agent.TWO_STEP = False  # the unit tests script the model's answers; the closed-list pick has its own tests (PickFromAList)
+
+from amadeus_core import secretstore  # noqa: E402
+
+# never the real Keychain from a test: on a Mac it can wait for a "may Python use your Keychain?" answer forever
+# (the Mac build checks the real one in .github/workflows/mac-app.yml; test_secretstore uses a stand-in)
+secretstore.native = lambda: False
