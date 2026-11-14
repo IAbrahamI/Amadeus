@@ -132,11 +132,15 @@ PROMISE = re.compile(
 FACT = re.compile(r"\b(?:you have|there are|i have|du hast|es gibt)\s+(?:no|keine)\s+(?:active\s+|open\s+|aktiven\s+|offenen\s+|unread\s+|new\s+)?(?:reminders?|to-?dos?|erinnerungen|events|appointments|termine|mails?|emails?)\b", re.I)
 
 
+# "Nothing has been added yet", "I haven't set it": saying it's NOT done is never a made-up claim
+NEGATED = re.compile(r"(?:\b(?:not|nothing|never|no|none|nichts|nicht|noch nicht|nada|todavía no)\b|n['’]t\b)[^.!?\n]{0,30}$", re.I)
+
+
 def unbacked(reply):
     """What kind of thing the reply says that only a tool can make true: "claim" (it's done), "promise" (it will be, with no question
     back to you), "fact" (what your list holds), or None. Only meaningful when no tool ran in this turn."""
     text = re.sub(r"`[^`]*`|\"[^\"]*\"|“[^”]*”", " ", reply or "")
-    if CLAIM.search(text):
+    if any(not NEGATED.search(text[max(0, m.start() - 40):m.start()]) for m in CLAIM.finditer(text)):
         return "claim"
     if FACT.search(text):
         return "fact"
