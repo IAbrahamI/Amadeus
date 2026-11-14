@@ -23,6 +23,7 @@ PROJECT = "Amadeus itself"
 KEY = "improve_ideas"
 MAX_IDEAS = 60
 TEST_TIMEOUT = 900
+NOT_CODE = [":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.pyc"]  # what running the code leaves behind is no change
 _lock = threading.RLock()
 
 BRIEF = """You are improving Amadeus, a private local assistant, from the inside: this project's folder holds a copy of
@@ -179,8 +180,8 @@ def refresh():
 
 def _diff(i):
     code = _code()
-    _git(["add", "-A", "--intent-to-add", "."], code)  # new files show up in the diff too
-    return _git(["diff", "--binary", i["base"]], code, timeout=60)
+    _git(["add", "-A", "--intent-to-add", "--", ".", *NOT_CODE], code)  # new files show up in the diff too
+    return _git(["diff", "--binary", i["base"], "--", ".", *NOT_CODE], code, timeout=60)
 
 
 def review(idea_id):
@@ -190,14 +191,14 @@ def review(idea_id):
     if i["status"] != "ready":
         raise ValueError("Nothing to review yet.")
     diff = _diff(i)
-    stat = _git(["diff", "--stat", i["base"]], _code(), timeout=60).strip()
+    stat = _git(["diff", "--stat", i["base"], "--", ".", *NOT_CODE], _code(), timeout=60).strip()
     key = hashlib.sha256(diff.encode()).hexdigest()
     if (i.get("review") or {}).get("key") == key:
         return {**i["review"], "diff": diff}
     if not diff.strip():
         r = {"key": key, "stat": "", "tests_ok": False, "tests": "No change was made."}
     else:
-        env = {k: v for k, v in os.environ.items() if not k.startswith("AMADEUS_")}
+        env = {**{k: v for k, v in os.environ.items() if not k.startswith("AMADEUS_")}, "PYTHONDONTWRITEBYTECODE": "1"}
         try:
             p = subprocess.run(["python3", "-m", "unittest"], cwd=os.path.join(_code(), "core"), capture_output=True, text=True,
                                timeout=TEST_TIMEOUT, env=env)
