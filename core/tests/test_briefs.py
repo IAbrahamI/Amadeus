@@ -74,6 +74,8 @@ class NoFakeDone(unittest.TestCase):
         db.add_message(cid, "tool", "- an event", {"name": "calendar_list"})
         self.assertFalse(agent._ever_acted(cid))
         db.add_message(cid, "approval", "Add a reminder", {"approval_id": "x", "tool": "create_reminder"})
+        self.assertFalse(agent._ever_acted(cid))  # only a card: nothing has happened yet
+        db.add_message(cid, "tool", "Reminder set.", {"name": "create_reminder", "approval_id": "x"})
         self.assertTrue(agent._ever_acted(cid))
 
 

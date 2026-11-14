@@ -47,6 +47,10 @@ Rules:
 - When one message asks for several things (a to-do and a reminder for it), call every tool it needs in the same turn.
   A to-do or reminder about a mail or a person is still just a to-do or reminder: save it in the user's words, don't look anything up first.
 - Times and dates: never calculate them. Give create_reminder the user's own words ("in 5 minutes", "tomorrow 09:00", "today evening").
+- Before you call a tool, write nothing, or one short line saying what you are about to look up. Never state a result
+  before the tool has answered.
+- When the user says you misunderstood ("no, I meant…", "that's not what I meant"), don't repeat your last answer: read
+  their words again, pick another tool or ask one short question.
 - Keep answers short and clear: a few sentences, at most about 80 words, unless the user asks for detail or a list needs more.
   If you don't know, say so.
 - Format: clean Markdown. Lead with the answer in one plain sentence, then short lists or a small table only when they
@@ -62,6 +66,8 @@ MAIL_READ_TOOLS = {"mail_read", "mail_recent", "mail_search", "mail_unread", "ma
 
 
 WEB_READ_TOOLS = {"web_search", "web_read"}
+DOING_RE = re.compile(r"\s*(?:let me|i['’]ll (?:check|look|search|find|read)|i will (?:check|look|search)|checking|looking|searching|one moment|"
+                      r"moment|ich (?:schau|prüf|such)|lass mich|déjame|voy a (?:buscar|mirar))\b", re.I)
 BACKGROUND_PREFIX = "brief-"  # chats Amadeus has with itself to write the briefs (digest._additions): never shown, never ask
 
 
@@ -426,6 +432,34 @@ def _system(cid):
     return {"role": "system", "content": text}
 
 
+ROUTES = [
+    (re.compile(r"\b(?:morning brief|evening summary|daily (?:brief|briefing|announcement|summary|report)|briefing|brief(?:s)? (?:you|that you)|"
+                r"morgen\w*(?:bericht|brief|zusammenfassung)|abend\w*(?:bericht|zusammenfassung)|resumen (?:diario|de la mañana))\b", re.I),
+     "The morning brief and the evening summary are reports Amadeus writes itself (shown under \"Your day\"). Use brief_show to "
+     "see them and brief_change to change what goes in, when, or on/off. They are NOT calendar events or reminders: never "
+     "look for them in the calendar. If an earlier answer in this chat said otherwise, it was wrong: say so in a few words."),
+    (re.compile(r"\b(?:theme|colou?rs?|farbe\w*|spoken answers?|read (?:out )?aloud|update check)\b", re.I),
+     "For the app's own colours, spoken answers or update check: app_settings shows them, app_setting_change changes them "
+     "(this PC only, not the phone app)."),
+]
+CORRECTION_RE = re.compile(r"\b(?:no[,.!]? (?:i|that|don)|not what i (?:meant|mean|said)|that['’]?s not|i meant|you misunderstood|"
+                           r"nein,? (?:ich|das)|ich meinte|das meinte ich nicht|no,? me refería)\b", re.I)
+
+
+def _same_as_last(cid, content):
+    """The answer is the same as its previous one, right after you said it misunderstood."""
+    msgs = [m for m in db.messages(cid) if m["role"] in ("user", "assistant") and (m["content"] or "").strip()]
+    if len(msgs) < 3 or msgs[-1]["role"] != "user" or not CORRECTION_RE.search(msgs[-1]["content"]):
+        return False
+    norm = lambda t: re.sub(r"\W+", " ", MOOD_RE.sub("", SAY_RE.sub("", t))).strip().lower()
+    return norm(msgs[-2]["content"])[:300] == norm(content)[:300]
+
+
+REPEAT_NUDGE = ("(From the system, not the user.) You just repeated your previous answer word for word, but the user said "
+                "that's not what they meant. Read their last message again: use a different tool that fits it, or ask one short "
+                "question about what they mean.")
+
+
 def _context(cid, user_text):
     """What changes with each message: the time, and what fits this request. It goes with the newest message."""
     text = "The time is " + datetime.datetime.now().strftime("%H:%M") + "."
@@ -437,6 +471,13 @@ def _context(cid, user_text):
     if mine:  # one of your own playbooks: its steps, in your words
         text += (f"\n\n## Playbook: {mine['title']} (the user's own recipe; follow these steps in order, with your tools; "
                  f"anything that changes something still goes through approval)\n{mine['steps']}")
+    waiting = db.q("SELECT summary FROM approvals WHERE conversation_id=? AND status='pending' ORDER BY created", (cid,))
+    if waiting:  # a card is not the action: until the user approves it, nothing has happened
+        text += ("\n\nWaiting for the user's OK on its card (NOT done yet; say it's waiting for their OK, never that it's done):\n" +
+                 "\n".join("- " + re.sub(r"\s+", " ", w["summary"])[:200] for w in waiting))
+    for rx, hint in ROUTES:  # a small model follows its own earlier answers in a long chat: this says which tools fit now
+        if rx.search(user_text or ""):
+            text += "\n\n## For this message\n" + hint
     lessons = learning.prompt_block(cid, user_text or "")
     if lessons:
         text += ("\n\n## Lessons from earlier mistakes (learned from the user's feedback; follow them)\n" + lessons)
@@ -684,7 +725,8 @@ def _ever_acted(cid):
     """Something was really changed in this chat lately (an approval card, or a tool that changes things), which a
     "done" now may refer to. Looking things up (the web, the calendar, mail) doesn't count: after a search, "I've added
     it" with no action behind it is still caught."""
-    return any(m["role"] == "approval" or (m["role"] == "tool" and (tools.BY_NAME.get(m["meta"].get("name")) or {}).get("approval"))
+    # (a card still waiting for your OK is not something done: only what ran after you approved it counts)
+    return any(m["role"] == "tool" and (tools.BY_NAME.get(m["meta"].get("name")) or {}).get("approval")
                for m in db.messages(cid)[-30:])
 
 
@@ -735,6 +777,12 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 continue
             content = f"That didn't work, so nothing was changed: {why}\n[mood:worried]"
             held = [content]
+        elif not calls and not nudge and _same_as_last(cid, content):
+            print("repeated the last answer after a correction: asking again", flush=True)
+            if streaming:
+                show(None, "\n\n(Wait, that's what I said before. Let me look again.)\n\n")
+            nudge, held_back, streaming = [{"role": "assistant", "content": content}, {"role": "user", "content": REPEAT_NUDGE}], True, False
+            continue
         elif not calls and not acted and grounding.unbacked(content):
             if not nudge:  # once: tell it nothing happened, and let it really do it
                 if streaming:
@@ -743,7 +791,10 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 nudge, held_back = [{"role": "assistant", "content": content}, {"role": "user", "content": grounding.NUDGE}], True
                 continue
             if not _ever_acted(cid):  # still nothing behind it, and nothing earlier in this chat it could mean
-                content, held = grounding.HONEST + "\n[mood:worried]", [grounding.HONEST]
+                rest = grounding.without_claims(SAY_RE.sub("", content))
+                # the rest of what it said (the answer to your question) stays; only the made-up "done" goes
+                text = f"{grounding.CLEARED} {rest}" if len(rest) > 20 else grounding.HONEST
+                content, held = text + "\n[mood:worried]", [text]
         if held:
             show(*spoken.feed("".join(held)))
         show(*spoken.flush())
@@ -773,7 +824,10 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 _offer_improvement(cid, model, said_by_user, emit, "it answered that it can't do it")
             emit("done", {})
             return
-        db.add_message(cid, "assistant", MOOD_RE.sub("", content).strip(),
+        # what it wrote before calling a tool is kept only if it says what it's about to do: anything else came before the
+        # tool's answer and may be made up ("your brief includes the weather"); it must not stay in the chat for later turns
+        before = MOOD_RE.sub("", SAY_RE.sub("", content)).strip()
+        db.add_message(cid, "assistant", before if DOING_RE.match(before) and len(before) < 200 else "",
                        {"tool_calls": calls, "lessons": learning.LAST_USED.get(cid, [])})
         waiting = False
         for c in calls:

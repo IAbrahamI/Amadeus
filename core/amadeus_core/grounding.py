@@ -145,6 +145,17 @@ def unbacked(reply):
     return None
 
 
+def without_claims(reply):
+    """The reply without its sentences that say something was done (there was no action behind them): what's left is
+    still worth saying, e.g. the answer to your question. "" when nothing is left."""
+    parts = re.split(r"(?<=[.!?])\s+|\n+", reply or "")
+    keep = [p for p in parts if p.strip() and not unbacked(p) and not re.fullmatch(r"\W*\[mood:\s*\w+\]\W*", p.strip())]
+    return " ".join(keep).strip()
+
+
+CLEARED = "To be clear, I haven't changed anything yet."
+
+
 def fit_args(fn, args):
     """Only the arguments the tool has: a model sometimes invents one ("all_day"), and the whole action then fails after you approved it.
     Returns (arguments, the names left out)."""
