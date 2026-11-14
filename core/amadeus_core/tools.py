@@ -1810,7 +1810,8 @@ AREA_WORDS = {  # checked in this order: the first that fits is the area
                 r"verschieb\w*|every (?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|days? off|holidays?|"
                 r"urlaub|vacaciones",
     "notes": r"notes?|notiz\w*|notas?|write (?:it )?down|aufschreiben|apunta\w*",
-    "web": r"search|look (?:it |that )?up|google|online|internet|web|websites?|news|prices?|weather|wetter|tiempo|clima|latest|"
+    "web": r"search|look (?:it |that )?up|google|online|internet|web|websites?|web ?pages?|pages|links?|download\w*|hugging ?faces?|github|"
+           r"news|prices?|weather|wetter|tiempo|clima|latest|"
            r"learn about|read this page|recherch\w*|nachschauen|such\w*|busca\w*|noticias|precios?|aktuell\w*",
     "work": r"claude|projects?|projekt\w*|proyectos?|send (?:it |this )?to work|work runs?",
     "memory": r"remember|what do you know|about me|did (?:i|we) (?:say|talk|tell)|earlier today|this morning|yesterday|"

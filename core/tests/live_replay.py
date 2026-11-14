@@ -148,6 +148,9 @@ CASES = [
      lambda c, t, s: "07:40" in t or "7:40" in t),
     ("9 look back (de)", "LOOKBACK", "Was hatten wir heute Morgen wegen meinem Flug nach Lissabon besprochen?", False,
      lambda c, t, s: "07:40" in t or "7:40" in t),
+    # 10. a new question right after a long answer: never that answer again; and what voices it can use
+    ("10 new question after news (en)", "NEWS", "Also, are there any voices we could use for you, similar to Ultron from the Marvel movies?", False,
+     lambda c, t, s: "unrealircd" not in t.lower() and re.search(r"piper|onnx|kokoro", t, re.I)),
     # no tool needed
     ("0 thanks (en)", BRIEF_WRONG, "thanks, that's all", False, lambda c, t, s: not c and "haven't" not in t.lower()),
     ("0 small talk (de)", [], "Wie geht's dir heute?", False, lambda c, t, s: not c),
@@ -159,6 +162,11 @@ def run(history, text, speak):
     cid = db.new_id()
     db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", MODEL, db.now(), db.now()))
     db.set_setting("briefs", {})
+    if history == "NEWS":
+        history = [("user", "What were the most important cyber security news this week?"),
+                   ("assistant", "**Critical vulnerabilities:**\n- **UnrealIRCd flaw (CVE-2026-114713)**, CVSS 8.6, actively exploited.\n"
+                                 "- **PostgreSQL** patched 52 vulnerabilities, including a 22-year-old bug.\n- A phishing campaign against "
+                                 "European banks.\nSources: The Hacker News, read today.")]
     if history == "LOOKBACK":  # this morning: the flight; then a few hours of other talk
         db.add_message(cid, "user", "I'm flying to Lisbon on Friday, departure 07:40 from Zurich.")
         db.add_message(cid, "assistant", "Got it: Friday, 07:40 from Zurich to Lisbon.")

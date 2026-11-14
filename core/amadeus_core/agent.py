@@ -296,7 +296,11 @@ def about_me():
                  if phones else "- Phone: no phone is paired yet (Settings → Phone pairs one).")
     lines.append("- Voice: a wake word (your name; the user can say \"voice off\" / \"voice on\"; while off the mic is\n"
                  "  closed and only typing or the tray turns it back on), push-to-talk, Whisper speech recognition; your replies are\n"
-                 "  read aloud by a local voice when the user wants that. You can open apps and web pages on the PC.")
+                 "  read aloud by a local voice when the user wants that. You can open apps and web pages on the PC.\n"
+                 "- Your own voice: Piper voices (two files, <name>.onnx and <name>.onnx.json; the official ones are at\n"
+                 "  huggingface.co/rhasspy/piper-voices, community ones on Hugging Face too) or Kokoro's built-in voices. The user adds\n"
+                 "  one under Settings → Voice (by its name, or + Add a voice with the two files). Other formats (RVC, .pth, ElevenLabs\n"
+                 "  clones) can't be used: say so. A voice that imitates a real actor's character is someone's likeness: mention it.")
     why = off("work")
     if why:
         lines.append(f"- Work (cloud): NOT available ({why}). You can't hand work to Claude Code until that's fixed.")
@@ -430,18 +434,27 @@ CORRECTION_RE = re.compile(r"\b(?:no[,.!]? (?:i|that|don)|not what i (?:meant|me
                            r"nein,? (?:ich|das)|ich meinte|das meinte ich nicht|no,? me refería)\b", re.I)
 
 
+AGAIN_RE = re.compile(r"\b(?:again|repeat|once more|say that|read (?:it|that)|nochmal|wiederhol\w*|otra vez|repite)\b", re.I)
+
+
 def _same_as_last(cid, content):
-    """The answer is the same as its previous one, right after you said it misunderstood."""
+    """The answer is (nearly) its previous one, but you asked something new or said it misunderstood. (Asked to say it
+    again, the same answer is right.)"""
+    import difflib
     msgs = [m for m in db.messages(cid) if m["role"] in ("user", "assistant") and (m["content"] or "").strip()]
-    if len(msgs) < 3 or msgs[-1]["role"] != "user" or not CORRECTION_RE.search(msgs[-1]["content"]):
+    if len(msgs) < 3 or msgs[-1]["role"] != "user" or AGAIN_RE.search(msgs[-1]["content"]):
         return False
-    norm = lambda t: re.sub(r"\W+", " ", MOOD_RE.sub("", SAY_RE.sub("", t))).strip().lower()
-    return norm(msgs[-2]["content"])[:300] == norm(content)[:300]
+    prev = next((m for m in reversed(msgs[:-1]) if m["role"] == "assistant"), None)
+    if not prev:
+        return False
+    norm = lambda t: re.sub(r"\W+", " ", MOOD_RE.sub("", SAY_RE.sub("", t))).strip().lower()[:600]  # noqa: E731
+    a, b = norm(prev["content"]), norm(content)
+    return len(b) > 40 and difflib.SequenceMatcher(None, a, b).ratio() > 0.85
 
 
-REPEAT_NUDGE = ("(From the system, not the user.) You just repeated your previous answer word for word, but the user said "
-                "that's not what they meant. Read their last message again: use a different tool that fits it, or ask one short "
-                "question about what they mean.")
+REPEAT_NUDGE = ("(From the system, not the user.) You just gave your previous answer again, but the user's last message asks "
+                "something else (or says that's not what they meant). Answer THAT message: read it again, use a tool that fits "
+                "it, or ask one short question about what they mean.")
 
 
 LOOKBACK_RE = re.compile(r"\b(?:earlier|before|this morning|yesterday|last (?:time|week)|we (?:talked|spoke|discussed|said)|you (?:said|told me|mentioned)|"

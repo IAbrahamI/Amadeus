@@ -113,7 +113,7 @@ def hint(said, now=None):
 
 
 DID = (r"added|set|created|saved|scheduled|put|noted|marked|moved|removed|deleted|sent|drafted|updated|cancell?ed|written|wrote|filed|stored|"
-       r"reminded|booked|logged|recorded")
+       r"reminded|booked|logged|recorded|searched|looked (?:it |that |this )?up|googled|browsed")  # (looking up counts too: "I searched…" with no search)
 CLAIM = re.compile(
     r"\b(?:i['’]ve|i have|i just|i)\s+(?:now\s+|already\s+|just\s+|successfully\s+)?(?:" + DID + r")\b|"
     r"^\W*(?:done|added|saved|noted|all set|reminder set|erledigt|fertig|hecho|listo)\b|"

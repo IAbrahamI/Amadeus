@@ -64,11 +64,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, obj, code=200):
         data = json.dumps(obj).encode()
-        self.send_response(code)
-        self.send_header("content-type", "application/json")
-        self.send_header("content-length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        return self._send(data, code)
+
+    def _send(self, data, code):
+        try:
+            self.send_response(code)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the window went away while waiting (a restart, a closed window): nobody left to answer
 
     def _mail_signed_in(self, qs):
         """Only takes a sign-in this PC started (its one-time state), so no cookie is needed here."""
