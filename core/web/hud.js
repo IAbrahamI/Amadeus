@@ -182,7 +182,7 @@ async function renderChat() {
     const l = body().querySelector(".log"); if (l && l.lastElementChild) l.lastElementChild.scrollIntoView({ block: "nearest" });
     return;
   }
-  if (!state.past) state.past = (await api("/api/conversations")).filter((c) => !SYSTEM_CHATS.has(c.id) && c.id !== state.cid && !c.title.startsWith("🗂️"));
+  if (!state.past) state.past = (await api("/api/conversations")).filter((c) => !SYSTEM_CHATS.has(c.id) && !c.id.startsWith("brief-") && c.id !== state.cid && !c.title.startsWith("🗂️"));
   if (state.chatTab === "history") {
     body().innerHTML = chatTabs() + note("Pick an earlier conversation to read it.") + (state.past.length ? rows(state.past.map((c, i) =>
       `<button class="row pick" data-act="past" data-i="${i}"><span class="k">${new Date(c.updated * 1000).toLocaleDateString([], { day: "numeric", month: "short" })}</span><div class="t"><b>${esc(noEmoji(c.title))}</b><span>${new Date(c.updated * 1000).toLocaleDateString([], { weekday: "long" })}</span></div><span class="open">Open ›</span></button>`)) : note("No earlier conversations yet."));

@@ -262,6 +262,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/folder":  # Settings → Connectors: where your notes and projects are
             from . import notesfolder
             return self._json(notesfolder.status())
+        if p == "/api/briefs":  # "Your day": what goes into the morning brief and the evening summary, and when
+            from . import digest
+            return self._json({"briefs": digest.brief_settings(), "built_in": digest.BUILT_IN})
         if p == "/api/improve":  # Amadeus' own project: the ideas, and whether it can be used here
             from . import selfimprove
             return self._json({"ideas": selfimprove.refresh(), "available": selfimprove.available(), "project": selfimprove.PROJECT})
@@ -706,6 +709,13 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(mcp.add(b.get("name", ""), b.get("command", ""), b.get("env") or {}))
             except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if p == "/api/briefs":  # your own change on the "Your day" view (like an approval)
+            from . import digest
+            try:
+                digest.change_brief(str(b.get("which", "")), b.get("add") or [], b.get("remove") or [], b.get("hour"), b.get("on"))
+                return self._json({"briefs": digest.brief_settings(), "built_in": digest.BUILT_IN})
+            except (ValueError, TypeError) as e:
                 return self._json({"error": str(e)}, 400)
         m = re.fullmatch(r"/api/improve(?:/(\w+)/(start|install|discard|drop))?", p)
         if m:  # Amadeus' own project: only from this PC, each step your own click

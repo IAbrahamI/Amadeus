@@ -65,10 +65,14 @@ def summary(since=None):
 def check():
     """Background job: once a day at `digest_hour` (default 21:00) call with the summary."""
     now = datetime.datetime.now()
-    if not CFG.get("digest", True) or now.hour < CFG.get("digest_hour", 21) or db.get_setting("digest_day", "") == now.date().isoformat():
+    b = brief_settings()["evening"]
+    if not b["on"] or now.hour < b["hour"] or db.get_setting("digest_day", "") == now.date().isoformat():
         return
     db.set_setting("digest_day", now.date().isoformat())
     text, counts = summary()
+    extra = _additions("evening")
+    if extra:
+        text += "\n\n### You asked for this too\n" + "\n".join(f"- **{x['asked']}**: {x['found']}" for x in extra)
     db.set_setting("digest_last", time.time())
     aid = mailwatch.propose_pending_filing()  # today's filing, as one approval in the same call
     if aid:
@@ -78,9 +82,94 @@ def check():
     events.add("digest", title, text[:600], ref="day")
 
 
-# ---------- morning brief (once a day at `morning_hour`, 07:00 by default; shown under "Your day") ----------
+# ---------- what's in the briefs, and when: yours to change (in words to Amadeus, or Settings → Assistant) ----------
+BUILT_IN = {"morning": "your open to-dos, today's calendar, and Claude Code runs (running, done or stopped since yesterday)",
+            "evening": "today's mail: the important ones, the rest counted, and what needs doing"}
+NAMES = {"morning": "morning brief", "evening": "evening summary"}
+MAX_ITEMS = 8
+
+
+def brief_settings():
+    """{"morning": {"on", "hour", "items"}, "evening": {...}}. items: what you asked to have in it as well."""
+    own = db.get_setting("briefs", {})
+    defaults = {"morning": (CFG.get("morning_brief", True), CFG.get("morning_hour", 7)),
+                "evening": (CFG.get("digest", True), CFG.get("digest_hour", 21))}
+    return {k: {"on": own.get(k, {}).get("on", on), "hour": own.get(k, {}).get("hour", hour), "items": own.get(k, {}).get("items", [])}
+            for k, (on, hour) in defaults.items()}
+
+
+def change_brief(which, add=(), remove=(), hour=None, on=None):
+    """Your change, after your OK. remove: an item's words or its number in brief_show's list."""
+    if which not in NAMES:
+        raise ValueError("which is morning or evening.")
+    allb = brief_settings()
+    b = allb[which]
+    items = list(b["items"])
+    for r in remove or []:
+        r = str(r).strip()
+        hit = items[int(r) - 1] if r.isdigit() and 0 < int(r) <= len(items) else \
+            next((i for i in items if r.casefold() == i.casefold()), None) or next((i for i in items if r.casefold() in i.casefold()), None)
+        if not hit:
+            raise ValueError(f"“{r}” isn't in the {NAMES[which]}.")
+        items.remove(hit)
+    for a in add or []:
+        a = re.sub(r"\s+", " ", str(a)).strip()[:300]
+        if a and a.casefold() not in {i.casefold() for i in items}:
+            items.append(a)
+    if len(items) > MAX_ITEMS:
+        raise ValueError(f"At most {MAX_ITEMS} additions: remove one first.")
+    if hour is not None and str(hour).strip() != "":
+        hour = int(str(hour).split(":")[0])
+        if not 0 <= hour <= 23:
+            raise ValueError("The hour is 0 to 23.")
+        b["hour"] = hour
+    if on is not None:
+        b["on"] = bool(on)
+    b["items"] = items
+    db.set_setting("briefs", {k: v for k, v in allb.items()})
+    return b
+
+
+def describe_briefs():
+    out = []
+    for k, b in brief_settings().items():
+        out.append(f"**{NAMES[k].capitalize()}**: {'on' if b['on'] else 'off'}, at {b['hour']:02d}:00.\n"
+                   f"- Always: {BUILT_IN[k]}.\n" +
+                   ("".join(f"- {n}. {i}\n" for n, i in enumerate(b["items"], 1)) if b["items"] else "- Nothing added by the user yet.\n"))
+    return "\n".join(out)
+
+
+ITEM_ASK = ("(For the user's {name}, written in the background: nobody reads along and you can't ask back.) {item}\n"
+            "Look it up with your tools now and answer in at most 2 short sentences with the facts and their source. "
+            "Only look things up: change nothing, start nothing, ask for no approval.")
+
+
+def _additions(which):
+    """Each thing you asked to have in the brief, looked up now by Amadeus with its normal tools, in a chat of its own
+    that you don't see. Anything that would change something isn't done and nobody is asked (agent.BACKGROUND_PREFIX)."""
+    from . import agent
+    items = brief_settings()[which]["items"]
+    if not items:
+        return []
+    cid = f"brief-{which}-{datetime.date.today().isoformat()}"
+    if not db.q("SELECT id FROM conversations WHERE id=?", (cid,), one=True):
+        db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)",
+             (cid, f"({NAMES[which]})", CFG["default_model"], db.now(), db.now()))
+    out = []
+    for item in items:
+        try:
+            agent.run(cid, db.get_setting("chat_model", "") or CFG["default_model"], ITEM_ASK.format(name=NAMES[which], item=item), curate=False)
+        except Exception as e:
+            out.append({"asked": item, "found": f"(couldn't look it up: {e})"})
+            continue
+        last = next((m for m in reversed(db.messages(cid)) if m["role"] == "assistant" and (m["content"] or "").strip()), None)
+        out.append({"asked": item, "found": re.sub(r"\[mood:\s*\w+\]", "", last["content"]).strip()[:800] if last else "(nothing found)"})
+    return out
+
+
+# ---------- morning brief (once a day, 07:00 by default; shown under "Your day") ----------
 def morning_brief():
-    """A short plan for the morning from your ToDo, today's calendar and the work runs (all local)."""
+    """A short plan for the morning from your ToDo, today's calendar, the work runs, and what you asked to have in it."""
     from . import tools
     today = datetime.date.today()
     since = time.time() - 86400
@@ -92,10 +181,12 @@ def morning_brief():
         "claude_code_running": [r["project"] for r in runs if r["status"] == "running"],
         "claude_code_done_since_yesterday": [r["project"] for r in runs if r["status"] == "done"],
         "claude_code_failed_since_yesterday": [r["project"] for r in runs if r["status"] in ("failed", "stopped")],
+        "the_user_asked_to_have_this_in_it_too": _additions("morning"),
     }
     prompt = [{"role": "system", "content":
-               f"You are {NAME}. Write the user's short morning brief (at most 6 sentences) from these facts only. "
-               "Start with the most important thing today, mention what needs their decision, never invent anything."},
+               f"You are {NAME}. Write the user's short morning brief (at most 8 sentences) from these facts only. "
+               "Start with the most important thing today, mention what needs their decision, never invent anything. "
+               "Everything the user asked to have in it too gets its own sentence, with its facts."},
               {"role": "user", "content": json.dumps(facts, ensure_ascii=False, indent=1)}]
     try:
         text = re.sub(r"\[mood:\s*\w+\]", "", llm.complete(CFG["default_model"], prompt)).strip()
@@ -110,8 +201,8 @@ def morning_brief():
 def check_morning():
     """Background job: the morning brief, once a day."""
     now = datetime.datetime.now()
-    if not CFG.get("morning_brief", True) or now.hour < CFG.get("morning_hour", 7) or \
-            db.get_setting("morning_day", "") == now.date().isoformat():
+    b = brief_settings()["morning"]
+    if not b["on"] or now.hour < b["hour"] or db.get_setting("morning_day", "") == now.date().isoformat():
         return
     db.set_setting("morning_day", now.date().isoformat())
     morning_brief()

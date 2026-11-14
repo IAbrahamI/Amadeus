@@ -849,6 +849,72 @@ def held_why(findings):
     return "Not sent: the text contains something from your deny-list or a canary marker."
 
 
+# ---------- the app itself: the briefs and its settings (all changes after your OK) ----------
+def brief_show():
+    from . import digest
+    return digest.describe_briefs()
+
+
+def _brief_args(which, add=None, remove=None, hour=None, on=None):
+    which = str(which or "").strip().lower()
+    which = {"morning brief": "morning", "evening summary": "evening", "digest": "evening"}.get(which, which)
+    as_list = lambda x: [str(i) for i in (x if isinstance(x, list) else [x]) if str(i).strip()] if x not in (None, "") else []
+    return which, as_list(add), as_list(remove), hour, on
+
+
+def brief_change(which, add=None, remove=None, hour=None, on=None):
+    from . import digest
+    which, add, remove, hour, on = _brief_args(which, add, remove, hour, on)
+    b = digest.change_brief(which, add, remove, hour, on)
+    return f"The {digest.NAMES[which]} now: {'on' if b['on'] else 'off'}, at {b['hour']:02d}:00" + \
+        (", with: " + "; ".join(b["items"]) if b["items"] else ", nothing added by you") + "."
+
+
+def _brief_summary(a):
+    from . import digest
+    which, add, remove, hour, on = _brief_args(a.get("which"), a.get("add"), a.get("remove"), a.get("hour"), a.get("on"))
+    if which not in digest.NAMES:
+        raise ValueError("which is morning or evening.")
+    lines = [f"Change your **{digest.NAMES[which]}**:"] + [f"- add: {x}" for x in add] + [f"- remove: {x}" for x in remove]
+    if hour not in (None, ""):
+        lines.append(f"- at {int(str(hour).split(':')[0]):02d}:00")
+    if on is not None:
+        lines.append("- turn it " + ("on" if on else "off"))
+    if len(lines) == 1:
+        raise ValueError("Say what to add, remove or change.")
+    return "\n".join(lines)
+
+
+APP_SETTINGS = {  # what Amadeus may change about the app itself, in words; each one shows on its Settings page too
+    "theme": ("The dashboard's colours", ("blue", "purple", "red"), "blue"),
+    "speak_replies": ("Spoken answers in the dashboard: voice = when the user talked, always, off", ("voice", "always", "off"), "voice"),
+    "speak_mini": ("Spoken answers in the mini core: voice, always, off", ("voice", "always", "off"), "always"),
+    "update_check": ("Ask GitHub once a day for a newer version", (True, False), True),
+}
+
+
+def app_settings():
+    return "\n".join(f"- {k} = {db.get_setting(k, d)!r}: {desc} (one of {', '.join(map(str, vals))})" for k, (desc, vals, d) in APP_SETTINGS.items())
+
+
+def _setting_args(name, value):
+    name = str(name or "").strip()
+    if name not in APP_SETTINGS:
+        raise ValueError(f"Not a setting I can change: {name}. These are: {', '.join(APP_SETTINGS)}.")
+    vals = APP_SETTINGS[name][1]
+    v = value if not isinstance(vals[0], bool) else str(value).strip().lower() in ("true", "1", "on", "yes")
+    v = str(v).strip().lower() if not isinstance(v, bool) else v
+    if v not in vals:
+        raise ValueError(f"{name} is one of {', '.join(map(str, vals))}.")
+    return name, v
+
+
+def app_setting_change(name, value):
+    name, v = _setting_args(name, value)
+    db.set_setting(name, v)
+    return f"{APP_SETTINGS[name][0]}: now {v}."
+
+
 def suggest_improvement(title, why):
     from . import selfimprove
     return selfimprove.suggest(title, why)
@@ -1244,7 +1310,7 @@ def search_chats(query, days=180):
     since, hits = time.time() - days * 86400, []
     convs = {c["id"]: c["title"] for c in db.q("SELECT id, title FROM conversations")}
     for cid, title in convs.items():
-        if cid in CHAT_SKIP_CONVS or cid == CURRENT_CID:
+        if cid in CHAT_SKIP_CONVS or cid == CURRENT_CID or cid.startswith("brief-"):
             continue
         prev_tool = ""
         msgs = db.messages(cid)
@@ -1526,6 +1592,17 @@ TOOLS = [
       + send_to_work_preview(a.get("text", ""))[0]),
     T("work_status", "List the recent work runs (projects) and whether they are running, done or stopped.", {}, [],
       work_status, "work"),
+    T("brief_show", "Show what goes into the user's morning brief and evening summary (the reports under \"Your day\"), "
+      "when they come and what the user added. Use this, not the calendar, for anything about the brief.", {}, [], brief_show, "reminders"),
+    T("brief_change", "Change the morning brief or evening summary. which: morning or evening. add: things the user wants "
+      "in it every day, each as an instruction you can look up then (e.g. \"the weather for this evening in Winterthur\"). "
+      "remove: an added thing's words or number from brief_show. hour: 0-23. on: true/false.",
+      {"which": S, "add": {"type": "array", "items": S}, "remove": {"type": "array", "items": S}, "hour": {"type": "integer"},
+       "on": {"type": "boolean"}}, ["which"], brief_change, "reminders", True, _brief_summary),
+    T("app_settings", "Show the app's own settings you can change (colours, spoken answers, update check).", {}, [], app_settings, "reminders"),
+    T("app_setting_change", "Change one of the app's own settings (see app_settings).", {"name": S, "value": S}, ["name", "value"],
+      app_setting_change, "reminders", True,
+      lambda a: (lambda nv: f"Change **{APP_SETTINGS[nv[0]][0]}** to **{nv[1]}**")(_setting_args(a.get("name"), a.get("value")))),
     T("suggest_improvement", "Note something about YOURSELF (Amadeus) that should work better: a request you couldn't "
       "handle well, a tool that's missing or failed, a repeated mistake. It goes on the list of your own project, where "
       "the user may pick it for Claude Code; nothing starts by itself. title: a few words. why: what happened and what "

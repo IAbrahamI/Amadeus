@@ -60,6 +60,7 @@ MAIL_READ_TOOLS = {"mail_read", "mail_recent", "mail_search", "mail_unread", "ma
 
 
 WEB_READ_TOOLS = {"web_search", "web_read"}
+BACKGROUND_PREFIX = "brief-"  # chats Amadeus has with itself to write the briefs (digest._additions): never shown, never ask
 
 
 def _read_web_recently(cid, last=12):
@@ -290,6 +291,8 @@ def about_me():
     else:
         lines.append("- Memory: the user's profile and communication style, how they ask for things, long-term facts (Hindsight), and you can\n"
                      "  search your earlier chats (search_chats). Long chats keep a summary of their earlier part.")
+    lines.append("- The app itself: brief_show / brief_change for what goes into the morning brief and evening summary (and when),\n"
+                 "  app_settings / app_setting_change for its colours and spoken answers. The brief is NOT a calendar event or a reminder.")
     lines.append("- Playbooks (fixed recipes): plan my day, week ahead, sort my inbox, newsletter cleanup, new project (interview → spec →\n"
                  "  work team). Skills: calendar, reply in my style, work brief.")
     try:
@@ -676,7 +679,11 @@ def _last_tool_result(cid):
 
 
 def _ever_acted(cid):
-    return any(m["role"] == "tool" for m in db.messages(cid))
+    """Something was really changed in this chat lately (an approval card, or a tool that changes things), which a
+    "done" now may refer to. Looking things up (the web, the calendar, mail) doesn't count: after a search, "I've added
+    it" with no action behind it is still caught."""
+    return any(m["role"] == "approval" or (m["role"] == "tool" and (tools.BY_NAME.get(m["meta"].get("name")) or {}).get("approval"))
+               for m in db.messages(cid)[-30:])
 
 
 def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
@@ -789,6 +796,9 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 (name == "open_page" and _read_mail_recently(cid) and not tools.user_named_site(cid, str(args.get("url", ""))))
             # opening things needs no approval; only a link that may come from a mail or message (and that you never
             # named yourself) is shown to you first, so a mail can't make it open a phishing page
+            if needs and cid.startswith(BACKGROUND_PREFIX):  # written in the background: nothing is changed, nobody is called
+                db.add_message(cid, "tool", "Not done: this only looks things up; nothing was changed.", {"name": name})
+                continue
             if needs:
                 try:
                     summary = t["summary"](args) if t["summary"] else \

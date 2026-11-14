@@ -123,11 +123,21 @@ const PAGES = {
 const DAYK = { morning: "Morning brief", now: "So far today", evening: "Evening summary" };
 let speaking = null;
 async function loadDay(reports) {
-  reports = reports || (await api("/api/day")).reports;
+  const [rep, br] = await Promise.all([reports ? { reports } : api("/api/day"), api("/api/briefs")]);
+  reports = rep.reports;
+  const hh = (h) => String(h).padStart(2, "0") + ":00", m = br.briefs.morning, e = br.briefs.evening;
   body().innerHTML = (reports.length ? reports.map((r, i) => `<section class="dayrep"><h3>${DAYK[r.kind] || esc(r.kind)} · ${hhmm(r.at)} <button class="btn" data-act="listen" data-i="${i}">▶ Listen</button></h3><div class="md">${md(stripMood(r.text))}</div></section>`).join("")
-    : note("Nothing yet today. The morning brief comes at 07:00 and the evening summary at 21:00.")) +
-    `<div class="acts"><button class="btn go" data-act="daynow">Summarize so far</button></div>${info("dayInfo")}`;
+    : note(`Nothing yet today. The morning brief comes at ${hh(m.hour)} and the evening summary at ${hh(e.hour)}.`)) +
+    `<div class="acts"><button class="btn go" data-act="daynow">Summarize so far</button></div>${info("dayInfo")}` + briefBox(br);
   body().dataset.reports = JSON.stringify(reports.map((r) => r.text));
+}
+// what goes into each brief: what's always in it, and what you added (also in words: "put the weather in my morning brief")
+function briefBox(br) {
+  const part = (k, title) => { const b = br.briefs[k];
+    return `<h3 style="margin-top:18px">${title} · ${b.on ? String(b.hour).padStart(2, "0") + ":00" : "off"}</h3>${note("Always: " + esc(br.built_in[k]) + ".")}
+      ${b.items.length ? rows(b.items.map((it) => `<div class="row"><span class="k">+</span><div class="t"><span class="wrap">${esc(it)}</span></div><button class="btn" data-act="brrm" data-k="${k}" data-it="${esc(it)}">Remove</button></div>`)) : ""}
+      <form class="todoadd brAdd" data-k="${k}"><span class="plus" aria-hidden="true">+</span><input placeholder="Add to it, e.g. the weather this evening in my town" aria-label="Add to the ${title}" autocomplete="off"><button class="btn go">Add</button></form>`; };
+  return `<details class="memext"><summary>What goes into them</summary>${part("morning", "Morning brief")}${part("evening", "Evening summary")}</details>`;
 }
 VIEWS.day = { side: 1, title: "Your day", meta: new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" }), load: () => loadDay() };
 $(".hud.tl").onclick = () => open("day"); $(".hud.tl").title = "Your day: the morning brief and the evening summary"; $(".hud.tl").style.cursor = "pointer";
@@ -200,10 +210,19 @@ body().addEventListener("click", async (e) => {
     }, 2000);
   }
   if (act === "daynow") { a.disabled = true; say("dayInfo", `${NAME()} is writing it…`); setMode("think"); try { await loadDay((await post("/api/day/now", {})).reports); } catch (x) { say("dayInfo", "That didn't work: " + x.message); } setMode("idle"); }
+  if (act === "brrm") { await post("/api/briefs", { which: d.k, remove: [d.it] }); loadDay(); return; }
   if (act === "listen") speakText(JSON.parse(body().dataset.reports || "[]")[Number(d.i)], a);
 });
 body().addEventListener("submit", async (e) => {
   const f = e.target, id = f.id;
+  if (f.classList.contains("brAdd")) {  // something more in a brief: looked up by Amadeus each time it's written
+    e.preventDefault();
+    const v = f.querySelector("input").value.trim(); if (!v) return;
+    const r = await post("/api/briefs", { which: f.dataset.k, add: [v] });
+    if (r.error) return say("dayInfo", "That didn't work: " + r.error);
+    const open = f.closest("details").open; await loadDay(); const dt = body().querySelector("details.memext"); if (dt) dt.open = open;
+    return;
+  }
   const forms = {
     async asForm() {
       const own = f.querySelector("[name=pm]:checked").value === "own";
