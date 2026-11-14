@@ -12,8 +12,15 @@ BUILTINS = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "__spec__", 
 
 
 def _files():
-    out = subprocess.run(["git", "ls-files", "*.py"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
-    return [os.path.join(ROOT, f) for f in out.split() if os.path.exists(os.path.join(ROOT, f))]
+    """The repository's Python files (git's list; in a copy without git, every .py file outside hidden folders)."""
+    out = subprocess.run(["git", "ls-files", "*.py"], cwd=ROOT, capture_output=True, text=True)
+    if out.returncode == 0:
+        return [os.path.join(ROOT, f) for f in out.stdout.split() if os.path.exists(os.path.join(ROOT, f))]
+    found = []
+    for d, dirs, files in os.walk(ROOT):
+        dirs[:] = [x for x in dirs if not x.startswith(".") and x not in ("node_modules", "target", "__pycache__")]
+        found += [os.path.join(d, f) for f in files if f.endswith(".py")]
+    return found
 
 
 def _missing(path):
