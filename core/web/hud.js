@@ -349,7 +349,7 @@ async function loadTodo() {
   const { items } = await api("/api/todo");
   $("#pmeta").textContent = `ToDo.md · ${items.length} open`;
   body().innerHTML = `<form class="todoadd" id="todoAdd"><span class="plus" aria-hidden="true">+</span><input id="todoNew" placeholder="Add a to-do…" aria-label="Add a to-do" autocomplete="off"><button class="btn go">Add</button></form>` +
-    (items.length ? rows(items.map((t, i) => `<div class="row" data-i="${i}"><button class="box" data-act="tick" aria-label="Done"></button><div class="t"><b>${esc(t)}</b></div><span></span></div>`)) : note("Nothing on your ToDo."));
+    (items.length ? rows(items.map((t, i) => `<div class="row todo" data-i="${i}"><button class="box" data-act="tick" aria-label="Done"></button><div class="t"><b>${esc(t)}</b></div><span></span></div>`)) : note("Nothing on your ToDo."));
   body().dataset.items = JSON.stringify(items);
 }
 

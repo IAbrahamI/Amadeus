@@ -793,3 +793,7 @@ input[type="checkbox"]:disabled { opacity: .75; cursor: default; }
 .row.selfp .k { color: var(--cyan); }
 .selfrev { margin: 6px 0 14px; }
 .updnotes.diff { max-height: 50vh; overflow: auto; font-size: 11.5px; }
+/* to-dos: the whole text, over as many lines as it needs (the box stays at the first line) */
+.row.todo { align-items: start; }
+.row.todo .t b { white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
+.row.todo .box { margin-top: 1px; }
