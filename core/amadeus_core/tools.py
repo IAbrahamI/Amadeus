@@ -1623,7 +1623,7 @@ TOOLS = [
     T("brief_show", "Show what goes into the user's morning brief and evening summary (the reports under \"Your day\"), "
       "when they come and what the user added. Use this, not the calendar, for anything about the brief.", {}, [], brief_show, "reminders"),
     T("brief_change", "Change the morning brief or evening summary. which: morning or evening. add: things the user wants "
-      "in it every day, each as an instruction you can look up then (e.g. \"the weather for this evening in Winterthur\"). "
+      "in it every day, each as an instruction you can look up then (e.g. \"the weather this evening in <the user's town>\"). "
       "remove: an added thing's words or number from brief_show. hour: 0-23. on: true/false.",
       {"which": S, "add": {"type": "array", "items": S}, "remove": {"type": "array", "items": S}, "hour": {"type": "integer"},
        "on": {"type": "boolean"}}, ["which"], brief_change, "reminders", True, _brief_summary),

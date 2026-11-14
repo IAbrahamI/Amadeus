@@ -24,7 +24,6 @@ DEFAULTS = {
     "hindsight_key_name": "amadeus",
     "presidio_analyzer": "http://172.30.77.10:3000/analyze",    # on the private Docker network install.sh creates
     "presidio_anonymizer": "http://172.30.77.11:3000/anonymize",
-    "history_chars": 24000,
     "quiet_hours": [23, 7],
     "mail_check_minutes": 10,     # background mail watch interval
     "mail_notify": "important",   # important (call only for important mail) | all | off

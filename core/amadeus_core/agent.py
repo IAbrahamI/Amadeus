@@ -194,74 +194,57 @@ def persona():
     return ""
 
 
+RECENT_TURNS = 4          # your last few messages and their answers: the short-term memory of a conversation
+QUIET_MINUTES = 25       # after this long without a word, a new message starts fresh (the state note says what's open)
+OLD_TOOL_CHARS = 160     # what stays of an earlier turn's tool result: one line
+
+
 def _history(cid):
-    msgs, size = [], 0
-    every = db.messages(cid)
-    start = db.get_setting(f"history_start:{cid}", 0)  # moved in one big step, not with every message: a start that moves means reading it all again
-    if sum(len(m["content"]) for m in every if m["id"] >= start) > CFG["history_chars"]:
-        keep, start = 0, every[-1]["id"]
-        for m in reversed(every):
-            keep += len(m["content"])
-            if keep > CFG["history_chars"] // 2:
-                break
-            start = m["id"]
-        db.set_setting(f"history_start:{cid}", start)
-    for m in reversed([m for m in every if m["id"] >= start]):
-        role, meta = m["role"], m["meta"]
+    """What the model reads of the chat: your last few messages with their answers, never the whole day. Earlier turns
+    are kept short: their tool results become one line each, and an answer you corrected ("no, I meant…") is left out, so
+    the model can't copy it. After a quiet spell the chat starts fresh; earlier talk comes back only when you refer to
+    it (_look_back). The current turn (its tool calls and results) is always complete."""
+    every = [m for m in db.messages(cid) if m["role"] in ("user", "assistant", "tool", "work")]
+    users = [i for i, m in enumerate(every) if m["role"] == "user"]
+    now = users[-1] if users else len(every)  # (a project's chat may hold only Claude Code's reports so far)
+    start = users[-RECENT_TURNS] if len(users) >= RECENT_TURNS else 0
+    if users and now > 0 and every[now]["created"] - every[now - 1]["created"] > QUIET_MINUTES * 60:
+        start = now
+    msgs, pending = [], []
+    for i in range(start, len(every)):
+        m, role, meta = every[i], every[i]["role"], every[i]["meta"]
+        current = i >= now
         if role == "user":
-            item = {"role": "user", "content": f"<context>\n{meta['context']}\n</context>\n\n{m['content']}" if meta.get("context") else m["content"]}
-        elif role == "assistant":
-            item = {"role": "assistant", "content": m["content"]}
-            if meta.get("tool_calls"):
-                item["tool_calls"] = [{"function": c} for c in meta["tool_calls"]]
-        elif role == "tool":
-            item = {"role": "tool", "content": m["content"][:4000], "tool_name": meta.get("name", "")}
-        elif role == "work":  # Claude Code's report in a project's chat: the user read it already, Amadeus learns from it
-            item = {"role": "user", "content": f"<context>\nClaude Code {'finished' if meta.get('ok') else 'stopped'} on "
-                    f"{meta.get('project', 'the project')}. The user saw this report in the project's timeline: don't repeat it, "
-                    f"use it to answer.\n\n{m['content'][:4000]}\n</context>"}
-        else:
-            continue
-        size += len(m["content"])
-        if size > CFG["history_chars"] and msgs:
-            break
-        msgs.append(item)
-    msgs.reverse()
-    while msgs and msgs[0]["role"] == "tool":
-        msgs.pop(0)
-    total = len([m for m in db.messages(cid) if m["role"] in ("user", "assistant", "tool")])
-    dropped = total - len(msgs)
-    s = db.get_setting(f"chat_summary:{cid}", {})
-    if dropped > 0 and s.get("text"):  # the earlier part of a long chat, summarized, so it doesn't lose the thread
-        msgs.insert(0, {"role": "user", "content": "(Summary of the earlier part of this chat, for context only)\n" + s["text"]})
-        msgs.insert(1, {"role": "assistant", "content": "Got it, I have the earlier context."})
-    if dropped >= s.get("covered", 0) + 10:
-        threading.Thread(target=_summarize_earlier, args=(cid, dropped), daemon=True).start()
+            text = m["content"]
+            if current and meta.get("context"):
+                text = f"<context>\n{meta['context']}\n</context>\n\n{text}"
+            msgs.append({"role": "user", "content": text})
+        elif role == "work":
+            msgs.append({"role": "user", "content": f"<context>\nClaude Code {'finished' if meta.get('ok') else 'stopped'} on "
+                         f"{meta.get('project', 'the project')}. The user saw this report in the project's timeline: don't repeat it, "
+                         f"use it to answer.\n\n{m['content'][:4000]}\n</context>"})
+        elif current:
+            if role == "assistant":
+                item = {"role": "assistant", "content": m["content"]}
+                if meta.get("tool_calls"):
+                    item["tool_calls"] = [{"function": c} for c in meta["tool_calls"]]
+                msgs.append(item)
+            else:
+                msgs.append({"role": "tool", "content": m["content"][:4000], "tool_name": meta.get("name", "")})
+        elif role == "tool":  # an earlier turn: what it looked at, in one line
+            line = re.sub(r"\s+", " ", re.sub(r"<<<\w+ DATA|\w+ DATA>>>|^[A-Z ]+DATA \([^)]*\):", " ", m["content"])).strip()
+            pending.append(f"{meta.get('name', 'a tool')}: {line[:OLD_TOOL_CHARS]}{'…' if len(line) > OLD_TOOL_CHARS else ''}")
+        elif m["content"].strip():  # an earlier answer: kept, unless you corrected it right after
+            nxt = next((every[j] for j in range(i + 1, len(every)) if every[j]["role"] == "user"), None)
+            if nxt and CORRECTION_RE.search(nxt["content"]):
+                pending = []
+                continue
+            text = m["content"]
+            if pending:
+                text = "(" + "; ".join(pending) + ")\n" + text
+                pending = []
+            msgs.append({"role": "assistant", "content": text})
     return msgs
-
-
-def _summarize_earlier(cid, dropped):
-    """Rolling summary of the messages that no longer fit (your words and its answers; never mail or tool contents)."""
-    try:
-        old = [m for m in db.messages(cid) if m["role"] in ("user", "assistant", "tool")][:dropped]
-        lines, prev_tool = [], ""
-        for m in old:
-            if m["role"] == "tool":
-                prev_tool = m["meta"].get("name", "")
-                continue
-            if m["role"] == "assistant" and (prev_tool in MAIL_READ_TOOLS or not m["content"].strip()):
-                continue
-            lines.append(f"{'User' if m['role'] == 'user' else NAME}: {m['content'][:600]}")
-            prev_tool = ""
-        prev = db.get_setting(f"chat_summary:{cid}", {}).get("text", "")
-        text = llm.complete(CFG["default_model"], [
-            {"role": "system", "content": f"Summarize this earlier part of a chat between the user and their assistant {NAME} "
-             "in at most 12 short bullet points: decisions, requests, what was done, open questions, names and dates that "
-             "matter later. No email contents. Plain bullets only."},
-            {"role": "user", "content": (f"EARLIER SUMMARY:\n{prev}\n\n" if prev else "") + "CHAT:\n" + "\n".join(lines[-80:])}])
-        db.set_setting(f"chat_summary:{cid}", {"text": MOOD_RE.sub("", text).strip()[:2500], "covered": dropped})
-    except Exception as e:
-        print("chat summary failed:", e, flush=True)
 
 
 def about_me():
@@ -298,7 +281,8 @@ def about_me():
                      "  remember something for later or that you have a long-term memory.")
     else:
         lines.append("- Memory: the user's profile and communication style, how they ask for things, long-term facts (Hindsight), and you can\n"
-                     "  search your earlier chats (search_chats). Long chats keep a summary of their earlier part.")
+                     "  search your earlier chats (search_chats). You see the last few exchanges; earlier talk is brought back when the user\n"
+                     "  refers to it.")
     lines.append("- The app itself: brief_show / brief_change for what goes into the morning brief and evening summary (and when),\n"
                  "  app_settings / app_setting_change for its colours and spoken answers. The brief is NOT a calendar event or a reminder.")
     lines.append("- Playbooks (fixed recipes): plan my day, week ahead, sort my inbox, newsletter cleanup, new project (interview → spec →\n"
@@ -460,6 +444,58 @@ REPEAT_NUDGE = ("(From the system, not the user.) You just repeated your previou
                 "question about what they mean.")
 
 
+LOOKBACK_RE = re.compile(r"\b(?:earlier|before|this morning|yesterday|last (?:time|week)|we (?:talked|spoke|discussed|said)|you (?:said|told me|mentioned)|"
+                         r"i (?:said|told you|mentioned)|back to|what (?:did|was) (?:we|i|you)|remember when|"
+                         r"vorhin|vorher|heute morgen|gestern|wir (?:haben|hatten) .{0,20}(?:gesprochen|besprochen|geredet)|du (?:hast|sagtest)|"
+                         r"antes|esta mañana|ayer|lo que (?:hablamos|dijimos|dijiste))\b", re.I)
+LOOKBACK_ASK = ('The user refers to something said earlier. List the topic words to search the earlier chat with (nouns and '
+                'names, not verbs like "said" or "discussed"), each in English, German and Spanish, with other forms. Example for '
+                '"was hatten wir wegen dem Zug nach Bern gesagt?": {"english": ["train", "trains", "Bern"], "german": ["Zug", "Züge", '
+                '"Bern"], "spanish": ["tren", "trenes", "Berna"]}. Reply ONLY with JSON in that shape.')
+LOOKBACK_DAYS = 7
+
+
+def _look_back(cid, user_text):
+    """You refer to earlier talk ("what we said this morning about the trip"): code finds it, in this chat before the
+    short window and in the chats of the last days, and hands the model those passages with their times. Search words
+    come from one short model call (other forms and EN/DE/ES translations), so it finds it in other words too. Only your
+    words and its final answers come back; facts from then are marked as from then."""
+    if not LOOKBACK_RE.search(user_text or ""):
+        return ""
+    try:
+        out = json.loads(llm.complete(CFG["default_model"], [{"role": "system", "content": LOOKBACK_ASK},
+                                                             {"role": "user", "content": user_text[:500]}], as_json=True) or "{}")
+        words = [w for v in out.values() if isinstance(v, list) for w in v]
+    except Exception:
+        words = []
+    words = {w.lower() for w in (words + re.findall(r"\w{4,}", user_text)) if isinstance(w, str) and len(w) >= 3}
+    words -= {"what", "that", "this", "with", "about", "earlier", "before", "morning", "said", "told", "back", "talked", "remember",
+              "vorhin", "heute", "morgen", "gestern", "haben", "hatten", "antes", "mañana", "dijimos", "hablamos"}
+    if not words:
+        return ""
+    recent = _history(cid)
+    seen_now = " ".join(m["content"] for m in recent).lower()
+    since = time.time() - LOOKBACK_DAYS * 86400
+    rows = db.q("SELECT m.conversation_id, m.role, m.content, m.created FROM messages m JOIN conversations c ON c.id=m.conversation_id "
+                "WHERE m.created>? AND m.role IN ('user','assistant') AND m.content<>'' AND c.id NOT LIKE 'brief-%' ORDER BY m.created", (since,))
+    hits = []
+    for i, r in enumerate(rows):
+        if r["role"] != "user" or r["content"].lower() in seen_now:
+            continue
+        reply = next((x for x in rows[i + 1:i + 6] if x["conversation_id"] == r["conversation_id"] and x["role"] == "assistant"), None)
+        text = (r["content"] + " " + (reply["content"] if reply else "")).lower()
+        score = sum(1 for w in words if w in text)
+        if score:
+            score += 1 if r["conversation_id"] == cid else 0  # this chat first, then the other recent ones
+            hits.append((score, r["created"], r["content"], reply["content"] if reply else ""))
+    if not hits:
+        return "\n\n## From earlier\nNothing earlier in the chats of the last days matches this. Say so instead of guessing."
+    best = sorted(sorted(hits, key=lambda h: -h[0])[:4], key=lambda h: h[1])
+    lines = [f"[{datetime.datetime.fromtimestamp(t):%a %d %b %H:%M}] User: {u[:300]}\n  You: {re.sub(r'\s+', ' ', a)[:400]}" for _, t, u, a in best]
+    return ("\n\n## From earlier (what was said then; anything about calendar, mail, lists or prices may have changed since: "
+            "look it up again before stating it as current)\n" + "\n".join(lines))
+
+
 def _context(cid, user_text):
     """What changes with each message: the time, and what fits this request. It goes with the newest message."""
     text = "The time is " + datetime.datetime.now().strftime("%H:%M") + "."
@@ -475,6 +511,7 @@ def _context(cid, user_text):
     if waiting:  # a card is not the action: until the user approves it, nothing has happened
         text += ("\n\nWaiting for the user's OK on its card (NOT done yet; say it's waiting for their OK, never that it's done):\n" +
                  "\n".join("- " + re.sub(r"\s+", " ", w["summary"])[:200] for w in waiting))
+    text += _look_back(cid, user_text)
     for rx, hint in ROUTES:  # a small model follows its own earlier answers in a long chat: this says which tools fit now
         if rx.search(user_text or ""):
             text += "\n\n## For this message\n" + hint
@@ -833,7 +870,7 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
             on = tools.enabled_connectors()
             if LEARN_RE.search(said_by_user or "") and all(on.get(c, True) and not tools.missing(c) for c in ("web", "memory")):
                 _offer_learning(cid, model, said_by_user, emit)
-            elif not BY_DESIGN.search(content) and _lacks_ability(model, said_by_user, content):  # it can't: ask whether to add it
+            elif not BY_DESIGN.search(content) and not ABOUT_YOU_RE.search(said_by_user or "") and _lacks_ability(model, said_by_user, content):  # it can't: ask whether to add it
                 _offer_improvement(cid, model, said_by_user, emit, "it answered that it can't do it")
             emit("done", {})
             return
@@ -945,6 +982,8 @@ MAYBE_CANT_RE = re.compile(r"\b(?:can['’]?t|cannot|can not|unable|not (?:curre
 CANT_ASK = ("Did the assistant leave the user's request undone because it has no tool or function for it (not because "
             "information was missing, the user must decide something, or it's against its rules)? Reply ONLY with JSON: "
             '{"missing_ability": true or false}')
+ABOUT_YOU_RE = re.compile(r"\b(?:what can you do|what can'?t you do|what are you able|your (?:abilities|features)|was kannst du|"
+                          r"was kannst du nicht|qué puedes hacer|qué sabes hacer)\b", re.I)  # its "I can't…" there is an answer, not a gap
 BY_DESIGN = re.compile(r"\b(?:whatsapp|discord|signal|telegram|messengers?|passwords?|passw[oö]rt\w*|screen|bildschirm|bank\w*|"
                        r"pay(?:ments?)?|buy|kauf\w*)\b", re.I)  # what it doesn't do on purpose: never offered as a missing ability
 IMPROVE_ASK = ("The user asked for something their assistant can't do with its current tools. Describe the missing ability "

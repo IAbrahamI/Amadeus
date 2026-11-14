@@ -129,6 +129,11 @@ CASES = [
     # 8. the spoken line carries the facts
     ("8 spoken todo (en)", [], "What's on my todo?", True, lambda c, t, s: used(c, "todo_list") and say_has_facts(s)),
     ("8 spoken todo (de)", [], "Was steht auf meiner Todo-Liste?", True, lambda c, t, s: used(c, "todo_list") and say_has_facts(s)),
+    # 9. earlier talk, outside the short window (put there by run() for "LOOKBACK" chats)
+    ("9 look back (en)", "LOOKBACK", "What did we say this morning about my flight to Lisbon?", False,
+     lambda c, t, s: "07:40" in t or "7:40" in t),
+    ("9 look back (de)", "LOOKBACK", "Was hatten wir heute Morgen wegen meinem Flug nach Lissabon besprochen?", False,
+     lambda c, t, s: "07:40" in t or "7:40" in t),
     # no tool needed
     ("0 thanks (en)", BRIEF_WRONG, "thanks, that's all", False, lambda c, t, s: not c and "haven't" not in t.lower()),
     ("0 small talk (de)", [], "Wie geht's dir heute?", False, lambda c, t, s: not c),
@@ -140,6 +145,11 @@ def run(history, text, speak):
     cid = db.new_id()
     db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", MODEL, db.now(), db.now()))
     db.set_setting("briefs", {})
+    if history == "LOOKBACK":  # this morning: the flight; then a few hours of other talk
+        db.add_message(cid, "user", "I'm flying to Lisbon on Friday, departure 07:40 from Zurich.")
+        db.add_message(cid, "assistant", "Got it: Friday, 07:40 from Zurich to Lisbon.")
+        db.q("UPDATE messages SET created=created-5*3600 WHERE conversation_id=?", (cid,))
+        history = [x for i in range(5) for x in (("user", f"what's a good name for a cat, idea {i}?"), ("assistant", "Maybe Luna."))]
     for role, content in history:
         if role == "approval":
             aid = db.new_id()

@@ -108,8 +108,9 @@ def chat_stream(model, messages, tools=None):
     """Yields ("token", text) and finally ("done", {"content": str, "tool_calls": [...]})."""
     global _used
     _used = time.time()
+    # with tools a low temperature: picking a tool and its arguments is a choice, not writing (0.3 picked wrong tools more often)
     body = {"model": model, "messages": messages, "stream": True, "think": False, "keep_alive": KEEP,
-            "options": {"temperature": 0.3, **THREAD_OPTION}}
+            "options": {"temperature": 0.15 if tools else 0.3, **THREAD_OPTION}}
     if tools:
         body["tools"] = tools
     req = urllib.request.Request(CFG["ollama_url"] + "/api/chat", json.dumps(body).encode(),
