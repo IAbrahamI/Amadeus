@@ -15,7 +15,7 @@
 #   ./install.sh --check      read-only: prerequisites and status, changes nothing
 #   ./install.sh --dry-run    print what would be done, changes nothing
 #   ./install.sh --benchmark  test this PC's speed again and pick another model
-#   ./install.sh --only ollama|secrets|presidio|hindsight|folder|work|voice|app
+#   ./install.sh --only ollama|secrets|presidio|hindsight|search|folder|work|voice|app
 #   ./install.sh --verbose    show everything the commands print (it always goes to ~/.local/share/amadeus/install.log)
 #   ./install.sh --help
 #
@@ -31,6 +31,8 @@
 #   HINDSIGHT_WORKER_ID    stable worker id                    (default: amadeus-hindsight)
 #   AMADEUS_FOLDER         your folder, with Notes/ and Projects/ in it (asked; suggestion ~/Amadeus)
 #   AMADEUS_PROJECTS       only if the Claude Code projects should live somewhere else
+#   AMADEUS_WEB=1          set up the web: your own search engine (SearXNG) in a container, about 400 MB
+#   SEARXNG_IMAGE          its container image                 (default: the tested version, see below)
 #   AMADEUS_VOICE=1        set up voice: speech recognition and the wake word (about 1 GB, runs on the CPU)
 #   ASSUME_YES=1           do not prompt; non-interactive onboarding
 
@@ -57,10 +59,14 @@ HINDSIGHT_UI_PORT=9999
 AMADEUS_FOLDER="${AMADEUS_FOLDER:-}"
 AMADEUS_PROJECTS="${AMADEUS_PROJECTS:-}"
 AMADEUS_VOICE="${AMADEUS_VOICE:-}"
+AMADEUS_WEB="${AMADEUS_WEB:-}"
+SEARXNG_IMAGE="${SEARXNG_IMAGE:-searxng/searxng:2026.11.14-a7128d5d1}"
+SEARXNG_PORT=8894
 VOICE="$HOME/.local/share/amadeus/voice"
 VOSK_MODEL=vosk-model-small-en-us-0.15
 # not set: keep what an earlier install already set up (voice)
 [[ -z "$AMADEUS_VOICE" && -x "$VOICE/venv-lite/bin/python" ]] && AMADEUS_VOICE=1
+[[ -z "$AMADEUS_WEB" ]] && command -v docker >/dev/null && docker container inspect amadeus-searxng >/dev/null 2>&1 && AMADEUS_WEB=1
 DATA="$HOME/.local/share/amadeus"          # everything private lives here, never in the repository
 SECRETS="$DATA/secrets"
 ASSUME_YES="${ASSUME_YES:-0}"
@@ -341,6 +347,57 @@ presidio_container() {
     -e GUNICORN_CMD_ARGS=--no-control-socket "$image"
 }
 
+# ---------------------------------------------------------------- the web: your own search engine (optional)
+# SearXNG in a container, reachable only from this PC (127.0.0.1). It asks public search engines for Amadeus, with no
+# account, cookies or history. Only engines that answer a home connection reliably are on: the others (DuckDuckGo,
+# Brave, Google's own page) answer with a captcha, and an engine that fails makes every search slower.
+phase_search() {
+  head_ "The web"
+  if [[ "$AMADEUS_WEB" != 1 ]]; then info "Off: nothing is looked up online. You can turn it on later with ./install.sh --setup"; return; fi
+  have docker && docker info >/dev/null 2>&1 || { info "Skipped until Docker works."; return; }
+  local dir="$DATA/searxng" conf="$DATA/searxng/settings.yml"
+  if [[ -f "$conf" ]]; then ok "search engine settings exist"
+  elif [[ "$MODE" != install ]]; then info "would write $conf"
+  else
+    mkdir -p "$dir"
+    ( umask 077; cat > "$conf" <<YAML
+# Amadeus' own search engine. Written by install.sh once; yours to change afterwards (then: docker restart amadeus-searxng).
+use_default_settings:
+  engines:
+    keep_only: [google cse, bing, yahoo, wikipedia]
+server:
+  secret_key: "$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  limiter: false        # only this PC can reach it
+  image_proxy: false
+search:
+  formats: [html, json]
+  safe_search: 1
+  autocomplete: ""
+engines:
+  - {name: google cse, disabled: false}
+  - {name: bing, disabled: false}
+  - {name: yahoo, disabled: false}
+  - {name: wikipedia, disabled: false}
+YAML
+    )
+    chmod 644 "$conf"  # the container's own user reads it; it holds no login, only the key SearXNG signs its own pages with
+    ok "wrote $conf"
+  fi
+  if docker container inspect amadeus-searxng >/dev/null 2>&1; then
+    local state; state="$(docker inspect -f '{{.State.Status}}' amadeus-searxng)"
+    ok "container amadeus-searxng exists ($state)"
+    if [[ "$state" != running ]]; then run docker start amadeus-searxng; fi
+  else
+    run docker run -d --name amadeus-searxng --restart unless-stopped -p "127.0.0.1:$SEARXNG_PORT:8080" \
+      --cap-drop ALL --cap-add CHOWN --cap-add SETGID --cap-add SETUID --security-opt no-new-privileges \
+      -v "$conf:/etc/searxng/settings.yml:ro" "$SEARXNG_IMAGE" >/dev/null || return 0
+  fi
+  if [[ "$MODE" == install ]]; then
+    local i; for i in $(seq 20); do curl -fs -m 3 "http://127.0.0.1:$SEARXNG_PORT/healthz" >/dev/null 2>&1 && { ok "the search engine answers"; return; }; sleep 1; done
+    warn "the search engine doesn't answer yet: docker logs amadeus-searxng"
+  fi
+}
+
 # ---------------------------------------------------------------- Hindsight memory
 phase_hindsight() {
   head_ "The memory"
@@ -472,6 +529,9 @@ phase_setup() {
   fi
   # 2. voice (mail needs no question: accounts are connected on the Mail page)
   if confirm "Talk to it? Speech recognition and wake word, about 1 GB" yes; then AMADEUS_VOICE=1; else AMADEUS_VOICE=0; fi; env_set AMADEUS_VOICE "$AMADEUS_VOICE"
+  # 3. the web
+  info "It can look things up on the web through a search engine of its own on this PC (no account anywhere). Then search words go to public search engines and it reads web pages; without it nothing of that leaves the PC."
+  if confirm "Let it look things up on the web? About 400 MB" no; then AMADEUS_WEB=1; else AMADEUS_WEB=0; fi; env_set AMADEUS_WEB "$AMADEUS_WEB"
 }
 
 # ---------------------------------------------------------------- the projects folder and the guard for work runs
@@ -576,7 +636,7 @@ phase_deps    # what's missing comes first: installing Docker can restart this s
 phase_setup
 phase_prereqs
 # one step failing doesn't stop the others; the summary lists everything that went wrong
-STEPS=(ollama secrets presidio hindsight folder work voice app)
+STEPS=(ollama secrets presidio hindsight search folder work voice app)
 STEP_N=0
 step() {
   want "$1" || return 0
@@ -587,6 +647,7 @@ step ollama
 step secrets
 step presidio
 step hindsight
+step search
 step folder
 step work
 step voice

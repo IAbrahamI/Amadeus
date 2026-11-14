@@ -24,7 +24,8 @@
 | **Voice** | Spoken answers (the VOICE tag on the dashboard, the mic icon on the mini core): when you talked to it (default), always, or off; the chat always keeps the full text, and what is said is a short spoken line the model writes for that answer (the overall picture, not the first items), with times like "2 PM" and no links. Wake word (its name, as you set it), push-to-talk, local Whisper speech recognition (English, German, Spanish), a word list it extends when you ask and "voice off" to close the microphone. Saying only its name gets a short spoken greeting, and answering a call on the mini core a short "Okay" or "Done"; these are made once in the voice you picked. |
 | **Phone** | An Android app over your Tailscale network: chat, approvals, calls that ring like a phone call, today, mail. "It is where you are": while you use the PC the phone stays quiet, and the other way round. |
 | **Desktop actions** | Opening apps and web pages ("open Steam", "open YouTube"). A link from a mail it just read, for a site you never named yourself, is shown to you first. |
-| **Not on purpose** | No web search, no reading of WhatsApp, Discord or other messengers (for the privacy of the people writing to you), no handling of passwords. It says so instead of guessing. |
+| **The web** (optional) | Looks things up through a search engine of its own on this PC (SearXNG, no account anywhere) and reads the pages itself, always with the source. "Learn about …" reads at least two sources and shows you the facts it would remember; only your OK keeps them. Searches never carry mail addresses, phone numbers, keys or your deny-list words, and it can't open anything on this PC or your home network. |
+| **Not on purpose** | No reading of WhatsApp, Discord or other messengers (for the privacy of the people writing to you), no handling of passwords. It says so instead of guessing. |
 
 ## Security and privacy
 

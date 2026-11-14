@@ -28,6 +28,8 @@ You decide who your assistant is: its name, its personality, and whether it has 
 - **Your mail, connected directly.** Gmail, Outlook, Yahoo, iCloud, Proton (with its Bridge) and others, no other mail app needed; new mail is reported the moment it arrives. Overviews, verification codes, drafts in your style, filing. Only urgent mail
   calls you; the rest goes into a short evening summary.
 - **Memory.** A long-term memory (Hindsight) and a profile of how you work and communicate, which it adapts to.
+- **The web, if you want it.** A search engine of its own on your PC (SearXNG, no account anywhere): it looks things
+  up, reads the pages itself and names its sources. "Learn about …" shows you what it would remember; only your OK keeps it.
 - **Work runs.** "Send this to work": the text is anonymised, you approve exactly what leaves, and one
   Claude Code run works on it in a project folder of its own. The result comes back into the chat.
 - **Phone.** An Android app reaches it over your private Tailscale network, rings for its calls and syncs with the PC.

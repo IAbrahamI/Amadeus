@@ -20,11 +20,12 @@ and a lighter one. After you pick, it downloads that model, measures it and chec
 uses a built-in list. Run
 `./install.sh --benchmark` any time to do this again.
 
-The first run also asks two things:
+The first run also asks three things:
 
 1. **A folder for Claude Code projects** (suggested: `~/Amadeus/Projects`), so a work run never sees your notes. You
    can change it later on the Projects page.
 2. **Voice?** Speech recognition and the wake word, about 1 GB, running on the CPU.
+3. **The web?** Off unless you say yes. With it, Amadeus gets a search engine of its own on this PC and can look things up (see [The web](#the-web)).
 
 Long steps show the command and its latest lines as they run, then fold away into one line. The full output stays in `~/.local/share/amadeus/install.log`, and `./install.sh --verbose` shows all of it instead. The answers are kept in `amadeus.env`; `./install.sh --setup` asks again. The first run takes a while, mostly for
 downloading the local model (about 6.6 GB). Afterwards it lists what's left to do by hand: connecting your mail
@@ -106,6 +107,12 @@ name, a new app password, its servers). New mail is reported by your provider th
 
 Older versions read mail through Thunderbird. Updating removes that bridge's files; remove the Amadeus Bridge add-on in
 Thunderbird yourself (Add-ons and Themes) and connect the accounts on the Mail page.
+
+## Optional: the web
+
+Say yes to the web in `./install.sh` (or set `AMADEUS_WEB=1` in `amadeus.env` and run `./install.sh --only search`).
+It starts [SearXNG](https://docs.searxng.org) in a container that only this PC can reach (`127.0.0.1:8894`), with its
+settings in `~/.local/share/amadeus/searxng/settings.yml`. See [The web](#the-web) for what that means for your privacy.
 
 ## 5. Optional: voice
 
@@ -266,6 +273,27 @@ Optional. On the Mail page, **+ Add account** connects each account directly wit
 
 Logins stay on this computer, in a file only you can read (`~/.local/share/amadeus/secrets/`; in the Keychain on a Mac), and only go to that provider's server.
 
+## The web
+
+Optional, and off until you set it up. Amadeus then looks things up through **a search engine of its own on this PC**
+(SearXNG), with no account, key or subscription anywhere:
+
+- **What leaves the PC:** the search words, to the public search engines SearXNG asks for you (Google's programmable
+  search, Bing, Yahoo, Wikipedia), without cookies or a history; and the request for each page Amadeus reads, to that
+  site. They see your internet address, like for any search you do yourself.
+- **What never leaves:** a search that contains a mail address, phone number, IBAN, key, a path on this PC or anything
+  from your deny-list is stopped before it's sent.
+- **What it may open:** only public web pages (text and HTML). Never this PC or your home network, also not by way of
+  a redirect. It never logs in, fills in forms or keeps cookies.
+- **Accuracy:** results several engines agree on come first; for anything you'd rely on it reads the page instead of
+  trusting a snippet, and tells you where it read it. What it finds is treated as data: a page can't give it orders.
+- **Learning:** say "learn about …". It reads at least two sources, then shows you the facts it would remember and
+  where it read them. Only your OK puts them into long-term memory, each with its sources and the date.
+
+Engines that answer a home connection with a captcha (DuckDuckGo, Brave, Google's own page) are switched off, because
+a failing engine only slows every search down. You can change the list in `settings.yml`, then
+`docker restart amadeus-searxng`. Switch the web off any time under Settings → Connectors.
+
 ## Updates
 
 Amadeus asks GitHub once a day whether there's a newer release and sends nothing about you. A new version shows up in the
@@ -314,7 +342,7 @@ The release workflow runs the tests, builds the packages and publishes them.
 ```bash
 core/deploy/install.sh --uninstall            # services, the amadeus command, menu and autostart entries,
                                               # the KWin rule, an old Thunderbird bridge's files, the work-run guard
-docker rm -f hindsight presidio-analyzer presidio-anonymizer
+docker rm -f hindsight presidio-analyzer presidio-anonymizer amadeus-searxng
 ```
 
 That removes the programs and keeps your data. The desktop app and Rust stay in `.tauri-build/` until you delete the repo folder. Deleting the data (`~/.local/share/amadeus/`, the

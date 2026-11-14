@@ -120,7 +120,7 @@ What the design does and doesn't promise, so you can judge it yourself:
 - **The local model can be wrong or be tricked.** Mail and web pages can hide instructions. They are treated as data,
   outbound actions suggested right after reading mail are marked, and every change still needs your OK, but read
   what you approve.
-- **What does go online:** the work runs to Claude Code (only the approved text); downloads at install and update
+- **What does go online:** the work runs to Claude Code (only the approved text); if you set up the web, search words to public search engines and the pages it reads (see INSTALL.md, The web); downloads at install and update
   time (the model, container images, voices); Tailscale's coordination servers when you use the phone (your data
   itself goes directly between your devices, encrypted); and Amadeus talking to your mail providers, only to each account's own server.
 - **Not a multi-user system.** It assumes one person and their own PC. Anyone who can use your desktop session can
