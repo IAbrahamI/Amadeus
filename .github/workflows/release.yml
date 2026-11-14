@@ -16,8 +16,12 @@ jobs:
   tests:
     uses: ./.github/workflows/tests.yml
 
+  mac:  # the Mac app, with all its checks; its signed update archive goes into the release too
+    uses: ./.github/workflows/mac-app.yml
+    secrets: inherit
+
   release:
-    needs: tests
+    needs: [tests, mac]
     runs-on: ubuntu-22.04  # the oldest supported: the app then runs on newer systems too
     timeout-minutes: 30
     steps:
@@ -82,6 +86,28 @@ jobs:
         with:
           name: repositories
           path: site/
+      - name: The Mac app, and what the installed ones update from
+        uses: actions/download-artifact@v8
+        with:
+          name: amadeus-macos
+          path: dist
+      - name: latest.json, which the Mac app asks for (its signature is checked inside the app)
+        run: |
+          python3 - <<'PY'
+          import datetime, glob, json, os
+          version = open("VERSION").read().strip()
+          sigs = glob.glob("dist/*.app.tar.gz.sig")
+          if not sigs:
+              print("No signed Mac update archive (no TAURI_SIGNING_PRIVATE_KEY): installed Macs aren't offered this release")
+              raise SystemExit
+          archive = os.path.basename(sigs[0])[:-4]
+          tag = os.environ.get("GITHUB_REF_NAME") or f"v{version}"
+          json.dump({"version": version, "notes": f"Amadeus {version}", "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                     "platforms": {"darwin-aarch64": {"signature": open(sigs[0]).read().strip(),
+                                                      "url": f"https://github.com/IAbrahamI/Amadeus/releases/download/{tag}/{archive}"}}},
+                    open("dist/latest.json", "w"), indent=1)
+          print(open("dist/latest.json").read())
+          PY
       - name: Publish the release
         if: github.ref_type == 'tag'
         env:

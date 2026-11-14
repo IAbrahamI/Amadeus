@@ -18,7 +18,7 @@ mkdir -p "$OUT"
 (cd core/desktop-tauri
  npx --yes @tauri-apps/cli@2.12.4 icon icons/icon.png --output icons >/dev/null
  CARGO_TARGET_DIR="$ROOT/.tauri-build/target" npx --yes @tauri-apps/cli@2.12.4 build --bundles app \
-   --config '{"app":{"macOSPrivateApi":true},"bundle":{"active":true,"icon":["icons/icon.icns","icons/icon.png"],"macOS":{"minimumSystemVersion":"12.0"}}}' -- --locked)
+   --config '{"app":{"macOSPrivateApi":true},"bundle":{"active":true,"icon":["icons/icon.icns","icons/icon.png"],"macOS":{"minimumSystemVersion":"12.0"}},"plugins":{"updater":{"pubkey":"","endpoints":[]}}}' -- --locked)
 APP="$OUT/Amadeus.app"
 rm -rf "$APP"
 cp -R .tauri-build/target/release/bundle/macos/Amadeus.app "$APP"
@@ -50,3 +50,15 @@ for attempt in 1 2 3 4 5; do  # ("Resource busy" happens now and then on build m
 done
 rm -rf "$STAGE"
 echo "Built $DMG"
+
+# 5. the update the app installs itself (core/desktop-tauri: update): the finished app, signed with the update key.
+#    Only where that key is (the GitHub secret TAURI_SIGNING_PRIVATE_KEY, made by packaging/macos/updater-key.sh).
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+  [ -s packaging/macos/updater.pub ] || { echo "The update key is set, but packaging/macos/updater.pub is empty." >&2; exit 1; }
+  UPD="$OUT/Amadeus-$VERSION-$ARCH.app.tar.gz"
+  rm -f "$UPD" "$UPD.sig"
+  COPYFILE_DISABLE=1 tar -czf "$UPD" -C "$OUT" Amadeus.app
+  npx --yes @tauri-apps/cli@2.12.4 signer sign "$UPD" >/dev/null
+  test -s "$UPD.sig"
+  echo "Built $UPD (signed)"
+fi

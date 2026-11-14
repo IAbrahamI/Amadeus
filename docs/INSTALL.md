@@ -335,7 +335,13 @@ sudo pacman -Sy amadeus
 ```
 
 Maintainers: raise the version in `VERSION`, `core/desktop-tauri/Cargo.toml` and `tauri.conf.json`, then push a tag `vX.Y.Z`.
-The release workflow runs the tests, builds the packages and publishes them.
+The release workflow runs the tests, builds the packages and the Mac app, and publishes them.
+
+**Mac:** the app updates itself (Settings → Assistant → Install and restart). It downloads the newest release's
+archive, checks its signature against the key built into the app, replaces itself and starts again. Once, a maintainer
+makes that key with `packaging/macos/updater-key.sh` (it puts the private half into the GitHub secrets and the public
+half into `packaging/macos/updater.pub`, to commit) and keeps a backup of `~/.tauri/amadeus-updater.key`: without it,
+installed Macs can only be updated by installing the new version by hand.
 
 ## Uninstall
 

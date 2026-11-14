@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: "22"
       - name: Build
+        env:  # the update key: only for the archive the app updates itself from (empty in forks: no update archive)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: packaging/macos/build.sh
       - name: The core starts from inside the app, and keeps its data in the Mac folder
         run: |
@@ -135,7 +138,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: amadeus-macos
-          path: dist/macos/*.dmg
+          path: |
+            dist/macos/*.dmg
+            dist/macos/*.app.tar.gz
+            dist/macos/*.app.tar.gz.sig
           retention-days: 14
           if-no-files-found: error
       - name: The whole setup with a real Ollama and a real model

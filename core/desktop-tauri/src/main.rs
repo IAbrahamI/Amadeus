@@ -712,6 +712,10 @@ fn native(app: AppHandle, window: WebviewWindow, msg: String) {
         } else if m == "speaking:1" || m == "speaking:0" {
             SPEAKING.store(m.ends_with('1'), Ordering::Relaxed);
             Ok(())
+        } else if m == "update" {
+            #[cfg(target_os = "macos")]
+            update(&a, &w);
+            Ok(())
         } else if m == "pill?" {
             tell_pill(&a);
             Ok(())
@@ -1157,6 +1161,54 @@ fn mac_services(app: &AppHandle) {
     }
 }
 
+/// Update the app itself (Settings → Assistant → Install and restart): the newest release's archive is downloaded from
+/// GitHub, its signature checked against the public key built into this app, and only then does it replace the app.
+/// It starts again, and mac_services restarts the core from the new app. The page hears how far it is through
+/// window.amadeusUpdate(state).
+#[cfg(target_os = "macos")]
+fn update(app: &AppHandle, window: &WebviewWindow) {
+    use tauri_plugin_updater::UpdaterExt;
+    let (a, w) = (app.clone(), window.clone());
+    tauri::async_runtime::spawn(async move {
+        let say = |state: &str| {
+            let _ = w.eval(&format!("window.amadeusUpdate && window.amadeusUpdate({})", json!(state)));
+        };
+        if UPDATER_KEY.trim().is_empty() {
+            return say("unsigned"); // built without an update key: nothing it could trust
+        }
+        let found = async {
+            let updater = a.updater_builder().pubkey(UPDATER_KEY.trim()).endpoints(vec![UPDATES.parse().expect("a valid address")])?.build()?;
+            match updater.check().await? {
+                Some(update) => {
+                    say("downloading");
+                    update.download_and_install(|_, _| {}, || {}).await?;
+                    Ok::<bool, tauri_plugin_updater::Error>(true)
+                }
+                None => Ok(false),
+            }
+        }
+        .await;
+        match found {
+            Ok(true) => {
+                say("restarting");
+                std::thread::sleep(Duration::from_millis(800));
+                a.restart();
+            }
+            Ok(false) => say("none"),
+            Err(e) => {
+                eprintln!("update: {e}");
+                say(&format!("error:{e}"));
+            }
+        }
+    });
+}
+
+/// The public half of the key releases are signed with (packaging/macos/updater-key.sh makes it). Empty: no updates.
+#[cfg(target_os = "macos")]
+const UPDATER_KEY: &str = include_str!("../../../packaging/macos/updater.pub");
+#[cfg(target_os = "macos")]
+const UPDATES: &str = "https://github.com/IAbrahamI/Amadeus/releases/latest/download/latest.json";
+
 /// The core should be running while the app runs: after an update launchd may not have started it again. Does nothing if it's up.
 #[cfg(target_os = "macos")]
 fn start_core() {
@@ -1214,6 +1266,8 @@ fn main() {
     let builder = tauri::Builder::default();
     #[cfg(not(target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_notification::init());
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
         .register_uri_scheme_protocol("amadeus", |_, _| {
             tauri::http::Response::builder().header("content-type", "text/html; charset=utf-8").body(STARTING.as_bytes().to_vec()).expect("a page")

@@ -19,7 +19,9 @@ async function updatesBox() {
   const u = await api("/api/update");
   const news = u.restart ? `${note(`Version ${esc(u.installed)} is installed. Restart to use it.`)}<div class="acts"><span class="grow"></span><button class="btn go" data-act="updrestart">Restart Amadeus</button></div>`
     : u.available ? `${note(`Version ${esc(u.latest)} is available.`)}<pre class="updnotes">${esc(u.notes)}</pre>` +
-      (u.mode === "git" ? `<div class="acts"><span class="grow"></span><button class="btn go" data-act="updrun">Update now</button></div>` : note("Update it with your system's package manager, like your other apps."))
+      (u.mode === "git" ? `<div class="acts"><span class="grow"></span><button class="btn go" data-act="updrun">Update now</button></div>`
+        : u.mode === "mac" ? `<div class="acts"><span class="grow"></span><button class="btn go" data-act="updmac">Install and restart</button></div>`
+        : note("Update it with your system's package manager, like your other apps."))
     : note(u.latest ? "This is the newest version." : "No newer version known.");
   return `<h3 style="margin-top:22px">Updates</h3>${note(`This is version ${esc(u.version)}. It asks GitHub once a day whether there's a newer one and sends nothing about you.`)}
     <div class="acts"><label class="chk"><input type="checkbox" id="updOn" data-act="updset" ${u.enabled ? "checked" : ""}> Check for updates</label></div>${u.enabled ? news : ""}${info("updInfo")}`;
@@ -184,6 +186,13 @@ body().addEventListener("click", async (e) => {
     say("updInfo", "Updating. Amadeus restarts by itself when it's done…");
     const r = await post("/api/update/run", {});
     if (r.error) say("updInfo", "That didn't work: " + r.error);
+  }
+  if (act === "updmac") {  // the app downloads it, checks its signature, replaces itself and starts again
+    a.disabled = true; say("updInfo", "Looking for the update…");
+    window.amadeusUpdate = (st) => say("updInfo", st === "downloading" ? "Downloading and checking its signature…"
+      : st === "restarting" ? `Installed. ${NAME()} starts again…` : st === "none" ? "No update for this Mac yet. Try again later."
+      : st === "unsigned" ? "Updates aren't set up for this build yet." : "That didn't work: " + String(st).replace(/^error:/, ""));
+    if (window.amadeusBridge) window.amadeusBridge.postMessage("update"); else say("updInfo", "Open this in the Amadeus app to update.");
   }
   if (act === "updrestart") { say("updInfo", "Restarting…"); await post("/api/update/restart", {}); }
   if (act === "conntoggle") { await post("/api/connectors", { id: d.id, enabled: d.on !== "1" }); PAGES.connectors(); }
