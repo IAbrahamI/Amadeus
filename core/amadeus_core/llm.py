@@ -134,6 +134,22 @@ def chat_stream(model, messages, tools=None):
     yield "done", {"content": "".join(content), "tool_calls": calls}
 
 
+def structured(model, messages, schema, tools=None):
+    """One answer that must fit a JSON schema (Ollama's format): the model can't leave the list it's given or invent a
+    field. The tools are passed along unchanged only so the start of the prompt stays the same and comes from the cache."""
+    global _used
+    _used = time.time()
+    body = {"model": model, "messages": messages, "stream": False, "think": False, "keep_alive": KEEP, "format": schema,
+            "options": {"temperature": 0, **THREAD_OPTION}}
+    if tools:
+        body["tools"] = tools
+    req = urllib.request.Request(CFG["ollama_url"] + "/api/chat", json.dumps(body).encode(), {"content-type": "application/json"})
+    out = json.load(urllib.request.urlopen(req, timeout=600))
+    _timing(out)
+    _used = time.time()
+    return json.loads(out["message"].get("content") or "{}")
+
+
 def complete(model, messages, as_json=False):
     """One non-streamed answer (used by background jobs). as_json asks Ollama for valid JSON."""
     global _used

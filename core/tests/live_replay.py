@@ -29,6 +29,8 @@ with open(paths.CONFIG_FILE, "w") as f:
                "folder": os.path.join(HOME, "Amadeus")}, f)
 from amadeus_core import agent, db, grounding, llm, mail, tools  # noqa: E402
 
+agent.TWO_STEP = os.environ.get("TWO_STEP", "1") == "1"  # TWO_STEP=0: the model answers freely, without picking from a closed list first
+
 mail.call = lambda *a, **k: (_ for _ in ()).throw(OSError("no mail in this test"))
 agent.events.maybe_ring = lambda: None
 agent.events.add = lambda *a, **k: None
@@ -44,6 +46,18 @@ def counted(model, messages, tools_=None):
     COST["calls"] += 1
     COST["chars"] += len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(tools_ or [], ensure_ascii=False))
     yield from _stream(model, messages, tools_)
+
+
+_structured = llm.structured
+
+
+def structured_counted(model, messages, schema, tools_=None):
+    COST["calls"] += 1
+    COST["chars"] += len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(tools_ or [], ensure_ascii=False))
+    return _structured(model, messages, schema, tools_)
+
+
+llm.structured = structured_counted
 
 
 def timing(ev):

@@ -265,3 +265,28 @@ class OneCall(unittest.TestCase):
         self.assertTrue(db.q("SELECT active FROM reminders WHERE id=?", (rid,), one=True)["active"])
         tools.delete_reminder(rid)
         self.assertFalse(db.q("SELECT active FROM reminders WHERE id=?", (rid,), one=True)["active"])
+
+
+class PickFromAList(unittest.TestCase):
+    """The tool is picked from a closed list first, then its arguments against that tool's schema only."""
+
+    def test_pick_then_fill(self):
+        from amadeus_core import agent
+        offered = [{"type": "function", "function": {"name": "todo_add", "parameters": {"type": "object", "properties": {"items": {"type": "array"}}, "required": ["items"]}}},
+                   {"type": "function", "function": {"name": "todo_list", "parameters": {"type": "object", "properties": {}}}}]
+        asked = []
+
+        def fake(model, messages, schema, tools=None):
+            asked.append(schema)
+            return {"tool": "todo_add"} if "tool" in schema["properties"] else {"items": ["milk"]}
+        with mock.patch.object(agent.llm, "structured", side_effect=fake):
+            self.assertEqual(agent._pick_tool("m", [], offered), {"name": "todo_add", "arguments": {"items": ["milk"]}})
+        self.assertEqual(asked[0]["properties"]["tool"]["enum"], ["todo_add", "todo_list", "none"])  # only these, or none
+        self.assertEqual(asked[1]["required"], ["items"])  # that tool's own fields
+        with mock.patch.object(agent.llm, "structured", return_value={"tool": "none"}):
+            self.assertIsNone(agent._pick_tool("m", [], offered))  # none: it answers the normal way
+        with mock.patch.object(agent.llm, "structured", side_effect=OSError("down")), mock.patch("builtins.print"):
+            self.assertIsNone(agent._pick_tool("m", [], offered))
+        with mock.patch.object(agent.llm, "structured", return_value={"tool": "todo_list"}) as s:
+            self.assertEqual(agent._pick_tool("m", [], offered), {"name": "todo_list", "arguments": {}})
+            self.assertEqual(s.call_count, 1)  # no fields to fill: no second step

@@ -14,3 +14,7 @@ with open(os.path.join(paths.SECRETS, "canaries.json"), "w") as f:
     f.write('{"marker": "CANARY-testmarker123"}')
 with open(os.path.join(paths.SECRETS, "denylist.txt"), "w") as f:
     f.write("# test\nProject Bluebird\n")
+
+from amadeus_core import agent  # noqa: E402
+
+agent.TWO_STEP = False  # the unit tests script the model's answers; the closed-list pick has its own tests (PickFromAList)

@@ -750,6 +750,34 @@ def _changed_this_turn(cid):
     return False
 
 
+TWO_STEP = CFG.get("two_step_tools", True)  # measured on tests/live_replay.py: 63/66 right and no made-up "done" (61/66 without), same time
+PICK_ASK = ("(From the system, not the user.) Before you answer: does the user's last message need one of your tools now? "
+            "Pick exactly one tool name, or \"none\" if you can answer without a tool (small talk, a question you can answer "
+            "from what's already in this chat, or no tool fits). Reply in the JSON shape asked for.")
+FILL_ASK = "(From the system, not the user.) Give the arguments for {name} now, from the user's words. Reply in the JSON shape asked for."
+
+
+def _pick_tool(model, messages, offered):
+    """Two small steps instead of one free answer: first one tool name from the closed list (or none), then its
+    arguments against exactly that tool's schema. A small model can't invent a tool or a field this way. Returns the
+    call, or None to let the model answer (or call a tool) the normal way."""
+    names = [s["function"]["name"] for s in offered]
+    try:
+        pick = llm.structured(model, messages + [{"role": "user", "content": PICK_ASK}], {
+            "type": "object", "properties": {"tool": {"type": "string", "enum": names + ["none"]}}, "required": ["tool"]}, offered)
+        name = pick.get("tool")
+        if name not in names:
+            return None
+        params = next(s["function"].get("parameters") or {} for s in offered if s["function"]["name"] == name)
+        schema = {"type": "object", "properties": params.get("properties") or {}, "required": params.get("required") or []}
+        args = llm.structured(model, messages + [{"role": "user", "content": FILL_ASK.format(name=name)}], schema, offered) \
+            if schema["properties"] else {}
+        return {"name": name, "arguments": args if isinstance(args, dict) else {}}
+    except Exception as e:
+        print("picking a tool failed, answering the normal way:", str(e)[:120], flush=True)
+        return None
+
+
 def _acted(cid):
     """A tool ran or waits for approval since your last message."""
     for m in reversed(db.messages(cid)):
@@ -805,7 +833,14 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
             if text:
                 emit("token", text)
         messages = [sysmsg] + _history(cid) + nudge + ([SAY_REMINDER] if speak else [])
-        for kind, data in llm.chat_stream(model, messages, tools.schemas(cid, said_by_user)):
+        offered = tools.schemas(cid, said_by_user)
+        picked = _pick_tool(model, messages, offered) if TWO_STEP else None
+        if picked:  # the tool and its arguments were chosen from closed lists: no answer text in this round
+            content, calls = "", [picked]
+            stream = iter(())
+        else:
+            stream = llm.chat_stream(model, messages, offered)
+        for kind, data in stream:
             if kind != "token":
                 content, calls = data["content"], data["tool_calls"]
             elif streaming:
