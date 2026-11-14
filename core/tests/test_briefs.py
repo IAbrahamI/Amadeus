@@ -78,6 +78,18 @@ class NoFakeDone(unittest.TestCase):
         db.add_message(cid, "tool", "Reminder set.", {"name": "create_reminder", "approval_id": "x"})
         self.assertTrue(agent._ever_acted(cid))
 
+    def test_only_a_change_in_this_turn_backs_a_done(self):
+        cid = db.new_id()
+        db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", "m", db.now(), db.now()))
+        db.add_message(cid, "tool", "Reminder set.", {"name": "create_reminder"})
+        db.add_message(cid, "user", "is the weather in my brief now?")
+        db.add_message(cid, "tool", "Nothing added yet.", {"name": "brief_show"})
+        self.assertFalse(agent._changed_this_turn(cid))  # a lookup in this turn, a change only in an earlier one
+        db.add_message(cid, "tool", "Error: no such reminder", {"name": "delete_reminder"})
+        self.assertFalse(agent._changed_this_turn(cid))  # a change that failed
+        db.add_message(cid, "tool", "The morning brief now: on, at 07:00, with: the weather.", {"name": "brief_change"})
+        self.assertTrue(agent._changed_this_turn(cid))
+
 
 if __name__ == "__main__":
     unittest.main()

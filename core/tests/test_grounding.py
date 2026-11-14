@@ -186,27 +186,37 @@ class Lean(unittest.TestCase):
         db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", "m", db.now(), db.now()))
         return cid
 
-    def test_mail_tools_come_when_the_chat_turns_to_mail_and_stay(self):
-        from amadeus_core import tools
+    def test_a_small_base_set_plus_one_area(self):
+        from amadeus_core import db, tools
         cid = self.chat()
         names = lambda said="": {t["function"]["name"] for t in tools.schemas(cid, said)}  # noqa: E731
         with mock.patch.object(tools, "missing", return_value=""):
             everything = {t["function"]["name"] for t in tools.schemas()}
-            lean = names("add milk to my todo")
-            self.assertIn("mail_unread", lean)
-            self.assertNotIn("mail_move", lean)
-            self.assertIn("todo_add", lean)
-            self.assertLess(len(lean), len(everything) - 15)
-            self.assertEqual(names("move those mails to the invoices folder"), everything)
-            self.assertEqual(names("thanks"), everything)  # the same list from then on
+            db.add_message(cid, "user", "add milk to my todo")
+            base = names("add milk to my todo")
+            self.assertEqual(base, set(tools.BASE))
+            self.assertLess(len(base), 15)
+            self.assertNotIn("more_tools", everything)  # background jobs and tests see every tool, never the area picker
+            for said, area in (("move those mails to the invoices folder", "mail"), ("put the weather into my morning brief", "app"),
+                               ("verschieb den Termin auf Freitag", "calendar"), ("busca el tiempo en Madrid", "web"),
+                               ("what do you know about me?", "memory")):
+                db.add_message(cid, "user", said)
+                self.assertEqual(names(said), set(tools.BASE) | set(tools.AREAS[area]), said)
+            db.add_message(cid, "user", "yes, do it")
+            self.assertEqual(names("yes, do it"), set(tools.BASE) | set(tools.AREAS["memory"]))  # a short follow-up keeps the area
+            db.add_message(cid, "user", "how many days until christmas from today do you think?")
+            self.assertEqual(names("how many days until christmas from today do you think?"), set(tools.BASE))
 
-    def test_using_a_mail_tool_brings_the_rest(self):
+    def test_asking_for_an_area_brings_it_for_the_rest_of_the_turn(self):
         from amadeus_core import db, tools
         cid = self.chat()
-        with mock.patch.object(tools, "missing", return_value=""):
-            self.assertNotIn("mail_move", {t["function"]["name"] for t in tools.schemas(cid, "what's new?")})
-            db.add_message(cid, "tool", "3 unread", {"name": "mail_unread"})
-            self.assertIn("mail_move", {t["function"]["name"] for t in tools.schemas(cid, "file them")})
+        db.add_message(cid, "user", "is anything new for me?")
+        with mock.patch.object(tools, "missing", return_value=""), mock.patch.object(tools, "CURRENT_CID", cid):
+            self.assertNotIn("mail_unread", {t["function"]["name"] for t in tools.schemas(cid, "is anything new for me?")})
+            self.assertIn("ready", tools.more_tools("mail"))
+            self.assertIn("mail_unread", {t["function"]["name"] for t in tools.schemas(cid, "is anything new for me?")})
+            with self.assertRaises(ValueError):
+                tools.more_tools("games")
 
     def test_no_memory_lookup_for_small_talk_and_plain_commands(self):
         from amadeus_core import agent

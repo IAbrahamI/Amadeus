@@ -1422,6 +1422,15 @@ def voice_words_remove(words):
     return f"Removed: {', '.join(x for x in w if x.lower() in drop) or 'nothing'}."
 
 
+def more_tools(area):
+    area = str(area or "").strip().lower()
+    if area not in AREAS:
+        raise ValueError(f"The areas are: {', '.join(AREAS)}.")
+    if CURRENT_CID:
+        db.set_setting(f"area:{CURRENT_CID}", {"area": area, "asked": area, "msg": _last_user_id(CURRENT_CID)})
+    return f"The {area} tools are ready now: call the one you need."
+
+
 def T(name, desc, props, required, fn, connector, approval=False, summary=None):
     return {"name": name, "fn": fn, "connector": connector, "approval": approval, "summary": summary,
             "schema": {"type": "function", "function": {"name": name, "description": desc,
@@ -1623,6 +1632,10 @@ TOOLS = [
       "for exactly that setting: never as a stand-in for something else (like the phone app's look).", {"name": S, "value": S}, ["name", "value"],
       app_setting_change, "reminders", True,
       lambda a: (lambda nv: f"Change **{APP_SETTINGS[nv[0]][0]}** to **{nv[1]}**")(_setting_args(a.get("name"), a.get("value")))),
+    T("more_tools", "Get the tools of one area when none of the tools you have fits the request: mail, calendar (change, "
+      "move, repeat, delete, block days), notes, web (search, read a page), app (the morning brief and evening summary, the "
+      "app's settings, voice words), work (Claude Code projects), memory (what you know about the user, earlier chats).",
+      {"area": {"type": "string", "enum": ["mail", "calendar", "notes", "web", "app", "work", "memory"]}}, ["area"], more_tools, "reminders"),
     T("suggest_improvement", "Note something about YOURSELF (Amadeus) that should work better: a request you couldn't "
       "handle well, a tool that's missing or failed, a repeated mistake. It goes on the list of your own project, where "
       "the user may pick it for Claude Code; nothing starts by itself. title: a few words. why: what happened and what "
@@ -1678,30 +1691,68 @@ def missing(connector):
     return ""
 
 
-# Mail is nearly half of all tools. A chat gets these few until it turns to mail, then all of them for the rest of that chat (the list
-# then stays the same, so the model doesn't have to read everything again with each message).
-MAIL_START = {"mail_overview", "mail_unread", "mail_recent", "mail_search", "mail_read", "mail_show", "mail_codes", "day_summary", "contacts_search"}
-MAIL_WORDS = re.compile(r"\b(e-?mails?|mails?|inbox|unread|sender|folders?|attachments?|spam|junk|forward|reply|draft|posteingang|postfach|ungelesen\w*|anhang|"
-                        r"anhänge|ordner|antwort\w*|weiterleiten|correos?|bandeja|adjuntos?|responde\w*|newsletter)\b", re.I)
+# ---------- which tools the model sees: a small base set, plus one area at a time ----------
+# A small model picks the wrong tool more often the more it's shown (an 8B model that fails with 46 tools succeeds with 19).
+# So each request gets the base set and the tools of ONE area. The areas are fixed sets, never a list built per message:
+# the tools sit at the start of the prompt, and a list that changes makes the model read everything again.
+# The area comes from the words of the message; when they don't say, the model asks for one with more_tools.
+BASE = ["todo_list", "todo_add", "todo_done", "list_reminders", "create_reminder", "delete_reminder", "calendar_list",
+        "calendar_add", "open_app", "open_page", "suggest_improvement", "more_tools"]
+AREAS = {
+    "mail": [t["name"] for t in TOOLS if t["connector"] == "mail"],
+    "calendar": [t["name"] for t in TOOLS if t["connector"] == "calendar"],
+    "notes": ["notes_add", "list_notes", "search_notes", "read_note", "write_note"],
+    "web": ["web_search", "web_read", "learn_from_web"],
+    "app": ["brief_show", "brief_change", "app_settings", "app_setting_change", "voice_words", "voice_words_add", "voice_words_remove"],
+    "work": [t["name"] for t in TOOLS if t["connector"] == "work"],
+    "memory": ["recall", "remember", "memory_overview", "search_chats"],
+}
+AREA_WORDS = {  # checked in this order: the first that fits is the area
+    "mail": r"e-?mails?|mails?|inbox|unread|sender|attachments?|spam|junk|forward|reply|draft|newsletters?|verification codes?|"
+            r"posteingang|postfach|ungelesen\w*|anhang|anhänge|antwort\w*|weiterleiten|correos?|bandeja|adjuntos?|responde\w*",
+    "app": r"brief|briefing|evening summary|morgen\w*bericht|abend\w*zusammenfassung|resumen|theme|colou?rs?|farbe\w*|"
+           r"spoken answers?|read (?:it )?(?:out )?aloud|vorlesen|update check|voice words?|wake word|aktivierungswort|settings?|"
+           r"einstellung\w*|ajustes",
+    "calendar": r"calendar|kalender|calendario|appointments?|termin\w*|meetings?|events?|cita|reuni[oó]n|block|move the|"
+                r"verschieb\w*|every (?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|days? off|holidays?|"
+                r"urlaub|vacaciones",
+    "notes": r"notes?|notiz\w*|notas?|write (?:it )?down|aufschreiben|apunta\w*",
+    "web": r"search|look (?:it |that )?up|google|online|internet|web|websites?|news|prices?|weather|wetter|tiempo|clima|latest|"
+           r"learn about|read this page|recherch\w*|nachschauen|such\w*|busca\w*|noticias|precios?|aktuell\w*",
+    "work": r"claude|projects?|projekt\w*|proyectos?|send (?:it |this )?to work|work runs?",
+    "memory": r"remember|what do you know|about me|did (?:i|we) (?:say|talk|tell)|earlier today|this morning|yesterday|"
+              r"last (?:week|time)|merk dir|weißt du|gestern|heute morgen|recuerda|ayer",
+}
+AREA_RE = {k: re.compile(r"\b(?:" + v + r")\b", re.I) for k, v in AREA_WORDS.items()}
 
 
-def all_mail_tools(cid, said=""):
-    if not cid:
-        return True
-    key = f"mail_tools:{cid}"
-    if db.get_setting(key, False):
-        return True
-    recent = db.q("SELECT role, meta FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 8", (cid,))
-    used = any(r["role"] == "tool" and str(json.loads(r["meta"] or "{}").get("name", "")).startswith(("mail_", "important_")) for r in recent)
-    if used or MAIL_WORDS.search(said or ""):
-        db.set_setting(key, True)
-        return True
-    return False
+def _last_user_id(cid):
+    r = db.q("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY id DESC LIMIT 1", (cid,), one=True) if cid else None
+    return r["id"] if r else 0
+
+
+def area_for(cid, said=""):
+    """The area of this message: one asked for with more_tools in this turn, else what its words say (the first that
+    fits), else the chat's area so far when the message is a short follow-up ("yes", "do it", "the second one").
+    "" = the base set only."""
+    picked = db.get_setting(f"area:{cid}", {}) if cid else {}
+    now = _last_user_id(cid)
+    if picked.get("asked") and picked.get("msg") == now:
+        return picked["asked"]
+    for name, rx in AREA_RE.items():
+        if rx.search(said or ""):
+            if cid:
+                db.set_setting(f"area:{cid}", {"area": name, "msg": now})
+            return name
+    return picked.get("area", "") if len(re.findall(r"\w+", said or "")) <= 6 else ""
 
 
 def schemas(cid=None, said=""):
-    """The tools the model is offered. Without a chat (background jobs, tests): all of them."""
+    """The tools the model is offered: the base set plus the tools of this message's area (area_for). Without a chat
+    (background jobs, tests): all of them. Your own connectors (MCP) always."""
     on = enabled_connectors()
-    full = all_mail_tools(cid, said)
-    return [t["schema"] for t in TOOLS if on.get(t["connector"], True) and not missing(t["connector"])
-            and (full or t["connector"] != "mail" or t["name"] in MAIL_START)] + [t["schema"] for t in _mcp_tools()]
+    usable = lambda t: on.get(t["connector"], True) and not missing(t["connector"])  # noqa: E731
+    if cid is None:
+        return [t["schema"] for t in TOOLS if usable(t) and t["name"] != "more_tools"] + [t["schema"] for t in _mcp_tools()]
+    wanted = set(BASE) | set(AREAS.get(area_for(cid, said), []))
+    return [t["schema"] for t in TOOLS if t["name"] in wanted and usable(t)] + [t["schema"] for t in _mcp_tools()]

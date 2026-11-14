@@ -702,6 +702,17 @@ def _offer_learning(cid, model, user_text, emit):
     return True
 
 
+def _changed_this_turn(cid):
+    """Since your last message something was really changed: a tool that changes things ran (after your OK). Looking
+    things up doesn't count, and neither does a card that still waits for you: "I've added it" after either is made up."""
+    for m in reversed(db.messages(cid)):
+        if m["role"] == "user":
+            return False
+        if m["role"] == "tool" and (tools.BY_NAME.get(m["meta"].get("name")) or {}).get("approval") and not grounding.failure(m["content"]):
+            return True
+    return False
+
+
 def _acted(cid):
     """A tool ran or waits for approval since your last message."""
     for m in reversed(db.messages(cid)):
@@ -783,7 +794,9 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 show(None, "\n\n(Wait, that's what I said before. Let me look again.)\n\n")
             nudge, held_back, streaming = [{"role": "assistant", "content": content}, {"role": "user", "content": REPEAT_NUDGE}], True, False
             continue
-        elif not calls and not acted and grounding.unbacked(content):
+        elif not calls and not _changed_this_turn(cid) and \
+                grounding.unbacked(re.sub(r"^\W*(?:done|okay|ok|alright)\b[\W]*", "", content, flags=re.I) if acted else content):
+            # (after a lookup, "Done, here's your list" is about the lookup; "I've added it" still isn't backed by anything)
             if not nudge:  # once: tell it nothing happened, and let it really do it
                 if streaming:
                     show(None, "\n\n(That wasn't right: nothing has been done yet. One moment.)\n\n")
@@ -854,6 +867,12 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                 (name == "open_page" and _read_mail_recently(cid) and not tools.user_named_site(cid, str(args.get("url", ""))))
             # opening things needs no approval; only a link that may come from a mail or message (and that you never
             # named yourself) is shown to you first, so a mail can't make it open a phishing page
+            same = db.q("SELECT id FROM approvals WHERE conversation_id=? AND tool=? AND args=? AND status='pending'",
+                        (cid, name, json.dumps(args))) if needs else None
+            if same:  # the very same card already waits: never a second one
+                db.add_message(cid, "tool", "This exact change already waits for the user's OK on its card. Nothing new was made; "
+                               "tell the user it's waiting for their OK.", {"name": name})
+                continue
             if needs and cid.startswith(BACKGROUND_PREFIX):  # written in the background: nothing is changed, nobody is called
                 db.add_message(cid, "tool", "Not done: this only looks things up; nothing was changed.", {"name": name})
                 continue

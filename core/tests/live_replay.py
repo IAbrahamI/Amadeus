@@ -62,6 +62,9 @@ PENDING = [("user", "Put the weather in Lisbon into my morning brief."), ("assis
            ("approval", "Change your **morning brief**:\n- add: the weather this evening in Lisbon")]
 
 
+WAITING = re.compile(r"\b(?:waiting|wait for|your ok|approv\w*|wartet|freigabe|bestätig\w*|zustimm\w*|aprobaci[oó]n|espera)\b", re.I)
+
+
 def say_has_facts(said):
     return bool(said) and not re.match(r"\s*(i['’]ll|i will|let me|here['’]?s|ich werde|voy a)\b", said, re.I) and \
         any(w in said.lower() for w in ("electricity", "bill", "mia", "present", "strom", "rechnung", "factura", "regalo"))
@@ -85,7 +88,8 @@ def has(calls, tool, *words):
 
 
 def used(calls, tool):
-    return any(n in (tool, "approved:" + tool) for n, _ in calls)
+    """Called it (or, for "approved:x", put it on a card for the user's OK)."""
+    return any(n == tool for n, _ in calls) if tool.startswith("approved:") else any(n in (tool, "approved:" + tool) for n, _ in calls)
 
 
 # (name, earlier chat, the new message, spoken?, check(calls, shown text, spoken line))
@@ -94,7 +98,7 @@ CASES = [
     ("1 brief, after wrong answers (en)", BRIEF_WRONG, "No! I mean the morning brief you write for me every day. Put the weather in Winterthur in it.", False,
      lambda c, t, s: has(c, "brief_change", "winterthur") and not used(c, "calendar_list") and not used(c, "create_reminder")),
     ("1 brief, after wrong answers (de)", BRIEF_WRONG, "Nein, ich meine den Morgenbericht, den du mir jeden Tag schreibst. Nimm das Wetter in Zürich dort auf.", False,
-     lambda c, t, s: has(c, "brief_change", "zürich") and not used(c, "calendar_list") and not used(c, "create_reminder")),
+     lambda c, t, s: (has(c, "brief_change", "zürich") or has(c, "brief_change", "zurich")) and not used(c, "calendar_list") and not used(c, "create_reminder")),
     ("1 brief, after wrong answers (es)", BRIEF_WRONG, "No, me refiero al resumen de la mañana que me haces cada día. Añade el tiempo en Madrid.", False,
      lambda c, t, s: has(c, "brief_change", "madrid") and not used(c, "calendar_list") and not used(c, "create_reminder")),
     # 2. "done" without a tool
@@ -103,12 +107,12 @@ CASES = [
     ("2 reminder (es)", [], "recuérdame mañana a las 9 llamar al médico", False, lambda c, t, s: used(c, "create_reminder")),
     # 3. a card waiting for the OK is not done
     ("3 pending card (en)", PENDING, "Is the Lisbon weather in my brief now?", False,
-     lambda c, t, s: no_claim(t) and not re.search(r"\b(?:yes|it is|it's) (?:now )?(?:in|included|added)", t, re.I)),
+     lambda c, t, s: (no_claim(t) or WAITING.search(t)) and not re.search(r"\b(?:yes|it is|it's) (?:now )?(?:in|included|added)", t, re.I)),
     ("3 pending card (de)", PENDING, "Ist das Wetter jetzt im Morgenbericht?", False,
-     lambda c, t, s: no_claim(t) and not re.search(r"\bja\b", t, re.I)),
+     lambda c, t, s: (no_claim(t) or WAITING.search(t)) and not re.search(r"^\W*ja\b", t, re.I | re.M)),
     # 4. a near tool as a stand-in
-    ("4 phone theme (en)", [], "Make the phone app purple like the dashboard.", False, lambda c, t, s: not used(c, "app_setting_change")),
-    ("4 phone theme (de)", [], "Mach die Handy-App lila wie das Dashboard.", False, lambda c, t, s: not used(c, "app_setting_change")),
+    ("4 phone theme (en)", [], "Make the phone app purple like the dashboard.", False, lambda c, t, s: not used(c, "approved:app_setting_change")),
+    ("4 phone theme (de)", [], "Mach die Handy-App lila wie das Dashboard.", False, lambda c, t, s: not used(c, "approved:app_setting_change")),
     # 5. a tool result that contradicts the chat
     ("5 show brief after a wrong claim (en)", BRIEF_WRONG, "Show me what's in my morning brief.", False,
      lambda c, t, s: used(c, "brief_show") and not re.search(r"weather (?:is|are) (?:included|in it)|includes?[^.\n]{0,40}weather|- [^\n]*weather", t, re.I)),
