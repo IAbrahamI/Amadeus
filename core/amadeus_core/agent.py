@@ -339,6 +339,10 @@ date or time is unclear, ask instead of guessing."""
 SAY_NOTE = """
 
 ## Your answer will be read aloud
+Your <say> line is spoken automatically, you don't switch anything on. It IS what the user hears: put the facts
+themselves in it (the numbers, times, names that matter), never an announcement like "I'll read it to you" or "Here's
+the weather". If the user asks you to read something out loud or say it again, that <say> line says it again, with all
+the important facts; never say you would need a voice feature or ask whether they want it spoken.
 Start your final reply with one line in <say></say>: what you would say out loud to a friend. Below it write the full
 answer for the screen as you normally would, with all the details. (Before you call a tool, don't write this line.)
 - The line covers the whole answer in one or two short sentences: the overall picture and what matters most. Never just
@@ -369,8 +373,8 @@ def _overview(model, messages, answer):
 
 # A long system prompt alone isn't enough for a small model on long answers: this comes right before it answers.
 SAY_REMINDER = {"role": "system", "content": "If you answer now (no tool call), your reply must begin with <say>the actual answer "
-                "in one or two short spoken sentences: the overall picture and what matters most, no intro, no disclaimers, "
-                "not just the first items</say>, then the full answer."}
+                "in one or two short spoken sentences: the facts themselves (numbers, times, names that matter), the overall "
+                "picture, no intro, no announcement, no disclaimers, not just the first items</say>, then the full answer."}
 
 
 def _system(cid):

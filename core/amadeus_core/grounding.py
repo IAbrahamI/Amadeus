@@ -117,7 +117,10 @@ DID = (r"added|set|created|saved|scheduled|put|noted|marked|moved|removed|delete
 CLAIM = re.compile(
     r"\b(?:i['’]ve|i have|i just|i)\s+(?:now\s+|already\s+|just\s+|successfully\s+)?(?:" + DID + r")\b|"
     r"^\W*(?:done|added|saved|noted|all set|reminder set|erledigt|fertig|hecho|listo)\b|"
-    r"\b(?:is|are|has been|have been|was|were|is now|are now)\s+(?:now\s+|successfully\s+)?(?:" + DID + r")\b|"
+    # passive: "it's been added". Not a report about information ("the forecast was updated at 11:25", "recorded in
+    # 2019"): that says nothing about what Amadeus did
+    r"\b(?:is|are|has been|have been|was|were|is now|are now)\s+(?:now\s+|successfully\s+)?(?:" + DID + r")\b"
+    r"(?!\s+(?:at\s+\d|on\s+(?:\d|mon|tue|wed|thu|fri|sat|sun)|in\s+\d{4}|every|daily|hourly|weekly|yesterday|last\s|\d))|"
     r"\b(?:ich habe|habe ich|ich hab)\b.{0,70}\b(?:hinzugefügt|erstellt|gespeichert|eingetragen|gesetzt|notiert|verschoben|gelöscht|gesendet|markiert|angelegt)\b|"
     r"\b(?:wurde|wurden|ist|sind)\b.{0,40}\b(?:hinzugefügt|erstellt|gespeichert|eingetragen|gesetzt|angelegt)\b|"
     r"\b(?:he|ya he)\s+(?:añadido|agregado|creado|guardado|programado|anotado|movido|eliminado|enviado|marcado)\b", re.I | re.M)

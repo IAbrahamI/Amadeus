@@ -12,11 +12,17 @@ window.makeAloud = (h) => {
     shown: 0, reveal: null, done: null,
     start() {
       A.stop();
-      Object.assign(this, { active: true, gen: this.gen + 1, queue: [], taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false, shown: 0, reveal: null, done: null });
+      Object.assign(this, { active: true, gen: this.gen + 1, lastOwn: "", queue: [], taken: 0, spoken: 0, inCode: false, items: 0, saidCode: false, cut: false, shown: 0, reveal: null, done: null });
     },
-    // the model's own spoken line: only this is said, whatever else the answer holds
+    // the model's own spoken line: only these are said, whatever else the answer holds. An answer that looks something
+    // up has two: a short one before it starts ("I'll check the weather…") and the real one with what it found, so a
+    // later line is always said too (it used to be dropped, and you only heard that it would look)
     own(text) {
+      if (!this.active || !text.trim() || text === this.lastOwn) return;  // (a line asked for again comes once)
+      this.lastOwn = text;
       this.taken = text.length;
+      this.cut = false;
+      this.spoken = 0;  // each spoken line is said whole, never cut into "the rest is in the chat"
       this.say(text, 350);
       this.cut = true;
     },

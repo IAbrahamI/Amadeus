@@ -73,6 +73,12 @@ class Backed(unittest.TestCase):
                      "Ich habe den Termin eingetragen.", "Added.", "The item is now saved on your list."):
             self.assertEqual(g.unbacked(text), "claim", text)
 
+    def test_reports_about_information_are_not_claims(self):
+        # read back from a web page: when the information changed, not something Amadeus did
+        for text in ("Sunny, 7°C. The forecast was updated at 11:25 today (BBC Weather).", "The record was set in 2019.",
+                     "The page is updated daily."):
+            self.assertIsNone(g.unbacked(text), text)
+
     def test_promises_and_made_up_lists(self):
         self.assertEqual(g.unbacked("Got it. Let's set a reminder for tomorrow evening."), "promise")
         self.assertEqual(g.unbacked("I'll add that to your todo right away."), "promise")
