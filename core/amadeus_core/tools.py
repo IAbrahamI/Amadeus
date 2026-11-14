@@ -886,22 +886,33 @@ def _brief_summary(a):
 
 
 APP_SETTINGS = {  # what Amadeus may change about the app itself, in words; each one shows on its Settings page too
-    "theme": ("The dashboard's colours", ("blue", "purple", "red"), "blue"),
-    "speak_replies": ("Spoken answers in the dashboard: voice = when the user talked, always, off", ("voice", "always", "off"), "voice"),
-    "speak_mini": ("Spoken answers in the mini core: voice, always, off", ("voice", "always", "off"), "always"),
-    "update_check": ("Ask GitHub once a day for a newer version", (True, False), True),
+    # name: (what the card says, what the model reads, values, default)
+    "theme": ("The colours on this PC", "the colours of the dashboard and mini core on this PC only (the phone app has its own and can't follow it yet)",
+              ("blue", "purple", "red"), "blue"),
+    "speak_replies": ("Spoken answers in the dashboard", "spoken answers in the dashboard: voice = when the user talked, always, off",
+                      ("voice", "always", "off"), "voice"),
+    "speak_mini": ("Spoken answers in the mini core", "spoken answers in the mini core", ("voice", "always", "off"), "always"),
+    "update_check": ("The daily update check", "ask GitHub once a day for a newer version", (True, False), True),
 }
 
 
 def app_settings():
-    return "\n".join(f"- {k} = {db.get_setting(k, d)!r}: {desc} (one of {', '.join(map(str, vals))})" for k, (desc, vals, d) in APP_SETTINGS.items())
+    return "\n".join(f"- {k} = {db.get_setting(k, d)!r}: {desc} (one of {', '.join(map(str, vals))})" for k, (_, desc, vals, d) in APP_SETTINGS.items()) + \
+        "\nNothing else can be changed this way (not the phone app). For anything else: suggest_improvement."
+
+
+PHONE_WORDS = re.compile(r"\b(?:phone|handy|android|smartphone|mobile app|telefon)\b", re.I)
 
 
 def _setting_args(name, value):
     name = str(name or "").strip()
+    asked = next((m["content"] for m in reversed(db.messages(CURRENT_CID)) if m["role"] == "user"), "") if CURRENT_CID else ""
+    if PHONE_WORDS.search(asked):  # these settings are this PC's; changing them is no answer to a wish about the phone
+        raise ValueError("These settings only change the app on this PC, and the user asked about the phone app, which "
+                         "can't be changed this way yet. Tell the user that plainly and call suggest_improvement.")
     if name not in APP_SETTINGS:
         raise ValueError(f"Not a setting I can change: {name}. These are: {', '.join(APP_SETTINGS)}.")
-    vals = APP_SETTINGS[name][1]
+    vals = APP_SETTINGS[name][2]
     v = value if not isinstance(vals[0], bool) else str(value).strip().lower() in ("true", "1", "on", "yes")
     v = str(v).strip().lower() if not isinstance(v, bool) else v
     if v not in vals:
@@ -913,6 +924,14 @@ def app_setting_change(name, value):
     name, v = _setting_args(name, value)
     db.set_setting(name, v)
     return f"{APP_SETTINGS[name][0]}: now {v}."
+
+
+def _improvement_summary(a):
+    title, why = str(a.get("title", "")).strip(), str(a.get("why", "")).strip()
+    if len(title) < 4:
+        raise ValueError("Say in a few words what's missing.")
+    return (f"**I can't do this yet:** {title}\n\n{why}\n\nApprove, and it goes on my own project (Projects → Amadeus itself), "
+            "where you can have Claude Code build it. Nothing starts by itself.")
 
 
 def suggest_improvement(title, why):
@@ -1600,14 +1619,15 @@ TOOLS = [
       {"which": S, "add": {"type": "array", "items": S}, "remove": {"type": "array", "items": S}, "hour": {"type": "integer"},
        "on": {"type": "boolean"}}, ["which"], brief_change, "reminders", True, _brief_summary),
     T("app_settings", "Show the app's own settings you can change (colours, spoken answers, update check).", {}, [], app_settings, "reminders"),
-    T("app_setting_change", "Change one of the app's own settings (see app_settings).", {"name": S, "value": S}, ["name", "value"],
+    T("app_setting_change", "Change one of the app's own settings on this PC (see app_settings). Only when the user asked "
+      "for exactly that setting: never as a stand-in for something else (like the phone app's look).", {"name": S, "value": S}, ["name", "value"],
       app_setting_change, "reminders", True,
       lambda a: (lambda nv: f"Change **{APP_SETTINGS[nv[0]][0]}** to **{nv[1]}**")(_setting_args(a.get("name"), a.get("value")))),
     T("suggest_improvement", "Note something about YOURSELF (Amadeus) that should work better: a request you couldn't "
       "handle well, a tool that's missing or failed, a repeated mistake. It goes on the list of your own project, where "
       "the user may pick it for Claude Code; nothing starts by itself. title: a few words. why: what happened and what "
       "would be better. Never for the user's own tasks.",
-      {"title": S, "why": S}, ["title", "why"], suggest_improvement, "work"),
+      {"title": S, "why": S}, ["title", "why"], suggest_improvement, "reminders", True, _improvement_summary),
 ]
 BY_NAME = {t["name"]: t for t in TOOLS}
 CONNECTORS = {

@@ -40,6 +40,8 @@ Rules:
   knowledge is fine, but say when you are unsure.
 - Only use send_to_work when the user wants coding, writing or bigger projects done by the work agents.
 - When asked what you know about the user, use memory_overview and list the facts plainly.
+- If none of your tools can do what the user asks, don't hunt for it with other tools and don't pretend: say in one
+  sentence that you can't do that yet, and call suggest_improvement (the user approves adding it to your own project).
 - Something has only happened if you called its tool in this turn. Never say it's added, set, saved, sent or done otherwise, and never
   state what a list holds (to-dos, reminders, calendar, mail) without looking it up with its tool in this turn.
 - When one message asks for several things (a to-do and a reminder for it), call every tool it needs in the same turn.
@@ -767,6 +769,8 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
             on = tools.enabled_connectors()
             if LEARN_RE.search(said_by_user or "") and all(on.get(c, True) and not tools.missing(c) for c in ("web", "memory")):
                 _offer_learning(cid, model, said_by_user, emit)
+            elif not BY_DESIGN.search(content) and _lacks_ability(model, said_by_user, content):  # it can't: ask whether to add it
+                _offer_improvement(cid, model, said_by_user, emit, "it answered that it can't do it")
             emit("done", {})
             return
         db.add_message(cid, "assistant", MOOD_RE.sub("", content).strip(),
@@ -839,13 +843,93 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
                     result = f"FAILED, nothing was looked up or changed: {e}. Tell the user it didn't work and why; don't present this as an empty result."
                 db.add_message(cid, "tool", result, {"name": name})
         acted = True
+        if not waiting and _going_in_circles(cid):
+            text = "I keep looking without finding a way to do this, so I'm stopping: I don't have the right tool for it yet."
+            db.add_message(cid, "assistant", text, {"mood": "worried"})
+            emit("token", text)
+            _offer_improvement(cid, model, said_by_user, emit, "it kept looking (" + ", ".join(sorted({m["meta"].get("name", "") for m in db.messages(cid)[-12:] if m["role"] == "tool"})) + ") without finding a way")
+            emit("done", {})
+            return
         if waiting:
             if speak:
                 emit("say_line", "approve")  # a short spoken "I need your OK for this"
             emit("done", {"waiting": True})
             return
-    db.add_message(cid, "assistant", "I stopped after several steps without finishing. Please rephrase or split the task.")
+    text = "I stopped after several steps without finishing it, so I probably don't have the right tool for this."
+    db.add_message(cid, "assistant", text, {"mood": "worried"})
+    emit("token", text)
+    _offer_improvement(cid, model, said_by_user, emit, "it kept looking without finding a way to do it")
     emit("done", {})
+
+
+CANT_RE = re.compile(r"\b(i (?:can['’]?t|cannot|can not|am (?:not able|unable)|['’]m (?:not able|unable)|don['’]?t have (?:a |any )?(?:way|tool|access|function|option|feature))|"
+                     r"(?:isn['’]?t|is not|not) (?:possible|something i can)|"
+                     r"i need to (?:locate|find) .{0,60} (?:first|before)|could you tell me what (?:it|the \w+) is called|"
+                     r"(?:ich kann|kann ich) (?:das |dies )?(?:nicht|leider nicht)|no puedo)\b", re.I)
+MAYBE_CANT_RE = re.compile(r"\b(?:can['’]?t|cannot|can not|unable|not (?:currently |yet )?(?:possible|available|supported|linked)|"
+                           r"isn['’]?t (?:currently |yet )?(?:possible|available|supported|linked)|no (?:way|option|setting) to|"
+                           r"nicht möglich|geht (?:leider )?nicht|no es posible)\b", re.I)
+CANT_ASK = ("Did the assistant leave the user's request undone because it has no tool or function for it (not because "
+            "information was missing, the user must decide something, or it's against its rules)? Reply ONLY with JSON: "
+            '{"missing_ability": true or false}')
+BY_DESIGN = re.compile(r"\b(?:whatsapp|discord|signal|telegram|messengers?|passwords?|passw[oö]rt\w*|screen|bildschirm|bank\w*|"
+                       r"pay(?:ments?)?|buy|kauf\w*)\b", re.I)  # what it doesn't do on purpose: never offered as a missing ability
+IMPROVE_ASK = ("The user asked for something their assistant can't do with its current tools. Describe the missing ability "
+               "for a developer. Reply ONLY with JSON: {\"title\": \"a few words, what it should be able to do\", "
+               "\"why\": \"one or two sentences: what the user asked and what was missing\"}")
+
+
+def _offer_improvement(cid, model, user_text, emit, what_happened):
+    """It couldn't do what you asked (it said so, or kept searching without a way to do it): one card asks whether to
+    put the missing ability on its own project. At most once per message of yours, never for what it doesn't do on
+    purpose (messengers, passwords, payments, your screen). Returns True when a card was made."""
+    turn = []
+    for m in reversed(db.messages(cid)):
+        if m["role"] == "user":
+            break
+        turn.append(m)
+    if not user_text or BY_DESIGN.search(user_text) or cid.startswith(BACKGROUND_PREFIX) or \
+            any(m["meta"].get("tool") == "suggest_improvement" or m["meta"].get("name") == "suggest_improvement" for m in turn):
+        return False
+    steps = [m["meta"].get("name") for m in reversed(turn) if m["role"] == "tool"]
+    try:
+        out = json.loads(llm.complete(model, [{"role": "system", "content": IMPROVE_ASK}, {"role": "user", "content":
+                         f"THE USER ASKED: {user_text[:600]}\nWHAT HAPPENED: {what_happened}. Tools it tried: {', '.join(steps) or 'none'}."}],
+                         as_json=True) or "{}")
+        args = {"title": str(out.get("title", ""))[:120], "why": str(out.get("why", ""))[:600]}
+        summary = tools.BY_NAME["suggest_improvement"]["summary"](args)
+    except Exception as e:
+        print("no card for the missing ability:", str(e)[:150], flush=True)
+        return False
+    _ask_approval(cid, "suggest_improvement", args, summary, emit)
+    return True
+
+
+def _lacks_ability(model, asked, answer):
+    """The answer says it can't do what was asked. Clear wording counts at once; softer wording ("the phone app can't
+    follow that yet") is checked with one short question to the model, only then."""
+    if CANT_RE.search(answer):
+        return True
+    if not MAYBE_CANT_RE.search(answer):
+        return False
+    try:
+        out = json.loads(llm.complete(model, [{"role": "system", "content": CANT_ASK},
+                                              {"role": "user", "content": f"USER: {asked[:600]}\nASSISTANT: {answer[:1200]}"}], as_json=True) or "{}")
+        return out.get("missing_ability") is True
+    except Exception:
+        return False
+
+
+def _going_in_circles(cid):
+    """The same look-up tool three times in this turn without anything to show for it: it's searching for something
+    it has no tool for. (The calendar searched over and over for a "morning brief" event was the case.)"""
+    names = []
+    for m in reversed(db.messages(cid)):
+        if m["role"] == "user":
+            break
+        if m["role"] == "tool":
+            names.append(m["meta"].get("name"))
+    return any(n not in WEB_READ_TOOLS and names.count(n) >= 3 for n in set(names))
 
 
 def revise(aid, note):
