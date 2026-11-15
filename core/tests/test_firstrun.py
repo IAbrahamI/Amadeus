@@ -50,7 +50,8 @@ class FirstStart(unittest.TestCase):
         guard.assert_called_once_with(os.path.join(real, "Projects"), os.path.join(real, "Notes"))
         self.assertEqual(json.loads(Path(CONFIG_PATH).read_text())["folder"], real)
         keys = os.path.join(paths.SECRETS, "hindsight-keys.json")
-        self.assertEqual(stat.S_IMODE(os.stat(keys).st_mode), 0o600)
+        if os.name != "nt":
+            self.assertEqual(stat.S_IMODE(os.stat(keys).st_mode), 0o600)
 
     def test_only_a_folder_inside_home(self):
         for bad in ("/tmp", HOME):

@@ -40,7 +40,8 @@ class Direct(unittest.TestCase):
         with mock.patch.object(d, "_test"):
             acc = d.add_account("gmail", "a@example.invalid", "pw")
         self.assertNotIn("pw", json.dumps(d.listing()))
-        self.assertEqual(oct(os.stat(d.ACCOUNTS_FILE).st_mode)[-3:], "600")
+        if os.name != "nt":
+            self.assertEqual(oct(os.stat(d.ACCOUNTS_FILE).st_mode)[-3:], "600")
         d.remove_account(acc["id"])
         self.assertFalse(d.has_accounts())
 

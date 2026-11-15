@@ -6,6 +6,10 @@ import tempfile
 
 HOME = tempfile.mkdtemp(prefix="amadeus-test-")
 os.environ["HOME"] = HOME  # before amadeus_core is imported: its data lives under HOME
+# (Windows finds the home folder and the app data folders through these instead: also the throw-away ones)
+os.environ["USERPROFILE"] = HOME
+os.environ["APPDATA"] = os.path.join(HOME, "AppData", "Roaming")
+os.environ["LOCALAPPDATA"] = os.path.join(HOME, "AppData", "Local")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from amadeus_core import paths  # noqa: E402
 
@@ -28,3 +32,10 @@ secretstore.native = lambda: False
 from amadeus_core import meaning  # noqa: E402
 
 meaning.installed = lambda force=False: False  # no Ollama in the unit tests: looking back uses the word search (test_meaning covers this one)
+
+from amadeus_core import system  # noqa: E402
+
+# The tests describe Linux unless they say otherwise (they patch system.MAC / system.WIN), also when they run on
+# Windows or a Mac; and a test never ends the test run the way a restart ends the core on Windows.
+system.WIN = False
+system.end_for_restart = lambda: None

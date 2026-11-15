@@ -85,4 +85,5 @@ class OwnData(unittest.TestCase):
         from amadeus_core import paths
         import sys
         self.assertEqual(paths.CONFIG_FILE.startswith(os.path.join(HOME, "Library")), sys.platform == "darwin")
+        self.assertEqual(paths.ROOT.startswith(os.path.join(HOME, "AppData", "Roaming")), sys.platform == "win32")
         self.assertTrue(paths.DATA.startswith(HOME))

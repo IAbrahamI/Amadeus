@@ -25,10 +25,15 @@ def _label(service):
     return "com.amadeus." + service.removeprefix("amadeus-")
 
 
+def end_for_restart():
+    """Windows: this process ends so the app starts it again (core/desktop-tauri: windows_core)."""
+    os._exit(RESTART_CODE)
+
+
 def restart(*services):
     if WIN:  # the app restarts the core when it ends with RESTART_CODE; the app itself starts again with the next login
         if "amadeus-core" in services:
-            threading.Timer(0.5, lambda: os._exit(RESTART_CODE)).start()
+            threading.Timer(0.5, end_for_restart).start()
         return
     if MAC:
         for s in services:
