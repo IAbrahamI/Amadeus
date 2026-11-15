@@ -10,6 +10,7 @@ from amadeus_core import work, workguard
 from amadeus_core.config import CFG
 
 
+@unittest.skipIf(os.name == "nt", "no work runs on Windows: there's no sandbox for Claude Code there")
 class ProjectsFolder(unittest.TestCase):
     """Projects live in a folder you choose, apart from your notes; moving them takes their Claude Code sessions along."""
 

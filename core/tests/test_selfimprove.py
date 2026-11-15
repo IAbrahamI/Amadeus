@@ -22,6 +22,7 @@ def git(cwd, *args):
                           capture_output=True, text=True).stdout
 
 
+@unittest.skipIf(os.name == "nt", "only for an install from git, never the Windows app (it updates through its releases)")
 class OwnProject(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="amadeus-root-")

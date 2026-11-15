@@ -32,10 +32,12 @@ class Server:
         self.replies, self.lock = {}, threading.Lock()
 
     def _start(self):
-        cmd = shlex.split(self.cfg["command"])
+        cmd = shlex.split(self.cfg["command"], posix=os.name != "nt")  # (Windows paths keep their backslashes)
+        if os.name == "nt":
+            cmd = [c[1:-1] if len(c) > 1 and c[0] == c[-1] == '"' else c for c in cmd]
         env = {**os.environ, **{k: str(v) for k, v in (self.cfg.get("env") or {}).items()}}
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                     text=True, bufsize=1, env=env, start_new_session=True)
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                                     encoding="utf-8", bufsize=1, env=env, start_new_session=True)
         threading.Thread(target=self._read, daemon=True).start()
         self._request("initialize", {"protocolVersion": PROTOCOL, "capabilities": {},
                                      "clientInfo": {"name": "amadeus", "version": "1"}})

@@ -50,6 +50,7 @@ class Workspace(unittest.TestCase):
         self.assertEqual(work._step(self.folder, "not json"), [])
         self.assertEqual(work._step(self.folder, json.dumps({"type": "result", "result": "done"})), [])
 
+    @unittest.skipIf(os.name == "nt", "no work runs on Windows: there's no sandbox for Claude Code there")
     def test_a_run_is_watched_and_its_result_read_as_before(self):
         fake = os.path.join(HOME, "fake-claude")
         target = os.path.join(self.folder, "test.py")

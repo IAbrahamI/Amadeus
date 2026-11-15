@@ -9,7 +9,7 @@ TOP = re.compile(r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^(?:const|let|var
 
 
 def scripts(page):
-    return [WEB / s.lstrip("/") for s in re.findall(r'<script src="([^"]+\.js)"', (WEB / page).read_text())]
+    return [WEB / s.lstrip("/") for s in re.findall(r'<script src="([^"]+\.js)"', (WEB / page).read_text(encoding="utf-8"))]
 
 
 class OneScope(unittest.TestCase):
@@ -19,7 +19,7 @@ class OneScope(unittest.TestCase):
             for f in scripts(page):
                 if not f.exists():
                     continue
-                for m in TOP.finditer(f.read_text()):
+                for m in TOP.finditer(f.read_text(encoding="utf-8")):
                     name = m.group(1) or m.group(2)
                     with self.subTest(page=page, name=name):
                         self.assertNotIn(name, seen, f"{name} is declared in both {seen.get(name)} and {f.name}")

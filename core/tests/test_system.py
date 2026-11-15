@@ -28,7 +28,7 @@ class Mac(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def test_services_through_launchd(self):
-        with mock.patch("subprocess.run") as run, mock.patch("os.getuid", return_value=501):
+        with mock.patch("subprocess.run") as run, mock.patch("os.getuid", return_value=501, create=True):
             system.restart("amadeus-core", "amadeus-voice")
         self.assertEqual(run.call_args_list[0][0][0], ["launchctl", "kickstart", "-k", "gui/501/com.amadeus.core"])
         self.assertEqual(run.call_args_list[1][0][0], ["launchctl", "kickstart", "-k", "gui/501/com.amadeus.voice"])

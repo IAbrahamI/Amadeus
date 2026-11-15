@@ -374,7 +374,8 @@ def save_file(name, rel, text, seen=None):
         raise Changed("It was changed on disk since you opened it.")
     os.makedirs(os.path.dirname(full), exist_ok=True)
     tmp = full + ".amadeus-saving"
-    Path(tmp).write_text(text)
+    with open(tmp, "w", encoding="utf-8", newline="") as f:  # exactly what you typed: UTF-8, its own line ends (never \r\n added on Windows)
+        f.write(text)
     os.replace(tmp, full)
     return {"path": os.path.relpath(full, path), "modified": os.path.getmtime(full)}
 

@@ -24,7 +24,6 @@ jobs:
       - name: Build
         run: packaging/windows/build.ps1
       - name: Unit tests with the bundled Python
-        continue-on-error: true  # (until the tests that assume Linux or a Mac are sorted out; the steps below don't depend on them)
         run: |
           $py = "dist\windows\stage\python\python.exe"
           Set-Location core
