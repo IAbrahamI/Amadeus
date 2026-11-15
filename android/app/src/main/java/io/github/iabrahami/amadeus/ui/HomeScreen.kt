@@ -70,7 +70,7 @@ fun HomeScreen(nav: Nav, talk: Talk, counts: Counts, home: JSONObject?, online: 
     val store = (ctx.applicationContext as AmadeusApp).store
     val keyboard = WindowInsets.isImeVisible
     Column(Modifier.fillMaxSize()) {
-        Header(ctx.assistantName, onMark = {}) { PcStatus(if (home == null && talk.online == null) null else online || talk.online == true) { talk.refresh() } }
+        Header(ctx.assistantName) { PcStatus(if (home == null && talk.online == null) null else online || talk.online == true) { talk.refresh() } }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WaitChip("Approvals", counts.approvals, amber = counts.approvals > 0, Modifier.weight(1f)) { nav.go(Screen.Approvals) }
             WaitChip("To-dos", counts.todos, amber = counts.todos > 0, Modifier.weight(1f)) { nav.todayTab = "day"; nav.tab(Screen.Today) }
@@ -88,7 +88,9 @@ fun HomeScreen(nav: Nav, talk: Talk, counts: Counts, home: JSONObject?, online: 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (!keyboard) {
                 if (store.showAvatar && store.avatarSet.isNotBlank()) AvatarPortrait(Modifier.align(Alignment.Center), height = 300.dp)
-                else LiveCore(Modifier.fillMaxSize().padding(bottom = 40.dp))
+                else LiveCore(Modifier.fillMaxSize().padding(bottom = 40.dp).talkTo(talk)
+                    .semantics { contentDescription = if (talk.listening) "Listening. Tap to send." else "Tap to talk to ${ctx.assistantName}" })
+                if (talk.listening) Label("Listening · tap to send", Modifier.align(Alignment.TopCenter).padding(top = 8.dp), color = C.accent)
             }
             Ghost(talk.lines, Modifier.align(Alignment.BottomCenter).fillMaxWidth().let { if (keyboard) it.fillMaxSize() else it.heightIn(max = 170.dp) })
         }
@@ -178,7 +180,7 @@ fun ChatScreen(nav: Nav, talk: Talk) {
     val days = load("days") { it.dayChats() }
     val earlier = days.value.data.orEmpty().filter { it.first != talk.cid }
     Column(Modifier.fillMaxSize()) {
-        Header("Chat", onMark = { nav.tab(Screen.Home) }) { PcStatus(talk.online) { talk.refresh() } }
+        Header("Chat") { PcStatus(talk.online) { talk.refresh() } }
         CrtBox(Modifier.weight(1f).padding(horizontal = 12.dp), fill = false, pad = 10.dp) {
             Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 TabLabel("Now", tab == "now") { tab = "now"; open = null }

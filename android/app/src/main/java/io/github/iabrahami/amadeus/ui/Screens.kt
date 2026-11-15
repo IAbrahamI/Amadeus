@@ -59,7 +59,7 @@ import java.util.Locale
 @Composable
 fun TodayScreen(nav: Nav) {
     Column(Modifier.fillMaxSize()) {
-        Header("Today", onMark = { nav.tab(Screen.Home) }) {
+        Header("Today") {
             Seg(listOf("day" to "Day", "reminders" to "Reminders"), nav.todayTab, { nav.todayTab = it })
         }
         if (nav.todayTab == "reminders") RemindersView(nav) else DayView(nav)

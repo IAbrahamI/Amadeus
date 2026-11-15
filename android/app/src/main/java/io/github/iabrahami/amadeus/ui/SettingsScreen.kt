@@ -64,7 +64,7 @@ fun MoreScreen(nav: Nav, counts: Counts, onUnpaired: () -> Unit) {
     val name = ctx.assistantName
 
     Column(Modifier.fillMaxSize()) {
-        Header("More", onMark = { nav.tab(Screen.Home) }) { PcStatus(if (h == null && home.value.loading) null else home.value.error == null) { home.reload() } }
+        Header("More") { PcStatus(if (h == null && home.value.loading) null else home.value.error == null) { home.reload() } }
         ErrorLine(home.value.error) { home.reload() }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

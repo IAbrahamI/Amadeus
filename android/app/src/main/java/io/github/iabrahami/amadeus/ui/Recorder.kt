@@ -5,7 +5,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import java.io.File
 
-/** Hold-to-talk: records a short voice message (Ogg/Opus) that goes only to your PC for speech-to-text. */
+/** Talking to it: records a short voice message (Ogg/Opus) that goes only to your PC for speech-to-text. */
 class Recorder(private val ctx: Context) {
     private var rec: MediaRecorder? = null
     private var file: File? = null
@@ -26,6 +26,9 @@ class Recorder(private val ctx: Context) {
         rec = r
         file = f
     }
+
+    /** How loud it is right now (0 to 32767): to notice when you stop talking. */
+    fun level(): Int = runCatching { rec?.maxAmplitude ?: 0 }.getOrDefault(0)
 
     /** The recording, or null if it was too short. The file is deleted right away. */
     fun stop(): ByteArray? {

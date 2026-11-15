@@ -13,7 +13,9 @@ import io.github.iabrahami.amadeus.data.AmadeusApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -102,7 +104,56 @@ class Talk(private val ctx: Context) {
         }
     }
 
-    fun release() { voice.stop() }
+    // ---------- listening: tap the core (or the mic) and talk; it sends when you stop, or tap again ----------
+    var listening by mutableStateOf(false); private set
+    private val recorder = Recorder(ctx)
+    private var watch: Job? = null
+
+    /** Starts listening. auto = it ends by itself once you stop talking (tap); otherwise you end it (hold). */
+    fun listen(auto: Boolean): Boolean {
+        if (listening || busy) return false
+        voice.stop()
+        if (runCatching { recorder.start() }.isFailure) { Toast.makeText(ctx, "The microphone isn't available", Toast.LENGTH_SHORT).show(); return false }
+        listening = true
+        CoreLink.mode = "listen"
+        if (auto) watch = scope.launch {
+            var spoke = false; var quietSince = 0L; val start = System.currentTimeMillis()
+            while (listening) {
+                delay(120)
+                val now = System.currentTimeMillis()
+                if (recorder.level() > 2200) { spoke = true; quietSince = 0L } else if (quietSince == 0L) quietSince = now
+                when {
+                    spoke && quietSince > 0 && now - quietSince > 1300 -> { endListen(); break }   // you stopped talking
+                    !spoke && now - start > 7000 -> { endListen(send = false); Toast.makeText(ctx, "I didn't hear anything", Toast.LENGTH_SHORT).show(); break }
+                    now - start > 45_000 -> { endListen(); break }
+                }
+            }
+        }
+        return true
+    }
+
+    /** Stops listening; send = turn it into text on your PC and ask. */
+    fun endListen(send: Boolean = true) {
+        if (!listening) return
+        watch?.cancel(); watch = null
+        listening = false
+        val audio = recorder.stop()
+        if (!send || audio == null) {
+            CoreLink.mode = "idle"
+            if (send) Toast.makeText(ctx, "I didn't catch that", Toast.LENGTH_SHORT).show()
+            return
+        }
+        CoreLink.mode = "think"
+        scope.launch {
+            val text = try { withContext(Dispatchers.IO) { app.api.stt(audio, "audio/ogg") } } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                Toast.makeText(ctx, e.message ?: "Couldn't reach your PC", Toast.LENGTH_LONG).show(); ""
+            }
+            if (text.isNotBlank()) send(text, spoken = true)
+            else { CoreLink.mode = "idle"; Toast.makeText(ctx, "I didn't catch that", Toast.LENGTH_SHORT).show() }
+        }
+    }
+
+    fun release() { endListen(send = false); voice.stop() }
 }
 
 /** Plays its spoken lines one after another (WAV from the PC), with a short breath in between. The core speaks along. */

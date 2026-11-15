@@ -204,50 +204,89 @@ fun AmadeusAppUi(onUnpaired: () -> Unit, openMail: Long? = null, mailOpened: () 
     }
 }
 
+/**
+ * The app's menu: five tabs, Home in the middle. The tab you're on sits in a small CRT frame (its four corners) with a
+ * faint fill; the others stay quiet. Home's badge is amber (approvals waiting), Mail's is the accent (unread).
+ */
 @Composable
 private fun BottomNav(nav: Nav, counts: Counts) {
     val tabs = listOf(Triple(Screen.Today, Ico.today, "Today"), Triple(Screen.Chat, Ico.chats, "Chat"), Triple(Screen.Home, Ico.home, "Home"),
         Triple(Screen.Mail, Ico.mail, "Mail"), Triple(Screen.More, Ico.more, "More"))
-    Row(Modifier.fillMaxWidth().background(C.bg.copy(alpha = .94f))
-        .drawBehind { drawLine(C.line, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }) {
+    Row(Modifier.fillMaxWidth().background(C.deck)
+        .drawBehind {
+            drawLine(C.lineHi, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
+            drawLine(C.accent.copy(alpha = .25f), Offset(size.width * .2f, 0f), Offset(size.width * .8f, 0f), 1.dp.toPx())
+        }
+        .padding(horizontal = 6.dp, vertical = 6.dp)) {
         tabs.forEach { (screen, icon, label) ->
             val on = nav.top.tab == screen.tab
             val badge = when (screen) { Screen.Home -> counts.approvals.takeIf { it > 0 }; Screen.Mail -> counts.mail?.takeIf { it > 0 }; else -> null }
-            Column(Modifier.weight(1f).heightIn(min = 58.dp).clickable(role = Role.Tab) { nav.tab(screen) }
-                .semantics { contentDescription = label + (badge?.let { ", $it" } ?: "") }
-                .drawBehind { if (on) drawLine(C.accent, Offset(size.width * .3f, 1.dp.toPx()), Offset(size.width * .7f, 1.dp.toPx()), 2.dp.toPx()) },
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Box {
-                    Icon(icon, null, Modifier.size(22.dp), tint = if (on) C.accent else C.dim)
-                    if (badge != null) Text(if (badge > 99) "99+" else "$badge", Modifier.align(Alignment.TopEnd).offset(x = 12.dp, y = (-6).dp)
-                        .background(if (screen == Screen.Home) C.amber else C.accent).padding(horizontal = 3.dp),
-                        color = if (screen == Screen.Home) C.amberInk else C.ink, fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 10.sp)
+            Box(Modifier.weight(1f).heightIn(min = 56.dp).clickable(role = Role.Tab) { nav.tab(screen) }
+                .semantics { contentDescription = label + (badge?.let { ", $it" } ?: "") + if (on) ", selected" else "" },
+                contentAlignment = Alignment.Center) {
+                Column(Modifier.width(62.dp).heightIn(min = 52.dp)
+                    .then(if (on) Modifier.background(C.accent.copy(alpha = .08f)).drawBehind {
+                        val l = 7.dp.toPx(); val w = 1.5.dp.toPx(); val h = w / 2; val c = C.accent
+                        val (W, H) = size.width to size.height
+                        fun corner(x: Float, y: Float, dx: Float, dy: Float) {
+                            drawLine(c, Offset(x, y), Offset(x + dx * l, y), w); drawLine(c, Offset(x, y), Offset(x, y + dy * l), w)
+                        }
+                        corner(h, h, 1f, 1f); corner(W - h, h, -1f, 1f); corner(h, H - h, 1f, -1f); corner(W - h, H - h, -1f, -1f)
+                    } else Modifier),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.size(width = 34.dp, height = 24.dp), contentAlignment = Alignment.Center) {
+                        Icon(icon, null, Modifier.size(22.dp), tint = if (on) C.accent else C.dim)
+                        if (badge != null) Text(if (badge > 99) "99+" else "$badge", Modifier.align(Alignment.TopEnd)
+                            .background(if (screen == Screen.Home) C.amber else C.accent).padding(horizontal = 3.dp),
+                            color = if (screen == Screen.Home) C.amberInk else C.ink, fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 9.sp, lineHeight = 11.sp)
+                    }
+                    Text(label.uppercase(), Modifier.padding(top = 3.dp), color = if (on) C.accent else C.dim, fontFamily = Chakra,
+                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, fontSize = 10.sp, letterSpacing = 1.sp, maxLines = 1)
                 }
-                Label(label, Modifier.padding(top = 4.dp), color = if (on) C.accent else C.dim, size = 10.sp, spacing = 1.5.sp)
             }
         }
     }
 }
 
 /**
- * The ask bar, as on the PC: the VOICE tag (SPOKEN / ON / OFF, tap to change), a mono text field, and the mic (hold to
- * talk). What you say goes to today's chat.
+ * Talking by voice, on the core and the mic alike (like the mini core on the PC): tap, talk, and it sends when you
+ * stop talking (or tap again); or hold while you talk and let go to send.
+ */
+@Composable
+fun Modifier.talkTo(talk: Talk): Modifier {
+    val ctx = LocalContext.current
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (!ok) Toast.makeText(ctx, "Allow the microphone to talk to ${ctx.assistantName}", Toast.LENGTH_LONG).show()
+    }
+    return pointerInput(talk) {
+        detectTapGestures(onPress = {
+            if (talk.listening) { talk.endListen(); return@detectTapGestures }  // a second tap: send now
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                micPermission.launch(Manifest.permission.RECORD_AUDIO); return@detectTapGestures
+            }
+            if (talk.busy) { Toast.makeText(ctx, "One moment, still answering", Toast.LENGTH_SHORT).show(); return@detectTapGestures }
+            val down = System.currentTimeMillis()
+            if (!talk.listen(auto = true)) return@detectTapGestures
+            tryAwaitRelease()
+            if (System.currentTimeMillis() - down > 450) talk.endListen()  // held while talking: let go sends it
+        })
+    }
+}
+
+/**
+ * The ask bar, as on the PC: the VOICE tag (SPOKEN / ON / OFF, tap to change), a mono text field, and the mic (tap or
+ * hold to talk). What you say goes to today's chat.
  */
 @Composable
 fun AskBar(talk: Talk, nav: Nav) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
     var input by remember { mutableStateOf("") }
-    var recording by remember { mutableStateOf(false) }
-    val recorder = remember { Recorder(ctx) }
+    val recording = talk.listening
     LaunchedEffect(nav.ask.value, talk.cid) {
         val a = nav.ask.value ?: return@LaunchedEffect
         if (talk.cid == null) return@LaunchedEffect
         nav.ask.value = null
         if (a.send) talk.send(a.text) else input = a.text
-    }
-    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (!ok) Toast.makeText(ctx, "Allow the microphone to talk to ${ctx.assistantName}", Toast.LENGTH_LONG).show()
     }
     fun submit() { if (input.isNotBlank() && !talk.busy) { talk.send(input.trim()); input = "" } }
     val (vLabel, vColor) = when (talk.voiceMode) { "always" -> "ON" to C.accent; "off" -> "OFF" to C.dim; else -> "SPOKEN" to C.accent }
@@ -273,26 +312,8 @@ fun AskBar(talk: Talk, nav: Nav) {
             })
         Box(Modifier.width(1.dp).height(28.dp).background(C.line))
         val typing = input.isNotBlank()
-        Box(Modifier.size(46.dp).semantics { contentDescription = if (typing) "Send" else "Hold to talk" }
-            .pointerInput(typing, talk.busy, talk.cid) {
-                detectTapGestures(onTap = { if (typing) submit() }, onPress = {
-                    if (typing) return@detectTapGestures
-                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                        micPermission.launch(Manifest.permission.RECORD_AUDIO); return@detectTapGestures
-                    }
-                    if (talk.busy) return@detectTapGestures
-                    runCatching { recorder.start(); recording = true; CoreLink.mode = "listen" }
-                    tryAwaitRelease()
-                    recording = false
-                    if (CoreLink.mode == "listen") CoreLink.mode = "idle"
-                    val audio = recorder.stop() ?: return@detectTapGestures
-                    CoreLink.mode = "think"
-                    scope.io(ctx, done = { if (!talk.busy) CoreLink.mode = "idle" }) { api ->
-                        val text = api.stt(audio, "audio/ogg")
-                        scope.launch { if (text.isNotBlank()) talk.send(text, spoken = true) else Toast.makeText(ctx, "I didn't catch that", Toast.LENGTH_SHORT).show() }
-                    }
-                })
-            }, contentAlignment = Alignment.Center) {
+        Box(Modifier.size(46.dp).semantics { contentDescription = if (typing) "Send" else if (recording) "Send what you said" else "Talk" }
+            .then(if (typing) Modifier.clickable(role = Role.Button) { submit() } else Modifier.talkTo(talk)), contentAlignment = Alignment.Center) {
             Icon(if (typing) Ico.send else Ico.mic, null, Modifier.size(20.dp), tint = if (recording) C.red else C.accent)
         }
     }
@@ -310,7 +331,7 @@ fun ErrorLine(text: String?, retry: (() -> Unit)? = null) {
 /** A sub-screen's header: the mark goes back, the title says where you are. */
 @Composable
 fun SubHeader(nav: Nav, title: String, right: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {}) =
-    Header(title, onMark = { if (!nav.back()) nav.tab(Screen.Home) }, right = right)
+    Header(title, onBack = { if (!nav.back()) nav.tab(Screen.Home) }, right = right)
 
 /** Its answers use a little Markdown: **bold** shows bold, the other marks are dropped. */
 fun md(s: String) = androidx.compose.ui.text.buildAnnotatedString {

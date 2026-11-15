@@ -68,7 +68,7 @@ fun MailScreen(nav: Nav) {
     LaunchedEffect(d) { if (d != null && d.accounts.none { it.optString("id") == acc }) acc = d.accounts.firstOrNull()?.optString("id") }
     val list = load("mailList", acc) { api -> acc?.let { api.mailRecent(it).objects() } }
     Column(Modifier.fillMaxSize()) {
-        Header("Mail", onMark = { nav.tab(Screen.Home) }) { d?.unread?.values?.sum()?.takeIf { it > 0 }?.let { MonoText("$it unread", color = C.accent) } }
+        Header("Mail") { d?.unread?.values?.sum()?.takeIf { it > 0 }?.let { MonoText("$it unread", color = C.accent) } }
         ErrorLine(data.value.error ?: list.value.error) { data.reload(); list.reload() }
         if (d != null && !d.connected) {
             CrtBox(Modifier.padding(16.dp)) {

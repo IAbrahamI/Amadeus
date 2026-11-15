@@ -252,12 +252,16 @@ fun Cursor(color: Color = C.accent, size: TextUnit = 20.sp) {
     Text("_", Modifier.alpha(a), color = color, fontFamily = Chakra, fontWeight = FontWeight.SemiBold, fontSize = size)
 }
 
-/** The header of every screen: the mark (tap: Home), the title with its cursor, and the status or a control on the right. */
+/**
+ * The header of every screen: the mark (decoration only), the title with its cursor, and the status or a control on
+ * the right. A page opened on top of a tab gets a back arrow in front instead.
+ */
 @Composable
-fun Header(title: String, onMark: () -> Unit, modifier: Modifier = Modifier, right: @Composable RowScope.() -> Unit = {}) =
+fun Header(title: String, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null, right: @Composable RowScope.() -> Unit = {}) =
     Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(44.dp).clickable(role = Role.Button, onClick = onMark).semantics { contentDescription = "Home" },
-            contentAlignment = Alignment.CenterStart) { DotMark() }
+        if (onBack != null) Box(Modifier.size(44.dp).clickable(role = Role.Button, onClick = onBack).semantics { contentDescription = "Back" },
+            contentAlignment = Alignment.CenterStart) { Text("‹", color = C.accent, fontSize = 30.sp, fontFamily = Mono) }
+        else Box(Modifier.size(44.dp), contentAlignment = Alignment.CenterStart) { DotMark() }
         Text(title.uppercase(), Modifier.padding(start = 4.dp), color = C.text, fontFamily = Chakra, fontWeight = FontWeight.SemiBold,
             fontSize = 20.sp, letterSpacing = 4.sp, maxLines = 1)
         Cursor()

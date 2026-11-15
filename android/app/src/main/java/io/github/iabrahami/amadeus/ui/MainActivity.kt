@@ -10,6 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -32,6 +35,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        hideSystemButtons()
         val store = (application as AmadeusApp).store
         paired = store.paired
         setContent {
@@ -53,6 +57,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * While the app is open, Android's own buttons (back, home, recent apps) are hidden, so they don't sit under the
+     * app's menu. Swiping up from the bottom edge shows them for a moment, on top of the app, without moving it.
+     */
+    private fun hideSystemButtons() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.navigationBars())
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemButtons()  // back from another app or a dialog: hidden again
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
