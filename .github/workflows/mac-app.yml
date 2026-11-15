@@ -7,6 +7,8 @@ on:
     paths: ["core/**", "packaging/macos/**", ".github/workflows/mac-app.yml"]
   workflow_dispatch:
   workflow_call:
+  schedule:
+    - cron: "17 3 * * *"  # once a night the whole setup with a real model also runs when nothing in it changed
 
 jobs:
   build:
@@ -17,6 +19,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+      - uses: Swatinem/rust-cache@v2  # the desktop app's Rust parts, built once and kept between runs
+        with:
+          workspaces: "core/desktop-tauri -> ../../.tauri-build/target"
       - name: Build
         env:  # the update key: only for the archive the app updates itself from (empty in forks: no update archive)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -78,9 +83,16 @@ jobs:
         timeout-minutes: 6
         run: |
           DATA="$HOME/Library/Application Support/Amadeus/core"
+          wait_shown() {  # until the page in the app's window reports itself (or 120 s): no fixed waiting
+            for _ in $(seq 60); do
+              curl -sf -m 5 -H "authorization: Bearer $(cat "$DATA/token" 2>/dev/null)" http://127.0.0.1:8095/api/setup -o setup.json 2>/dev/null \
+                && python3 -c "import json, sys; sys.exit(0 if json.load(open('setup.json')).get('shown') else 1)" 2>/dev/null && return 0
+              sleep 2
+            done
+          }
           cp -R dist/macos/Amadeus.app /Applications/
           open /Applications/Amadeus.app
-          sleep 60
+          wait_shown || true
           screencapture -x first-start.png || true
           launchctl list | grep amadeus || true
           tail -30 "$HOME"/Library/Logs/Amadeus/*.log || true
@@ -107,9 +119,16 @@ jobs:
               try: s.accept()[0].close()
               except OSError: pass
           " &
+          wait_shown() {  # until the page in the app's window reports itself (or 120 s): no fixed waiting
+            for _ in $(seq 60); do
+              curl -sf -m 5 -H "authorization: Bearer $(cat "$DATA/token" 2>/dev/null)" http://127.0.0.1:8095/api/setup -o setup.json 2>/dev/null \
+                && python3 -c "import json, sys; sys.exit(0 if json.load(open('setup.json')).get('shown') else 1)" 2>/dev/null && return 0
+              sleep 2
+            done
+          }
           sleep 1
           open /Applications/Amadeus.app
-          sleep 60
+          wait_shown || true
           tail -5 "$HOME/Library/Logs/Amadeus/core.log" || true
           curl -sS -m 20 -H "authorization: Bearer $(cat "$DATA/token")" http://127.0.0.1:8095/api/setup -o setup.json
           python3 -c "import json; s = json.load(open('setup.json')); assert s['needed'] and s['shown'], s"
@@ -119,12 +138,19 @@ jobs:
           DATA="$HOME/Library/Application Support/Amadeus/core"
           pkill -x amadeus-desktop || true
           rm -rf /Applications/Amadeus.app
-          sleep 20
+          for _ in $(seq 30); do pgrep -f 'core/run.py' >/dev/null || break; sleep 1; done  # it notices the app is gone
           launchctl list | grep amadeus || true
           if pgrep -fl 'core/run.py'; then echo "The core outlived its app"; exit 1; fi
           cp -R dist/macos/Amadeus.app /Applications/
+          wait_shown() {  # until the page in the app's window reports itself (or 120 s): no fixed waiting
+            for _ in $(seq 60); do
+              curl -sf -m 5 -H "authorization: Bearer $(cat "$DATA/token" 2>/dev/null)" http://127.0.0.1:8095/api/setup -o setup.json 2>/dev/null \
+                && python3 -c "import json, sys; sys.exit(0 if json.load(open('setup.json')).get('shown') else 1)" 2>/dev/null && return 0
+              sleep 2
+            done
+          }
           open /Applications/Amadeus.app
-          sleep 45
+          wait_shown || true
           tail -5 "$HOME/Library/Logs/Amadeus/core.log" || true
           curl -sS -m 20 -H "authorization: Bearer $(cat "$DATA/token")" http://127.0.0.1:8095/api/setup -o setup.json
           cat setup.json | cut -c1-120; echo
@@ -144,7 +170,18 @@ jobs:
             dist/macos/*.app.tar.gz.sig
           retention-days: 14
           if-no-files-found: error
+      - name: Does this change touch the setup?
+        id: touched
+        run: |
+          # the whole setup with a real model takes about 7 minutes: it runs for releases, at night, by hand, and when
+          # something it goes through changed (not for every change to the pages or the chat)
+          if [ "${{ github.event_name }}" != push ]; then echo full=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch -q --depth=50 origin "${{ github.event.before }}" 2>/dev/null || true
+          changed="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || echo all)"
+          echo "$changed" | grep -qE '^(all|core/amadeus_core/(firstrun|macmemory|macfilter|memory_runner|memory|llm|config|paths|system)\.py|core/deploy/pick_model\.py|core/hindsight_ext/|packaging/macos/|core/desktop-tauri/|\.github/workflows/mac-app\.yml)' \
+            && echo full=true >> "$GITHUB_OUTPUT" || echo full=false >> "$GITHUB_OUTPUT"
       - name: The whole setup with a real Ollama and a real model
+        if: steps.touched.outputs.full == 'true'
         timeout-minutes: 50
         run: python3 packaging/macos/check_setup.py
       - name: Mail logins go into the real Keychain, never into the file
