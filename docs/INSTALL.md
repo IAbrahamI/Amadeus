@@ -36,6 +36,18 @@ nothing when you changed files in the repository yourself, and it only runs when
 
 The sections below explain each step in detail, and how to do one on its own.
 
+## On a Mac or on Windows
+
+Download the app from the [latest release](https://github.com/IAbrahamI/Amadeus/releases/latest). It brings its own
+Python and core; on first start it sets up Ollama and a model that fits your computer, inside its own window.
+
+- **Mac** (M1 or newer): open `Amadeus-<version>-arm64.dmg` and drag Amadeus to Applications. The app isn't signed with
+  a paid Apple certificate, so the first start needs **System Settings → Privacy & Security → Open Anyway**.
+- **Windows 10 (22H2) or 11, 64-bit**: run `Amadeus-<version>-x64-setup.exe`. It installs for you only (no
+  administrator) and starts at login. Not being signed with a paid certificate, it first gets a SmartScreen warning:
+  **More info → Run anyway**. Still to come on Windows: the long-term memory, the privacy filter (so projects with
+  Claude Code, which stay off there anyway: Windows has no sandbox for them) and voice.
+
 ## 1. What you need
 
 Tested on CachyOS (Arch) with KDE Plasma 6 on Wayland and an RTX 3080 Ti (12 GB). Any systemd Linux works.
@@ -335,7 +347,7 @@ sudo pacman -Sy amadeus
 ```
 
 Maintainers: raise the version in `VERSION`, `core/desktop-tauri/Cargo.toml` and `tauri.conf.json`, then push a tag `vX.Y.Z`.
-The release workflow runs the tests, builds the packages and the Mac app, and publishes them.
+The release workflow runs the tests, builds the packages, the Mac app and the Windows installer, and publishes them.
 
 **Mac:** the app updates itself (Settings → Assistant → Install and restart). It downloads the newest release's
 archive, checks its signature against the key built into the app, replaces itself and starts again. Once, a maintainer

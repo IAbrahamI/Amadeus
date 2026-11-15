@@ -20,8 +20,11 @@ jobs:
     uses: ./.github/workflows/mac-app.yml
     secrets: inherit
 
+  windows:  # the Windows installer, with its checks
+    uses: ./.github/workflows/windows-app.yml
+
   release:
-    needs: [tests, mac]
+    needs: [tests, mac, windows]
     runs-on: ubuntu-22.04  # the oldest supported: the app then runs on newer systems too
     timeout-minutes: 30
     steps:
@@ -90,6 +93,11 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: amadeus-macos
+          path: dist
+      - name: The Windows installer
+        uses: actions/download-artifact@v8
+        with:
+          name: amadeus-windows
           path: dist
       - name: latest.json, which the Mac app asks for (its signature is checked inside the app)
         run: |
