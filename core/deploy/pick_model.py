@@ -11,10 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import select
 import sys
-import termios
-import tty
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -42,7 +39,8 @@ PROMPT = "Explain in about one hundred words how a bicycle stays upright while r
 
 def model_folder():
     """Where Ollama keeps models, which is often not on the same disk as your home folder."""
-    for d in (os.environ.get("OLLAMA_MODELS"), "/var/lib/ollama", "/usr/share/ollama/.ollama/models", "~/.ollama/models"):
+    for d in (os.environ.get("OLLAMA_MODELS"), "/var/lib/ollama", "/usr/share/ollama/.ollama/models", "~/.ollama/models",
+              os.path.join(os.environ.get("USERPROFILE", "~"), ".ollama", "models")):
         d = os.path.expanduser(d or "")
         if d and os.path.isdir(d):
             return d
@@ -56,6 +54,20 @@ def _mac_hardware():
     ram = int(read("hw.memsize") or 0) / 2 ** 30
     return {"gpu_gb": round(ram * 0.7, 1), "gpu": read("machdep.cpu.brand_string") or "Apple Silicon", "ram_gb": round(ram, 1), "cores": os.cpu_count() or 1,
             "disk_gb": round(shutil.disk_usage(model_folder()).free / 2 ** 30, 1)}
+
+
+def _windows_ram():
+    """The computer's memory in GB, on Windows (0 elsewhere)."""
+    if sys.platform != "win32":
+        return 0.0
+    import ctypes
+
+    class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong), ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong), ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+    m = MEMORYSTATUSEX(dwLength=ctypes.sizeof(MEMORYSTATUSEX))
+    return m.ullTotalPhys / 2 ** 30 if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)) else 0.0
 
 
 def hardware():
@@ -77,7 +89,7 @@ def hardware():
     try:
         ram = next(int(l.split()[1]) for l in Path("/proc/meminfo").read_text().splitlines() if l.startswith("MemTotal")) / 2 ** 20
     except (OSError, StopIteration, ValueError):
-        pass
+        ram = _windows_ram()
     return {"gpu_gb": round(gpu, 1), "gpu": name, "ram_gb": round(ram, 1), "cores": os.cpu_count() or 1,
             "disk_gb": round(shutil.disk_usage(model_folder()).free / 2 ** 30, 1)}
 
@@ -335,7 +347,11 @@ def describe(m, recommended):
 
 
 def _key():
-    """One key: up, down, enter, a digit or None."""
+    """One key: up, down, enter, a digit or None. (The installer's terminal menu, on Linux: these modules are Unix-only,
+    and the Mac and Windows choose in the app.)"""
+    import select
+    import termios
+    import tty
     fd = sys.stdin.fileno()
     saved = termios.tcgetattr(fd)
     try:

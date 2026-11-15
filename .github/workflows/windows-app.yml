@@ -48,7 +48,8 @@ jobs:
           Get-Content "$env:LOCALAPPDATA\Amadeus\Logs\core.log" -Tail 25 -ErrorAction SilentlyContinue
           if ($code -ne 403) { throw "The core didn't answer (last: $code)" }  # (the page itself only opens in the app's own window)
           $token = (Get-Content "$env:APPDATA\Amadeus\core\token" -Raw).Trim()
-          $s = Invoke-RestMethod -Uri http://127.0.0.1:8095/api/setup -Headers @{ authorization = "Bearer $token" }
+          try { $s = Invoke-RestMethod -Uri http://127.0.0.1:8095/api/setup -Headers @{ authorization = "Bearer $token" } }
+          catch { Start-Sleep 2; Get-Content "$env:LOCALAPPDATA\Amadeus\Logs\core.log" -Tail 40; throw }
           $s | ConvertTo-Json -Depth 3 | Select-Object -First 30
           if (-not $s.needed) { throw "The setup should be needed on a new computer." }
           if ($s.ollama -ne "missing") { throw "There is no Ollama on this computer, so it should say so." }
