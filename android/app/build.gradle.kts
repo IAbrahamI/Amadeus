@@ -32,11 +32,11 @@ android {
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/logo-res"))
 }
 
-// The app icon is your own logo if you put one at core/web/logo-512.png (kept out of git), otherwise the plain
-// default logo in core/web/default-logo.png. It is copied in at build time.
+// The logo inside the app (Settings, the person in notifications) is your own if you put one at
+// core/web/logo-512.png (kept out of git), otherwise the app icon. (The launcher icon is always the app icon: res/mipmap-*.)
 val copyLogo by tasks.registering(Copy::class) {
     val own = rootProject.file("../core/web/logo-512.png")
-    from(if (own.exists()) own else rootProject.file("../core/web/default-logo.png")) { rename { "amadeus_logo.png" } }
+    from(if (own.exists()) own else rootProject.file("../core/web/app-icon-512.png")) { rename { "amadeus_logo.png" } }
     into(layout.buildDirectory.dir("generated/logo-res/drawable-nodpi"))
 }
 tasks.named("preBuild") { dependsOn(copyLogo) }

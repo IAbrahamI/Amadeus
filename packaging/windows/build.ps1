@@ -31,7 +31,6 @@ Remove-Item -Recurse -Force "$Stage\core\tests", "$Stage\core\desktop-tauri"
 
 # 3. the desktop app and its installer, with both inside (tauri.conf.json stays as it is for Linux and the Mac)
 Push-Location core\desktop-tauri
-npx --yes @tauri-apps/cli@2.12.4 icon icons/icon.png --output icons | Out-Null
 $Config = @{
   bundle = @{
     active = $true; targets = @("nsis"); icon = @("icons/icon.ico", "icons/icon.png")

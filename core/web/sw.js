@@ -10,7 +10,7 @@ self.addEventListener("push", (e) => {
       const ev = await (await fetch("/api/events", { credentials: "include" })).json();
       if (ev.length) { title = ev.length === 1 ? ev[0].title : `${ev.length} things for you`; body = ev.length === 1 ? (ev[0].body || "").slice(0, 140) : ev.slice(0, 3).map((x) => x.title).join(" · "); }
     } catch {}
-    await self.registration.showNotification(title, { body, icon: "/logo-192.png", badge: "/logo-192.png", tag: "amadeus", renotify: true, vibrate: [200, 100, 200] });
+    await self.registration.showNotification(title, { body, icon: "/app-icon-192.png", badge: "/app-icon-192.png", tag: "amadeus", renotify: true, vibrate: [200, 100, 200] });
   })());
 });
 self.addEventListener("notificationclick", (e) => {

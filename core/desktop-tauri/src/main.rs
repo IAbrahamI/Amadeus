@@ -165,7 +165,7 @@ fn login(path: &str) -> String {
 /// The core answers, and has made the key that signs a window in. A window never loads its page before that: a page
 /// that can't be reached stays blank for good.
 fn core_up() -> bool {
-    let answers = match ureq::get(&format!("{}/favicon.png", base())).timeout(Duration::from_millis(400)).call() {
+    let answers = match ureq::get(&format!("{}/app-icon-32.png", base())).timeout(Duration::from_millis(400)).call() {
         Ok(_) | Err(ureq::Error::Status(..)) => true,
         Err(_) => false,
     };

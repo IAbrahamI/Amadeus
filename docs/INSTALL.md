@@ -207,8 +207,12 @@ The rules (approvals, tools, facts) always win over the persona.
 **Face.** Without anything added, a small chibi agent (`core/web/agent.svg`) is shown. For an animated avatar, add
 transparent PNG sprites as `~/.local/share/amadeus/core/avatar/<set>/<set>_<mood><frame>.png` and set
 `"avatar": "<set>"`. Moods: `normal`, `happy`, `sided_thinking`, `sided_surprised`, `sided_worried`, `sad`,
-`annoyed`, `blush`, `winking`; frames `1` (mouth closed) to `3` (open) make the lip-sync. Your own logo goes into
-`core/web/logo-512.png`, `logo-192.png`, `logo-wide.png` and `favicon.png` (ignored by git).
+`annoyed`, `blush`, `winking`; frames `1` (mouth closed) to `3` (open) make the lip-sync. Your own logo, shown inside the
+phone app, goes into `core/web/logo-512.png` (ignored by git).
+
+**App icon.** The icon (Mac, Windows, Linux, the phone, the dashboard's tab) is made from the SVGs in
+`core/desktop-tauri/icons/src/`: change them, run `python3 packaging/icons.py` (needs librsvg and ImageMagick), and
+every size is written again.
 
 **Voice.** Pick the voice that reads answers aloud under Settings → Voice. Calls ring with a soft built-in tone
 (the phone uses its own ringtone).

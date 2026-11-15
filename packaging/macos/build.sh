@@ -16,7 +16,6 @@ mkdir -p "$OUT"
 
 # 1. the desktop app
 (cd core/desktop-tauri
- npx --yes @tauri-apps/cli@2.12.4 icon icons/icon.png --output icons >/dev/null
  CARGO_TARGET_DIR="$ROOT/.tauri-build/target" npx --yes @tauri-apps/cli@2.12.4 build --bundles app \
    --config '{"app":{"macOSPrivateApi":true},"bundle":{"active":true,"icon":["icons/icon.icns","icons/icon.png"],"macOS":{"minimumSystemVersion":"12.0"}},"plugins":{"updater":{"pubkey":"","endpoints":[]}}}' -- --locked)
 APP="$OUT/Amadeus.app"
