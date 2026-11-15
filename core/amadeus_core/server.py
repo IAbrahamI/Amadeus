@@ -858,7 +858,8 @@ class Handler(BaseHTTPRequestHandler):
         arg = lambda k, d="": qs.get(k, [d])[0]
         try:
             if p == "/api/mail/status":
-                return self._json({**mail.status(), "setup": mail.configured()})
+                # vip: your important people (Memory page), so the phone can mark their mail
+                return self._json({**mail.status(), "setup": mail.configured(), "vip": db.get_setting("mail_vip", [])})
             if p == "/api/mail/recent":
                 return self._json(mail.call("recent", accountId=arg("account"), folderId=arg("folder") or None,
                                                   days=min(365, int(arg("days", "7"))), limit=min(500, int(arg("limit", "80")))))

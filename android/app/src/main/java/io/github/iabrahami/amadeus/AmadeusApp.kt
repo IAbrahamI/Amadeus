@@ -6,7 +6,9 @@ import android.os.Bundle
 import io.github.iabrahami.amadeus.data.AmadeusApi
 import io.github.iabrahami.amadeus.data.DeviceStore
 import io.github.iabrahami.amadeus.link.Notifications
+import io.github.iabrahami.amadeus.ui.C
 import io.github.iabrahami.amadeus.ui.CallActivity
+import io.github.iabrahami.amadeus.ui.themeFor
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
@@ -32,6 +34,8 @@ class AmadeusApp : Application() {
                 val id = api.identity()
                 store.assistantName = id.optString("name", "Amadeus").ifBlank { "Amadeus" }
                 store.avatarSet = id.optString("avatar", "")
+                store.theme = id.optString("theme", "blue")
+                C.theme = themeFor(store.theme)
                 update()
             }
         }.start()
@@ -41,6 +45,7 @@ class AmadeusApp : Application() {
         super.onCreate()
         store = DeviceStore(this)
         api = AmadeusApi(store)
+        C.theme = themeFor(store.theme)
         Notifications.createChannels(this)
         refreshIdentity()
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {

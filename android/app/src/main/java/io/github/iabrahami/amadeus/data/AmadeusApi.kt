@@ -86,6 +86,10 @@ class AmadeusApi(private val store: DeviceStore) {
     /** The assistant's name, avatar and voice pack (set on the PC). */
     fun identity() = JSONObject(get("/api/identity"))
     fun approvals() = JSONArray(get("/api/approvals"))
+    /** Adjust: what should be different; the redraft waits for your OK again. */
+    fun revise(approvalId: String, note: String) = JSONObject(post("/api/approvals/$approvalId/revise", JSONObject().put("note", note), timeoutSec = 180))
+    /** The dashboard's colour theme (blue, purple, red): the phone follows it. */
+    fun setTheme(id: String) = JSONObject(post("/api/theme", JSONObject().put("theme", id))).optString("theme")
     fun decide(approvalId: String, approve: Boolean) =
         JSONObject(post("/api/approvals/$approvalId/" + if (approve) "approve" else "reject", timeoutSec = 120))
     fun events() = JSONArray(get("/api/events"))
@@ -98,22 +102,45 @@ class AmadeusApi(private val store: DeviceStore) {
     fun quickChatId(): String = JSONObject(get("/api/quickchat")).getString("id")
     fun newQuickChat(): String = JSONObject(post("/api/quickchat/new", timeoutSec = 60)).getString("id")
 
-    /** The last messages of a chat as (role, text) — only what you said and what it answered. */
-    fun history(cid: String, last: Int = 30): List<Pair<String, String>> {
+    /** One line of a chat: what you said or what it answered, with its time (epoch seconds). */
+    data class Line(val mine: Boolean, val text: String, val at: Double)
+
+    /** The last messages of a chat: only what you said and what it answered. */
+    fun history(cid: String, last: Int = 60): List<Line> {
         val msgs = JSONObject(get("/api/conversations/$cid")).getJSONArray("messages")
         return (0 until msgs.length()).map { msgs.getJSONObject(it) }
             .filter { it.optString("role") in setOf("user", "assistant") && it.optString("content").isNotBlank() }
-            .map { it.getString("role") to stripMood(it.getString("content")) }
+            .map { Line(it.getString("role") == "user", stripMood(it.getString("content")), it.optDouble("created", 0.0)) }
             .takeLast(last)
     }
 
+    /** Your earlier days' chats (one per day), newest first: (id, title). */
+    fun dayChats(): List<Pair<String, String>> {
+        val all = JSONArray(get("/api/conversations"))
+        val day = Regex("^\\w{3} \\d{2} \\w{3} \\d{4}$")
+        return (0 until all.length()).map { all.getJSONObject(it) }.filter { day.matches(it.optString("title")) }
+            .map { it.getString("id") to it.getString("title") }
+    }
+
+    /** What a streamed answer brings, as it comes. */
+    interface Stream {
+        fun text(soFar: String) {}
+        fun approval(a: JSONObject) {}
+        fun mood(m: String) {}
+        /** It looks something up or uses a tool (the core thinks). */
+        fun tool() {}
+        /** Its own spoken line (only sent when the answer is read aloud). */
+        fun say(line: String) {}
+        /** A short stock line ("one moment") to play: its id for voiceLine(). */
+        fun sayLine(id: String) {}
+    }
+
     /**
-     * Sends a message and streams its answer. onText gets the answer so far (mood tags removed);
-     * onApproval is called when it needs your OK for something.
+     * Sends a message and streams its answer. voice = you said it (speech to text); speak = the answer is read aloud
+     * on this phone, so it also sends its spoken lines.
      */
-    fun chat(cid: String, text: String, voice: Boolean, onText: (String) -> Unit, onApproval: (JSONObject) -> Unit = {},
-             onMood: (String) -> Unit = {}) {
-        val body = JSONObject().put("text", text).put("voice", voice).toString().toRequestBody(JSON)
+    fun chat(cid: String, text: String, voice: Boolean, speak: Boolean, on: Stream) {
+        val body = JSONObject().put("text", text).put("voice", voice).put("speak", speak).toString().toRequestBody(JSON)
         http.newCall(request("/api/conversations/$cid/messages").post(body).build()).execute().use { r ->
             if (!r.isSuccessful) throw ApiError("Your PC answered ${r.code}", r.code)
             val src = r.body?.source() ?: return
@@ -128,10 +155,13 @@ class AmadeusApi(private val store: DeviceStore) {
                         when (event) {
                             "token" -> {
                                 acc.append(JSONArray("[$data]").optString(0))
-                                Regex("\\[mood:\\s*(\\w+)\\]", RegexOption.IGNORE_CASE).find(acc)?.let { onMood(it.groupValues[1].lowercase()) }
-                                onText(stripMood(acc.toString()))
+                                Regex("\\[mood:\\s*(\\w+)\\]", RegexOption.IGNORE_CASE).find(acc)?.let { on.mood(it.groupValues[1].lowercase()) }
+                                on.text(stripMood(acc.toString()))
                             }
-                            "approval" -> onApproval(JSONObject(data))
+                            "approval" -> { on.approval(JSONObject(data)); acc.clear() }
+                            "tool" -> on.tool()
+                            "say" -> JSONArray("[$data]").optString(0).takeIf { it.isNotBlank() }?.let(on::say)
+                            "say_line" -> JSONArray("[$data]").optString(0).takeIf { it.isNotBlank() }?.let(on::sayLine)
                             "error" -> throw ApiError(JSONObject(data).optString("message", "Something went wrong"))
                             "done" -> return
                         }
@@ -139,6 +169,22 @@ class AmadeusApi(private val store: DeviceStore) {
                 }
             }
         }
+    }
+
+    /** A reply read aloud with the voice picked on the PC: speech = turn chat text into what a person would say. WAV audio. */
+    fun tts(text: String, speech: Boolean, limit: Int = 600): ByteArray {
+        val body = JSONObject().put("text", text).put("speech", speech).put("limit", limit).toString().toRequestBody(JSON)
+        http.newBuilder().readTimeout(90, TimeUnit.SECONDS).build().newCall(request("/api/voice/tts").post(body).build()).execute().use { r ->
+            if (!r.isSuccessful) throw ApiError(runCatching { JSONObject(r.body?.string() ?: "{}").optString("error") }.getOrNull().orEmpty()
+                .ifBlank { "Your PC couldn't speak that" }, r.code)
+            return r.body?.bytes() ?: ByteArray(0)
+        }
+    }
+
+    /** A short stock line in its voice; null when there is none (its voice is off). */
+    fun voiceLine(id: String): ByteArray? {
+        if (!Regex("\\w+").matches(id)) return null
+        http.newCall(request("/api/voice/line/$id").build()).execute().use { r -> return if (r.code == 200) r.body?.bytes() else null }
     }
 
     /** Speech to text on your PC (Whisper). The recording goes only to your PC. */
@@ -151,10 +197,25 @@ class AmadeusApi(private val store: DeviceStore) {
     fun calendar(from: LocalDate, to: LocalDate) = JSONArray(get("/api/calendar?from=$from&to=$to"))
     fun todo(): List<String> = JSONObject(get("/api/todo")).getJSONArray("items").let { a -> (0 until a.length()).map { a.getString(it) } }
     fun todoDone(item: String) { post("/api/todo/done", JSONObject().put("item", item)) }
+    fun todoAdd(item: String) { post("/api/todo/add", JSONObject().put("items", JSONArray().put(item))) }
+
+    /** Your reminders, the next first. */
+    fun reminders() = JSONArray(get("/api/reminders"))
+    /** when in plain words ("tomorrow 9", "every Monday 18:00"); a 400 says what it didn't understand. */
+    fun addReminder(text: String, whenText: String) = JSONObject(post("/api/reminders", JSONObject().put("text", text).put("when", whenText)))
+    fun deleteReminder(id: String) { post("/api/reminders/$id/delete") }
+
+    /** Today's morning brief, summary so far and evening summary. */
+    fun day() = JSONObject(get("/api/day"))
+    fun daySoFar() = JSONObject(post("/api/day/now", timeoutSec = 180))
+    fun projects() = JSONArray(get("/api/projects"))
+    fun memory() = JSONObject(get("/api/memory", 60))
 
     // ---------- mail (read on your PC, from the accounts connected there) ----------
     fun mailStatus() = JSONObject(get("/api/mail/status", 30))
     fun mailUnread() = JSONArray(get("/api/mail/unread", 90))
+    /** One account's mail of the last days, read or not, newest first. */
+    fun mailRecent(account: String, days: Int = 7) = JSONArray(get("/api/mail/recent?account=${enc(account)}&days=$days&limit=60", 90))
     fun mailMessage(id: Long) = JSONObject(get("/api/mail/message/$id", 60))
     fun mailMarkRead(id: Long, read: Boolean) { post("/api/mail/markread", JSONObject().put("ids", JSONArray().put(id)).put("read", read)) }
 

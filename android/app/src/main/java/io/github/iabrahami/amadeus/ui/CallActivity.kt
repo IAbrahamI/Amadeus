@@ -25,6 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,7 +59,11 @@ class CallActivity : ComponentActivity() {
         lifecycleScope.launch {
             Calls.ringing.collect { if (ev.optString("id") !in it) finish() }
         }
-        setContent { AmadeusTheme { CallScreen(answer = { unlockThenAnswer() }, later = { later() }) } }
+        val km = getSystemService(KeyguardManager::class.java)
+        setContent {
+            var locked by remember { mutableStateOf(km.isKeyguardLocked) }
+            AmadeusTheme { CallScreen(ev, locked) { a -> if (a == "later") later() else unlockThen { locked = false; act(a) } } }
+        }
         if (intent.getBooleanExtra("answer", false)) unlockThenAnswer()   // "Answer" right in the call notification
     }
 
@@ -63,16 +71,45 @@ class CallActivity : ComponentActivity() {
      * Answering on the lock screen asks for your fingerprint / face right away, so answering and unlocking are one
      * step. Cancel it and the call keeps ringing.
      */
-    private fun unlockThenAnswer() {
+    private fun unlockThenAnswer() = unlockThen { answer() }
+
+    private fun unlockThen(then: () -> Unit) {
         val km = getSystemService(KeyguardManager::class.java)
-        if (!km.isKeyguardLocked) return answer()
+        if (!km.isKeyguardLocked) return then()
         km.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
-            override fun onDismissSucceeded() = answer()
+            override fun onDismissSucceeded() = then()
         })
     }
 
+    /** What you picked in the bubble (after unlocking). */
+    private fun act(a: String) {
+        val app = application as AmadeusApp
+        val e = ev
+        when (a) {
+            "talk" -> answer()
+            "adjust" -> answer(openApprovals = true)
+            "gotit", "snooze", "approve", "reject" -> {
+                Calls.hangUp(this)
+                thread {
+                    runCatching {
+                        when (a) {
+                            "approve", "reject" -> app.api.decide(e.optString("ref"), a == "approve")
+                            "snooze" -> {
+                                val mail = Regex("^mail:(\\d+)$").find(e.optString("ref"))?.groupValues?.get(1)
+                                app.api.addReminder(e.optString("title") + (mail?.let { " [mail:$it]" } ?: ""), "in 10 minutes")
+                            }
+                        }
+                    }.onFailure { err -> runOnUiThread { Toast.makeText(app, err.message ?: "Couldn't reach your PC", Toast.LENGTH_LONG).show() } }
+                    runCatching { Calls.declineOnPc(app, e.toString()) }
+                }
+                if (a == "snooze") Toast.makeText(this, "Again in 10 minutes", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
+    }
+
     /** Picked up: the PC stops ringing, and you're in the app. */
-    private fun answer() {
+    private fun answer(openApprovals: Boolean = false) {
         Calls.hangUp(this)
         val app = application as AmadeusApp
         val e = ev
@@ -83,7 +120,7 @@ class CallActivity : ComponentActivity() {
         // a reminder about a mail opens that mail
         val mail = Regex("^mail:(\\d+)$").find(e.optString("ref"))?.groupValues?.get(1)?.toLongOrNull()
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .apply { if (mail != null) putExtra("mail", mail) })
+            .apply { if (mail != null) putExtra("mail", mail); if (openApprovals) putExtra("approvals", true) })
         finish()
     }
 
@@ -96,34 +133,59 @@ class CallActivity : ComponentActivity() {
     }
 }
 
-/** Like a normal phone call: who's calling, nothing about why (that's in the app, after you unlock). */
+/**
+ * Full screen, the core with its heartbeat, and why it calls in an amber bubble with what you can do about it right
+ * there. On the lock screen the bubble only says to unlock: what it's about shows after you unlock.
+ */
 @Composable
-private fun CallScreen(answer: () -> Unit, later: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF33230E), C.bg), radius = 1500f))
-        .padding(horizontal = 24.dp, vertical = 72.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Box(Modifier.size(190.dp).shadow(40.dp, CircleShape, spotColor = C.accent, ambientColor = C.accent).clip(CircleShape)
-                .background(C.bg).border(2.dp, C.accent.copy(alpha = .7f), CircleShape), contentAlignment = Alignment.Center) {
-                androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(io.github.iabrahami.amadeus.R.drawable.amadeus_logo),
-                    LocalContext.current.assistantName, Modifier.size(140.dp))
+private fun CallScreen(ev: JSONObject, locked: Boolean, act: (String) -> Unit) {
+    val name = LocalContext.current.assistantName
+    val kind = ev.optString("kind")
+    Column(Modifier.fillMaxSize().hud().padding(horizontal = 20.dp, vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Tag("Incoming · " + if (kind == "mail_code") "urgent" else kindLabel(kind), TagKind.Amber)
+        Text(name.uppercase(), Modifier.padding(top = 14.dp), color = C.text, fontFamily = Chakra, fontWeight = FontWeight.SemiBold, fontSize = 30.sp, letterSpacing = 8.sp)
+        Label("Calling from your PC", Modifier.padding(top = 4.dp), color = C.accent, spacing = 3.sp)
+        LiveCore(Modifier.weight(1f).fillMaxWidth(), mode = "think")
+        Column(Modifier.fillMaxWidth().background(C.deck).border(1.dp, C.amber).padding(14.dp)) {
+            Label(kindLabel(kind), color = C.amber)
+            if (locked) Body("Unlock to see what it's about.", Modifier.padding(top = 4.dp), size = 16.sp, weight = FontWeight.SemiBold)
+            else {
+                Body(ev.optString("title"), Modifier.padding(top = 4.dp), size = 16.sp, weight = FontWeight.SemiBold, maxLines = 3)
+                ev.optString("body").takeIf { it.isNotBlank() }?.let { Hint(it.take(240)) }
             }
-            Text(LocalContext.current.assistantName.uppercase(), fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 32.sp, letterSpacing = 10.sp,
-                modifier = Modifier.padding(top = 12.dp))
-            Text("Incoming call…", color = C.soft, fontSize = 15.sp)
+            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    kind == "approval" -> {
+                        HudButton("Reject", { act("reject") }, Modifier.weight(1f))
+                        HudButton("Adjust", { act("adjust") }, Modifier.weight(1f), Btn.Amber)
+                        HudButton("Approve", { act("approve") }, Modifier.weight(1f), Btn.Go)
+                    }
+                    kind == "reminder" || kind == "calendar" -> {
+                        HudButton("Got it", { act("gotit") }, Modifier.weight(1f), Btn.Go)
+                        HudButton("Snooze 10 min", { act("snooze") }, Modifier.weight(1f))
+                    }
+                    else -> HudButton("Got it", { act("gotit") }, Modifier.weight(1f), Btn.Go)
+                }
+            }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(96.dp)) {
-            RoundAction(Ico.close, "Later", C.no, later)
-            RoundAction(Ico.phone, "Answer", C.ok, answer)
+        Row(Modifier.padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(72.dp)) {
+            RoundAction(Ico.close, "Later", C.dim) { act("later") }
+            RoundAction(Ico.mic, "Talk", C.accent) { act("talk") }
         }
     }
+}
+
+private fun kindLabel(kind: String) = when (kind) {
+    "mail_code" -> "Code"; "mail" -> "Mail"; "message" -> "Message"; "reminder" -> "Reminder"; "calendar" -> "Calendar"
+    "digest" -> "Your day"; "approval" -> "Approval"; "test" -> "Test call"; else -> kind.replace('_', ' ')
 }
 
 @Composable
 private fun RoundAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, color: Color, onClick: () -> Unit) =
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.size(72.dp).clip(CircleShape).background(color).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-            Icon(icon, label, Modifier.size(28.dp), tint = Color.White)
+        Box(Modifier.size(64.dp).background(color.copy(alpha = .1f)).border(1.dp, color).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+            contentAlignment = Alignment.Center) {
+            Icon(icon, label, Modifier.size(26.dp), tint = color)
         }
-        Text(label, color = C.soft, fontSize = 13.sp)
+        Label(label, color = color)
     }

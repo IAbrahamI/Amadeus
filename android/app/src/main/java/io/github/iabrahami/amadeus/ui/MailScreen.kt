@@ -1,104 +1,140 @@
 package io.github.iabrahami.amadeus.ui
 
-import io.github.iabrahami.amadeus.assistantName
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.iabrahami.amadeus.assistantName
 import org.json.JSONObject
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-/** Your open (unread) mail, by account and folder. Read through Amadeus on your PC; nothing is stored on the phone. */
+private class MailData(val connected: Boolean, val accounts: List<JSONObject>, val unread: Map<String, Int>, val vip: List<String>)
+
+/** Mail: one inbox per account (read on your PC, nothing is stored on the phone). Sorting and writing go through the assistant. */
 @Composable
 fun MailScreen(nav: Nav) {
+    val ctx = LocalContext.current
     val data = load("mail") { api ->
-        val accounts = api.mailStatus().optJSONArray("accounts")?.objects().orEmpty().associate { it.optString("id") to it.optString("name") }
-        accounts to api.mailUnread().objects()
+        val st = api.mailStatus()
+        val off = st.optJSONArray("off")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+        val accounts = st.optJSONArray("accounts")?.objects().orEmpty().filter { it.optString("id") !in off }
+        val connected = st.optBoolean("connected") && accounts.isNotEmpty()
+        val unread = if (connected) api.mailUnread().objects().groupingBy { it.optString("accountId") }.eachCount() else emptyMap()
+        val vip = st.optJSONArray("vip")?.let { a -> (0 until a.length()).map { a.getString(it).lowercase() } }.orEmpty()
+        MailData(connected, accounts, unread, vip)
     }
-    val (accounts, mails) = data.value.data ?: (emptyMap<String, String>() to emptyList())
+    val d = data.value.data
+    var acc by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(d) { if (d != null && d.accounts.none { it.optString("id") == acc }) acc = d.accounts.firstOrNull()?.optString("id") }
+    val list = load("mailList", acc) { api -> acc?.let { api.mailRecent(it).objects() } }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-            Column(Modifier.weight(1f)) {
-                Title("Mail", if (data.value.data == null) "Loading…" else "${mails.size} open · ${accounts.size} account${if (accounts.size == 1) "" else "s"}")
+        Header("Mail", onMark = { nav.tab(Screen.Home) }) { d?.unread?.values?.sum()?.takeIf { it > 0 }?.let { MonoText("$it unread", color = C.accent) } }
+        ErrorLine(data.value.error ?: list.value.error) { data.reload(); list.reload() }
+        if (d != null && !d.connected) {
+            CrtBox(Modifier.padding(16.dp)) {
+                Label("No mail account yet", color = C.accent)
+                Hint("Connect your accounts on the PC: dashboard → Mail → + Add account. They show up here right away.", Modifier.padding(top = 6.dp))
             }
-            LineButton("Sort my inbox", { nav.askAmadeus("sort my inbox") }, Modifier.padding(end = 16.dp, bottom = 10.dp))
+            return@Column
         }
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Open", true) {}
-            Chip("Codes & links", false) { nav.askAmadeus("show my verification codes and links") }
-            Chip("What's important?", false) { nav.askAmadeus("which of my open mails are important?") }
-        }
-        ErrorLine(data.value.error) { data.reload() }
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (!data.value.loading && data.value.error == null && mails.isEmpty()) item { Hint("No open mail.") }
-            mails.groupBy { it.optString("accountId") }.forEach { (acc, inAcc) ->
-                item(key = "a$acc") {
-                    Text("${accounts[acc] ?: "Mail"} · ${inAcc.size}", color = C.accent, fontFamily = Display, fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp, modifier = Modifier.padding(top = 10.dp))
-                }
-                inAcc.groupBy { it.optString("folder").trim('/') }.forEach { (folder, inFolder) ->
-                    item(key = "f$acc$folder") {
-                        Text("${folder.ifBlank { "Inbox" }.uppercase()} (${inFolder.size})", color = C.muted, fontSize = 12.sp, letterSpacing = 1.sp,
-                            modifier = Modifier.padding(top = 4.dp))
-                    }
-                    items(inFolder, key = { "m" + it.optLong("id") }) { m ->
-                        MailRow(m) { nav.go(Screen.MailRead(m.optLong("id"))) }
-                    }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            d?.accounts.orEmpty().forEach { a ->
+                val id = a.optString("id"); val on = id == acc; val n = d?.unread?.get(id) ?: 0
+                Row(Modifier.heightIn(min = 40.dp).border(1.dp, if (on) C.accent else C.line).background(if (on) C.accent.copy(alpha = .1f) else Color.Transparent)
+                    .clickable(role = Role.Tab) { acc = id }.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Label(a.optString("name"), color = if (on) C.accent else C.text.copy(alpha = .8f), size = 11.sp, spacing = 1.sp)
+                    if (n > 0) Tag("$n", TagKind.Accent, Modifier.padding(start = 6.dp))
                 }
             }
-            item { Spacer(Modifier.size(8.dp)) }
+            Box(Modifier.size(40.dp).border(1.dp, C.line).clickable {
+                Toast.makeText(ctx, "Add an account on the PC: dashboard → Mail → + Add account", Toast.LENGTH_LONG).show()
+            }.semantics { contentDescription = "Add an account" }, contentAlignment = Alignment.Center) { Text("+", color = C.accent, fontSize = 18.sp) }
         }
-        Row(Modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 86.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilledButton("Ask about a mail", C.accent, { nav.askAmadeus("About my mail: ", send = false) }, Modifier.weight(1f), textColor = C.onAccent)
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            val mails = list.value.data.orEmpty()
+            if (!list.value.loading && list.value.error == null && mails.isEmpty() && acc != null) item { Hint("Nothing in the last 7 days.", Modifier.padding(vertical = 12.dp)) }
+            if (list.value.loading && mails.isEmpty()) item { Hint("Loading…", Modifier.padding(vertical = 12.dp)) }
+            items(mails, key = { it.optLong("id") }) { m -> MailRow(m, important(m, d?.vip.orEmpty())) { nav.go(Screen.MailRead(m.optLong("id"))) } }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HudButton("Sort my inbox", { nav.askAmadeus("sort my inbox") }, Modifier.weight(1f), Btn.Go)
+            HudButton("Write a mail", { nav.askAmadeus("Write a mail to ", send = false) }, Modifier.weight(1f))
         }
     }
 }
 
-@Composable
-private fun MailRow(m: JSONObject, onClick: () -> Unit) =
-    Row(Modifier.fillMaxWidth().background(C.card, RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
-        Column(Modifier.weight(1f)) {
-            Text(sender(m.optString("from")), fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text(m.optString("subject").ifBlank { "(no subject)" }, color = C.soft, fontSize = 14.sp, maxLines = 2)
-        }
-        Text(shortDate(m.optString("date")), color = C.muted, fontSize = 12.sp)
-    }
+/** From someone on your important-people list (Memory page on the PC). */
+private fun important(m: JSONObject, vip: List<String>): Boolean {
+    val from = m.optString("from").lowercase()
+    return vip.any { it.isNotBlank() && from.contains(it) }
+}
 
 @Composable
-fun Chip(text: String, on: Boolean, onClick: () -> Unit) =
-    Text(text, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, color = if (on) C.onAccent else C.text,
-        modifier = Modifier.background(if (on) C.accent else C.card, RoundedCornerShape(16.dp)).clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp))
+private fun MailRow(m: JSONObject, important: Boolean, onClick: () -> Unit) {
+    val unread = !m.optBoolean("read", true)
+    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(onClick = onClick)
+        .drawBehind { drawLine(C.line, Offset(0f, size.height), Offset(size.width, size.height), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f))) }
+        .padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (unread) Box(Modifier.padding(end = 6.dp).size(6.dp).background(C.accent))
+                Body(sender(m.optString("from")), Modifier.weight(1f, fill = false), size = 15.sp, weight = if (unread) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+                if (important) Tag("Important", TagKind.Amber, Modifier.padding(start = 6.dp))
+            }
+            Body(m.optString("subject").ifBlank { "(no subject)" }, color = C.dim, size = 13.sp, maxLines = 1)
+        }
+        MonoText(shortDate(m.optString("date")), Modifier.padding(start = 8.dp), size = 11.sp)
+    }
+}
 
 /** "Anna Example <anna@example.org>" → "Anna Example". */
 fun sender(from: String) = from.substringBefore('<').trim().trim('"').ifBlank { from.trim('<', '>') }
 
 fun shortDate(iso: String): String = runCatching {
     val d = OffsetDateTime.parse(iso).atZoneSameInstant(ZoneId.systemDefault())
-    d.format(DateTimeFormatter.ofPattern(if (d.toLocalDate() == java.time.LocalDate.now()) "HH:mm" else "d MMM"))
+    val days = java.time.temporal.ChronoUnit.DAYS.between(d.toLocalDate(), LocalDate.now())
+    d.format(DateTimeFormatter.ofPattern(when { days == 0L -> "HH:mm"; days == 1L -> "'Yesterday'"; days < 7 -> "EEE"; else -> "d MMM" }, Locale.ENGLISH))
 }.getOrDefault("")
 
 /** One mail. Opening it marks it read, like any mail app. */
@@ -110,25 +146,26 @@ fun MailReadScreen(nav: Nav, id: Long) {
     val m = data.value.data
     LaunchedEffect(m) { if (m != null && !m.optBoolean("read", true)) scope.io(ctx) { it.mailMarkRead(id, true) } }
     Column(Modifier.fillMaxSize()) {
-        BackHeader(nav, "Mail")
+        SubHeader(nav, "Mail")
         ErrorLine(data.value.error) { data.reload() }
-        if (m == null) { if (data.value.loading) Centered("Loading…"); return@Column }
+        if (m == null) { if (data.value.loading) Hint("Loading…", Modifier.padding(16.dp)); return@Column }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            Text(m.optString("subject").ifBlank { "(no subject)" }, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            Text("From ${m.optString("from")}", color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-            Text(shortDate(m.optString("date")), color = C.muted, fontSize = 13.sp)
+            Body(m.optString("subject").ifBlank { "(no subject)" }, size = 19.sp, weight = FontWeight.SemiBold)
+            MonoText(m.optString("from"), Modifier.padding(top = 6.dp))
+            MonoText(shortDate(m.optString("date")))
             m.optJSONArray("attachments")?.objects()?.takeIf { it.isNotEmpty() }?.let { a ->
-                Text("Attachments: " + a.joinToString(", ") { it.optString("name") }, color = C.muted, fontSize = 13.sp)
+                Hint("Attachments: " + a.joinToString(", ") { it.optString("name") })
             }
-            Text(m.optString("body") + if (m.optBoolean("truncated")) "\n[…]" else "", fontSize = 15.sp, lineHeight = 22.sp,
-                modifier = Modifier.padding(vertical = 14.dp))
+            Box(Modifier.fillMaxWidth().padding(vertical = 12.dp).heightIn(min = 1.dp).background(C.line))
+            Body(m.optString("body") + if (m.optBoolean("truncated")) "\n[…]" else "", size = 15.sp)
+            Gap(16.dp)
         }
         val subject = m.optString("subject")
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            LineButton("Summarize", { nav.askAmadeus("Summarize email [$id] (\"$subject\") in a few sentences and tell me if I need to do anything.") }, Modifier.weight(1f))
-            FilledButton("Reply with ${LocalContext.current.assistantName}", C.accent, { nav.askAmadeus("Draft a reply to email [$id] (\"$subject\") from ${m.optString("from")}. My points: ", send = false) },
-                Modifier.weight(1f), textColor = C.onAccent)
+        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HudButton("Summarize", { nav.askAmadeus("Summarize email [$id] (\"$subject\") in a few sentences and tell me if I need to do anything.") }, Modifier.weight(1f))
+            HudButton("Reply with ${ctx.assistantName}", { nav.askAmadeus("Draft a reply to email [$id] (\"$subject\") from ${m.optString("from")}. My points: ", send = false) },
+                Modifier.weight(1f), Btn.Go)
         }
-        LineButton("Mark unread", { scope.io(ctx, done = { nav.back() }) { it.mailMarkRead(id, false) } }, Modifier.padding(start = 16.dp, end = 86.dp, bottom = 12.dp).fillMaxWidth())
+        HudButton("Mark unread", { scope.io(ctx, done = { nav.back() }) { it.mailMarkRead(id, false) } }, Modifier.fillMaxWidth().padding(16.dp))
     }
 }

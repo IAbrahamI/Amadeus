@@ -34,6 +34,21 @@ class DeviceStore(context: Context) {
         get() = prefs.getString("avatar", "") ?: ""
         set(v) = prefs.edit().putString("avatar", v).apply()
 
+    /** The dashboard's theme (blue, purple, red), kept so the app opens in it even offline. */
+    var theme: String
+        get() = prefs.getString("theme", "blue") ?: "blue"
+        set(v) = prefs.edit().putString("theme", v).apply()
+
+    /** Spoken answers on this phone: "voice" (SPOKEN: when you talked to it, the default), "always" (ON) or "off". */
+    var voiceMode: String
+        get() = prefs.getString("voice_mode", "voice") ?: "voice"
+        set(v) = prefs.edit().putString("voice_mode", v).apply()
+
+    /** Show the avatar (your own sprites, set on the PC) on Home instead of the core. */
+    var showAvatar: Boolean
+        get() = prefs.getBoolean("show_avatar", false)
+        set(v) = prefs.edit().putBoolean("show_avatar", v).apply()
+
     /** "Calls on this phone": keep the live link to the PC open and ring for its calls. */
     var calls: Boolean
         get() = prefs.getBoolean("calls", true)

@@ -25,6 +25,8 @@ class MainActivity : ComponentActivity() {
     private var paired by mutableStateOf(false)
     /** A mail to open right away (its reminder about it was answered). */
     private var openMail by mutableStateOf<Long?>(null)
+    /** Approvals to open right away (Adjust in a call). */
+    private var openApprovals by mutableStateOf(false)
     private val notifyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,11 +36,13 @@ class MainActivity : ComponentActivity() {
         paired = store.paired
         setContent {
             AmadeusTheme {
-                if (paired) AmadeusAppUi(onUnpaired = { paired = false }, openMail = openMail, mailOpened = { openMail = null })
+                if (paired) AmadeusAppUi(onUnpaired = { paired = false }, openMail = openMail, mailOpened = { openMail = null },
+                    openApprovals = openApprovals, approvalsOpened = { openApprovals = false })
                 else PairScreen(onPaired = { paired = true; connected() })
             }
         }
         intent?.getLongExtra("mail", -1L)?.takeIf { it > 0 }?.let { openMail = it }
+        if (intent?.getBooleanExtra("approvals", false) == true) openApprovals = true
         if (paired) connected()
         // while you're in the app, tell the PC every 30 s: its window then stays quiet (you see everything here)
         lifecycleScope.launch {
@@ -54,6 +58,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         intent.getLongExtra("mail", -1L).takeIf { it > 0 }?.let { openMail = it }
+        if (intent.getBooleanExtra("approvals", false)) openApprovals = true
     }
 
     /** Paired: ask once for notifications (its calls) and open the live link. */
