@@ -272,7 +272,14 @@ fn set_bubble(app: &AppHandle, html: &str) {
     let Some(w) = app.get_webview_window("bubble") else { return };
     #[cfg(not(target_os = "linux"))]
     place_around_core(app);
-    let _ = if html.is_empty() { w.hide() } else { w.show() };
+    // On Linux it stays shown once it's there, empty and see-through, taking no clicks (bubble.js): hiding it unmaps the
+    // window, and shown again KWin first puts a new window in the middle of the screen until the script moves it back
+    // (it flashed there after every "Got it"). Elsewhere hiding is fine.
+    if !html.is_empty() {
+        let _ = w.show();
+    } else if cfg!(not(target_os = "linux")) {
+        let _ = w.hide();
+    }
     let _ = w.eval(&format!("window.amadeusSetBubble && window.amadeusSetBubble({})", json!(html)));
 }
 
