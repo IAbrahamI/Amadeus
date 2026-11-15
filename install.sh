@@ -22,6 +22,7 @@
 # Settings (override with environment variables, or put them in ./amadeus.env):
 #   OLLAMA_MODEL           base model to pull                  (default: the one you pick from the suggestions)
 #   OLLAMA_CTX_VARIANT     name of the larger-context variant  (default: qwen3.5-9b-48k, what Amadeus uses)
+#   EMBED_MODEL            model that finds earlier talk by meaning (default: qwen3-embedding:0.6b; AMADEUS_MEANING=0 skips it)
 #   OLLAMA_NUM_CTX         context length for that variant     (default: 49152)
 #   OLLAMA_URL             Ollama endpoint                     (default: http://127.0.0.1:11434)
 #   HINDSIGHT_IMAGE        container image                     (default: ghcr.io/vectorize-io/hindsight:0.10.2, the tested version)
@@ -47,6 +48,7 @@ ENV_FILE="$SCRIPT_DIR/amadeus.env"  # installed as a package the program's folde
 MODEL_CHOSEN="${OLLAMA_MODEL:+1}"  # set by you or an earlier run: no need to ask
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
 OLLAMA_CTX_VARIANT="${OLLAMA_CTX_VARIANT:-qwen3.5-9b-48k}"
+EMBED_MODEL="${EMBED_MODEL:-qwen3-embedding:0.6b}"  # finding earlier talk by meaning; AMADEUS_MEANING=0 skips it
 OLLAMA_NUM_CTX="${OLLAMA_NUM_CTX:-49152}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 HINDSIGHT_IMAGE="${HINDSIGHT_IMAGE:-ghcr.io/vectorize-io/hindsight:0.10.2}"
@@ -296,6 +298,14 @@ phase_ollama() {
     printf 'FROM %s\nPARAMETER num_ctx %s\nPARAMETER num_thread %s\nPARAMETER temperature 0.2\n' "$OLLAMA_MODEL" "$OLLAMA_NUM_CTX" "$threads" >"$mf"
     run ollama create "$OLLAMA_CTX_VARIANT" -f "$mf"
     rm -f "$mf"
+  fi
+
+  # the small model that finds earlier talk by meaning (core/amadeus_core/meaning.py); optional, Settings → Memory
+  if grep -qx "${EMBED_MODEL}:latest\|${EMBED_MODEL}" <<<"$models"; then
+    ok "model $EMBED_MODEL present (finding earlier talk by meaning)"
+  elif [[ "${AMADEUS_MEANING:-1}" == 1 ]]; then
+    info "pulling $EMBED_MODEL (about 640 MB): finds earlier talk by what it means, not only its words"
+    run ollama pull "$EMBED_MODEL" || warn "Couldn't download $EMBED_MODEL: looking back uses word search (Settings → Memory sets it up later)"
   fi
 }
 

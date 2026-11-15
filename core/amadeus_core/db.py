@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS approvals (id TEXT PRIMARY KEY, conversation_id TEXT,
 CREATE TABLE IF NOT EXISTS reminders (id TEXT PRIMARY KEY, text TEXT, schedule TEXT, next_run REAL,
   active INTEGER, created REAL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS message_meaning (message_id INTEGER PRIMARY KEY, conversation_id TEXT, created REAL, model TEXT, vec BLOB);
 """
 
 

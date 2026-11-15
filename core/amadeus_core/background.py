@@ -10,7 +10,7 @@ import shutil
 import time
 import urllib.request
 
-from . import agenda, db, digest, events, learning, llm, macfilter, mailwatch, quickchat, system, tools
+from . import agenda, db, digest, events, learning, llm, macfilter, mailwatch, meaning, quickchat, system, tools
 from . import paths
 from .config import CFG
 
@@ -137,10 +137,17 @@ def _check_updates():
     updates.check()
 
 
+def _index_meaning():
+    """New messages get their meaning numbers (meaning.py) while nobody is waiting for an answer."""
+    from . import agent
+    if not agent.RUNNING:
+        meaning.index_pending()
+
+
 def loop():
     while True:
         for job in (check_reminders, check_calendar, mailwatch.check, check_jobs,
-                    check_week_ahead, digest.check_morning, digest.check, quickchat.check, learning.check, clean_reports, events.maybe_ring, idle_stop, llm.free_gpu, _check_updates):
+                    check_week_ahead, digest.check_morning, digest.check, quickchat.check, learning.check, clean_reports, events.maybe_ring, idle_stop, llm.free_gpu, _check_updates, _index_meaning):
             try:
                 job()
             except Exception as e:

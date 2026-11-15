@@ -97,9 +97,10 @@ const PAGES = {
         <div class="acts"><span class="grow"></span><button class="btn go">Add playbook</button></div>${info("pbInfo")}</form>`;
   },
   async memory() {
-    const [p, l] = await Promise.all([api("/api/profile"), api("/api/learning")]);
+    const [p, l, mn] = await Promise.all([api("/api/profile"), api("/api/learning"), api("/api/meaning")]);
+    if (mn.pulling) setTimeout(() => set.page === "memory" && PAGES.memory(), 3000);
     const last = (l.log || []).slice(-1)[0], ask = p.asking || [], rules = Object.entries(p.rules || {});
-    body().innerHTML = head("Memory", "What it knows about you and how you work. All of it stays on this PC.") +
+    body().innerHTML = head("Memory", "What it knows about you and how you work. All of it stays on this PC.") + meaningBox(mn) +
       `<form class="pform" id="profForm">${field(`Your profile <small>${p.pending} new observation(s) waiting${p.updated ? " · updated " + esc(p.updated.replace("T", " ")) : ""}</small>`, `<textarea id="profText" rows="8">${esc(p.profile)}</textarea>`)}
         <div class="acts"><button type="button" class="btn" data-act="profmerge">Fold in what's new</button><span class="grow"></span><button class="btn go">Save</button></div>${info("profInfo")}</form>
       <h3 style="margin-top:22px">Important people</h3><form class="pform" id="vipForm">${field("Their mail always reaches you (one name or address per line)", `<textarea id="vipText" rows="3">${esc((p.vip || []).join("\n"))}</textarea>`)}
@@ -161,6 +162,8 @@ body().addEventListener("click", async (e) => {
   }
   if (act === "asreset") { if (!confirm("Use the default assistant (default name, personality and icon)? Your own files are kept.")) return; await post("/api/assistant/reset", {}); restarted(); }
   if (act === "vuse") { await post("/api/voice/voices/select", { id: d.v }); PAGES.voice(); }
+  if (act === "meansetup") { a.disabled = true; await post("/api/meaning", { action: "setup" }); PAGES.memory(); return; }
+  if (act === "meantoggle") { await post("/api/meaning", { action: d.on === "1" ? "off" : "on" }); PAGES.memory(); return; }
   if (act === "memlocal") { await post("/api/memory/source", { action: "local" }); PAGES.connectors(); return; }
   if (act === "msetup") { await post("/api/setup", { action: "memory" }); setTimeout(() => PAGES.connectors(), 300); return; }
   if (act === "csetup") { await post("/api/setup", { action: "claude" }); setTimeout(() => PAGES.connectors(), 8000); return; }
@@ -309,4 +312,16 @@ function memorySource(ms) {
         ${field("Memory bank", `<input id="memBank" placeholder="amadeus-private" value="${ms.mode === "external" ? esc(ms.bank) : ""}" autocomplete="off" spellcheck="false">`)}
         ${field("API key (empty if it has none)", '<input id="memKey" type="password" autocomplete="off">')}
         <div class="acts"><span class="grow"></span><button class="btn go">Test and use</button></div>${info("memInfo")}</form></details>`;
+}
+
+// Settings → Memory: finding earlier talk by what it means ("our talk about the trip" finds "flying to Lisbon")
+function meaningBox(mn) {
+  const what = `When you refer to earlier talk, ${esc(NAME())} finds it by what it means, in any of your languages, not only by the same words.`;
+  const state = mn.pulling ? "Setting it up: downloading the model through Ollama (about 640 MB)…"
+    : !mn.installed ? `Needs a small model (${esc(mn.model)}, about 640 MB, through Ollama, on this computer). Without it, ${esc(NAME())} looks for the same words.`
+    : mn.enabled ? `On. ${mn.indexed} of your messages can be found this way; new ones are added a moment after you say them.`
+    : `Off: ${esc(NAME())} looks for the same words instead.`;
+  return `<h3>Finding earlier talk</h3>${note(what)}${note(state + (mn.error ? " " + esc(mn.error) : ""))}
+    <div class="acts"><span class="grow"></span>${mn.pulling ? "" : !mn.installed ? '<button class="btn go" data-act="meansetup">Set it up</button>'
+      : onoff(mn.enabled, `data-act="meantoggle" data-on="${mn.enabled ? 1 : 0}"`)}</div><div style="height:14px"></div>`;
 }

@@ -24,3 +24,7 @@ from amadeus_core import secretstore  # noqa: E402
 # never the real Keychain from a test: on a Mac it can wait for a "may Python use your Keychain?" answer forever
 # (the Mac build checks the real one in .github/workflows/mac-app.yml; test_secretstore uses a stand-in)
 secretstore.native = lambda: False
+
+from amadeus_core import meaning  # noqa: E402
+
+meaning.installed = lambda force=False: False  # no Ollama in the unit tests: looking back uses the word search (test_meaning covers this one)

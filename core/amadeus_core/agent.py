@@ -199,17 +199,23 @@ QUIET_MINUTES = 25       # after this long without a word, a new message starts 
 OLD_TOOL_CHARS = 160     # what stays of an earlier turn's tool result: one line
 
 
-def _history(cid):
-    """What the model reads of the chat: your last few messages with their answers, never the whole day. Earlier turns
-    are kept short: their tool results become one line each, and an answer you corrected ("no, I meant…") is left out, so
-    the model can't copy it. After a quiet spell the chat starts fresh; earlier talk comes back only when you refer to
-    it (_look_back). The current turn (its tool calls and results) is always complete."""
+def _window(cid):
+    """(the chat's messages, where the model's window starts in them, where your newest message is)."""
     every = [m for m in db.messages(cid) if m["role"] in ("user", "assistant", "tool", "work")]
     users = [i for i, m in enumerate(every) if m["role"] == "user"]
     now = users[-1] if users else len(every)  # (a project's chat may hold only Claude Code's reports so far)
     start = users[-RECENT_TURNS] if len(users) >= RECENT_TURNS else 0
     if users and now > 0 and every[now]["created"] - every[now - 1]["created"] > QUIET_MINUTES * 60:
         start = now
+    return every, start, now
+
+
+def _history(cid):
+    """What the model reads of the chat: your last few messages with their answers, never the whole day. Earlier turns
+    are kept short: their tool results become one line each, and an answer you corrected ("no, I meant…") is left out, so
+    the model can't copy it. After a quiet spell the chat starts fresh; earlier talk comes back only when you refer to
+    it (_look_back). The current turn (its tool calls and results) is always complete."""
+    every, start, now = _window(cid)
     msgs, pending = [], []
     for i in range(start, len(every)):
         m, role, meta = every[i], every[i]["role"], every[i]["meta"]
@@ -475,6 +481,11 @@ def _look_back(cid, user_text):
     words and its final answers come back; facts from then are marked as from then."""
     if not LOOKBACK_RE.search(user_text or ""):
         return ""
+    from . import meaning
+    if meaning.ready():  # by meaning (meaning.py): no model call, any wording or language
+        best = _look_back_by_meaning(cid, user_text)
+        if best is not None:
+            return _from_earlier(best)
     try:
         out = json.loads(llm.complete(CFG["default_model"], [{"role": "system", "content": LOOKBACK_ASK},
                                                              {"role": "user", "content": user_text[:500]}], as_json=True) or "{}")
@@ -501,9 +512,32 @@ def _look_back(cid, user_text):
         if score:
             score += 1 if r["conversation_id"] == cid else 0  # this chat first, then the other recent ones
             hits.append((score, r["created"], r["content"], reply["content"] if reply else ""))
-    if not hits:
+    return _from_earlier(sorted(sorted(hits, key=lambda h: -h[0])[:4], key=lambda h: h[1]))
+
+
+def _look_back_by_meaning(cid, user_text):
+    """[(score, time, your words, its answer)] closest in meaning, oldest first; None when the search itself failed
+    (then the word search runs). What's in the short window already isn't brought again."""
+    from . import meaning
+    every, start, _ = _window(cid)
+    window = {m["id"] for m in every[start:]}
+    found = meaning.search(user_text, cid, days=LOOKBACK_DAYS, skip=window)
+    if found is None:
+        return None
+    out = []
+    for score, mid in found:
+        m = db.q("SELECT conversation_id, content, created FROM messages WHERE id=?", (mid,), one=True)
+        if not m:
+            continue
+        reply = db.q("SELECT content FROM messages WHERE conversation_id=? AND id>? AND role='assistant' AND content<>'' ORDER BY id LIMIT 1",
+                     (m["conversation_id"], mid), one=True)
+        out.append((score, m["created"], m["content"], reply["content"] if reply else ""))
+    return sorted(out, key=lambda h: h[1])
+
+
+def _from_earlier(best):
+    if not best:
         return "\n\n## From earlier\nNothing earlier in the chats of the last days matches this. Say so instead of guessing."
-    best = sorted(sorted(hits, key=lambda h: -h[0])[:4], key=lambda h: h[1])
     lines = [f"[{datetime.datetime.fromtimestamp(t):%a %d %b %H:%M}] User: {u[:300]}\n  You: {re.sub(r'\s+', ' ', a)[:400]}" for _, t, u, a in best]
     return ("\n\n## From earlier (what was said then; anything about calendar, mail, lists or prices may have changed since: "
             "look it up again before stating it as current)\n" + "\n".join(lines))

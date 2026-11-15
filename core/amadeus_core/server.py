@@ -268,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/folder":  # Settings → Connectors: where your notes and projects are
             from . import notesfolder
             return self._json(notesfolder.status())
+        if p == "/api/meaning":  # Settings → Memory: finding earlier talk by meaning (meaning.py)
+            from . import meaning
+            return self._json(meaning.status())
         if p == "/api/briefs":  # "Your day": what goes into the morning brief and the evening summary, and when
             from . import digest
             return self._json({"briefs": digest.brief_settings(), "built_in": digest.BUILT_IN})
@@ -716,6 +719,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(mcp.add(b.get("name", ""), b.get("command", ""), b.get("env") or {}))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
+        if p == "/api/meaning":  # on, off, or set it up (the model comes through Ollama; you start it here)
+            from . import meaning
+            if self._tailnet():
+                return self._json({"error": "Only on this computer."}, 403)
+            act = b.get("action")
+            return self._json(meaning.set_up() if act == "setup" else meaning.set_enabled(act == "on"))
         if p == "/api/briefs":  # your own change on the "Your day" view (like an approval)
             from . import digest
             try:
