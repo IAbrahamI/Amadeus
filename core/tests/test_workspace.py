@@ -18,7 +18,7 @@ class Workspace(unittest.TestCase):
 
     def test_save_and_read_back(self):
         saved = work.save_file(self.name, "src/app.py", "print('hi')\n")
-        self.assertEqual(saved["path"], os.path.join("src", "app.py"))
+        self.assertEqual(saved["path"], "src/app.py")  # "/" on every system: that's what the pages use
         got = work.project_file(self.name, "src/app.py")
         self.assertEqual(got["text"], "print('hi')\n")
         self.assertAlmostEqual(got["modified"], saved["modified"], places=3)

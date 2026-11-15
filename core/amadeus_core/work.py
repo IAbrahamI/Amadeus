@@ -53,6 +53,11 @@ RULES = """You work for the user, handed over by their private local assistant.
 - Your final reply is what the user reads first: say in a few lines what you did, where the files are, and what's next."""
 
 
+def _rel(full, base):
+    """A file's place in its project as the pages show it: with "/" on every system (Windows' own is "\\")."""
+    return os.path.relpath(full, base).replace(os.sep, "/")
+
+
 def _folder(project):
     name = re.sub(r"[\\/:*?\"<>|\x00]", "-", project).strip(" .-")[:80] or "Task"
     path = os.path.join(_projects_root(), name)
@@ -152,7 +157,7 @@ def _step(folder, line):
         if block.get("type") == "tool_use":
             given = block.get("input") or {}
             path = str(given.get("file_path") or given.get("notebook_path") or given.get("path") or "")
-            rel = os.path.relpath(path, folder) if path.startswith(folder + os.sep) else ""
+            rel = _rel(path, folder) if path.startswith(folder + os.sep) else ""
             what = rel or str(given.get("command") or given.get("pattern") or given.get("description") or "")[:120]
             out.append({"t": time.time(), "text": f"{VERBS.get(block.get('name'), block.get('name', 'Working'))} {what}".strip(), "path": rel})
         elif block.get("type") == "text" and (block.get("text") or "").strip():
@@ -212,7 +217,7 @@ class Presence:
     def _rel(self, path):
         real = os.path.realpath(path) if path else ""
         root = os.path.realpath(self.folder)
-        return os.path.relpath(real, root) if real.startswith(root + os.sep) else ""
+        return _rel(real, root) if real.startswith(root + os.sep) else ""
 
     def feed(self, ev):
         """One line of stream-json, already parsed. Returns True when the position changed."""
@@ -344,7 +349,7 @@ def changes(name):
             if not f.startswith("."):
                 full = os.path.join(dirpath, f)
                 try:
-                    files.append({"path": os.path.relpath(full, path), "size": os.path.getsize(full), "modified": os.path.getmtime(full)})
+                    files.append({"path": _rel(full, path), "size": os.path.getsize(full), "modified": os.path.getmtime(full)})
                 except OSError:
                     pass  # gone in this moment
     files.sort(key=lambda f: f["path"].lower())
@@ -377,7 +382,7 @@ def save_file(name, rel, text, seen=None):
     with open(tmp, "w", encoding="utf-8", newline="") as f:  # exactly what you typed: UTF-8, its own line ends (never \r\n added on Windows)
         f.write(text)
     os.replace(tmp, full)
-    return {"path": os.path.relpath(full, path), "modified": os.path.getmtime(full)}
+    return {"path": _rel(full, path), "modified": os.path.getmtime(full)}
 
 
 def _json_line(line):
@@ -539,7 +544,7 @@ def project(name):
             if f.startswith("."):
                 continue
             full = os.path.join(dirpath, f)
-            files.append({"path": os.path.relpath(full, path), "size": os.path.getsize(full), "modified": os.path.getmtime(full)})
+            files.append({"path": _rel(full, path), "size": os.path.getsize(full), "modified": os.path.getmtime(full)})
     files.sort(key=lambda f: f["path"].lower())
     overview = ""
     if os.path.isfile(os.path.join(path, "Overview.md")):
