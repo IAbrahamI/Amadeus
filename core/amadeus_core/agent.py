@@ -455,7 +455,11 @@ def _same_as_last(cid, content):
         return False
     norm = lambda t: re.sub(r"\W+", " ", MOOD_RE.sub("", SAY_RE.sub("", t))).strip().lower()[:600]  # noqa: E731
     a, b = norm(prev["content"]), norm(content)
-    return len(b) > 40 and difflib.SequenceMatcher(None, a, b).ratio() > 0.85
+    if len(b) <= 40:
+        return False
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)  # (autojunk drops common letters in text over 200 characters)
+    # nearly the same answer, or most of it copied from the previous one with a new first line ("I'm fine. <same as before>")
+    return sm.ratio() > 0.85 or sum(blk.size for blk in sm.get_matching_blocks() if blk.size >= 25) > 0.6 * len(b)
 
 
 REPEAT_NUDGE = ("(From the system, not the user.) You just gave your previous answer again, but the user's last message asks "
@@ -558,11 +562,15 @@ def _context(cid, user_text):
     if waiting:  # a card is not the action: until the user approves it, nothing has happened
         text += ("\n\nWaiting for the user's OK on its card (NOT done yet; say it's waiting for their OK, never that it's done):\n" +
                  "\n".join("- " + re.sub(r"\s+", " ", w["summary"])[:200] for w in waiting))
-    text += _look_back(cid, user_text)
+    chat = small_talk(user_text)
+    if chat:  # nothing to look up for "how are you": no memories, no lessons, no earlier chats, just a short friendly answer
+        text += "\n\n## For this message\n" + SMALL_TALK_HINT
+    else:
+        text += _look_back(cid, user_text)
     for rx, hint in ROUTES:  # a small model follows its own earlier answers in a long chat: this says which tools fit now
         if rx.search(user_text or ""):
             text += "\n\n## For this message\n" + hint
-    lessons = learning.prompt_block(cid, user_text or "")
+    lessons = "" if chat else learning.prompt_block(cid, user_text or "")
     if lessons:
         text += ("\n\n## Lessons from earlier mistakes (learned from the user's feedback; follow them)\n" + lessons)
     last_user = next((m for m in reversed(db.messages(cid)) if m["role"] == "user"), None)
@@ -581,7 +589,8 @@ def _context(cid, user_text):
         try:
             mem = tools.recall(user_text)
             if not mem.startswith("No relevant"):
-                text += "\n\nRelevant memories:\n" + mem
+                text += ("\n\n## From your long-term memory (background: use it only where this message is about it; never bring "
+                         "it up on your own)\n" + mem)
         except Exception:
             pass
     return text
@@ -589,11 +598,28 @@ def _context(cid, user_text):
 
 SMALL_TALK = re.compile(r"^\W*(hey|hi|hello|hallo|hola|thanks|thank you|danke|gracias|ok(ay)?|yes|no|ja|nein|sí|bye|great|cool|nice|"
                         r"good (morning|night|evening)|guten (morgen|abend))\b[\w\s,!.?']{0,25}$", re.I)
+# a check-in, not a request: "how are you (doing today)?", "are you ok?", "what's up", "wie geht's", "qué tal"
+CHECK_IN = re.compile(r"^\W*(?:(?:and |so )?how(?:'re| are) (?:you|u)(?: doing| feeling)?(?: today| now| tonight)?|how(?:'s| is) it going|"
+                      r"how do you feel|are (?:you|u) (?:ok(?:ay)?|alright|all right|there|good|fine)|(?:what's|whats|what is) up|you good|"
+                      r"all good|good (?:job|work)|well done|nice one|haha+|lol|"
+                      r"wie geht(?:'s| es)(?: dir)?(?: heute)?|geht(?:'s| es) dir gut|alles (?:gut|klar)|bist du (?:da|ok(?:ay)?)|"
+                      r"qu[eé] tal|c[oó]mo est[aá]s|est[aá]s bien|todo bien)\W*$", re.I)
+
+
+def small_talk(text):
+    """A greeting, thanks or a how-are-you, also when it starts with the assistant's name ("Amadeus, how are you?")."""
+    t = re.sub(rf"^\W*(?:(?:hey|hi|hello|hallo|hola|ok(?:ay)?|so)\W+)?(?:{re.escape(NAME)}|assistant)\b\W*", "", (text or "").strip(), flags=re.I)
+    return bool(t) and bool(SMALL_TALK.match(t) or CHECK_IN.match(t)) or bool(SMALL_TALK.match((text or "").strip()))
+
+
+SMALL_TALK_HINT = ("This is small talk (a greeting, thanks or a how-are-you), not a request. Answer like a person would, in one or "
+                   "two short sentences. Don't bring up the calendar, mail, tasks, projects or memories, don't say the date or "
+                   "the time, and don't list what you could do. If it's a how-are-you, say how you are and you may ask back.")
 
 
 def _worth_recalling(text):
     """A greeting or a plain "put X on my todo" has nothing to look up in the memory: that lookup is a third of a second each time."""
-    return len(text.split()) >= 3 and not SMALL_TALK.match(text) and not JUST_NOTE_IT.search(text)
+    return len(text.split()) >= 3 and not small_talk(text) and not JUST_NOTE_IT.search(text)
 
 
 def _keep_context(cid, user_text):

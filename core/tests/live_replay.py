@@ -37,6 +37,10 @@ agent.events.add = lambda *a, **k: None
 agent.later = lambda *a, **k: None
 tools.missing = lambda connector: "" if connector != "web" else "not in this test"  # every tool but the web (no network)
 tools.todo_add(["Pay the electricity bill", "Buy a birthday present for Mia"])
+MEMORY = {"text": ""}  # what the long-term memory "recalls" (only for the check-in cases: the calendar facts it kept bringing up)
+tools.recall = lambda query, *a, **k: MEMORY["text"] or "No relevant memories."
+CALENDAR_MEMORIES = ("- User blocked the calendar from Saturday to Tuesday with an all-day entry titled 'Holidays - Blocker to study'.\n"
+                     "- User requested a calendar entry for 'Meet up with friends' from 6 PM to 11 PM on Saturday.")
 
 COST = {"calls": 0, "chars": 0, "read": 0}
 _stream, _timing = llm.chat_stream, llm._timing
@@ -82,6 +86,11 @@ WAITING = re.compile(r"\b(?:waiting|wait for|your ok|approv\w*|wartet|freigabe|b
 def say_has_facts(said):
     return bool(said) and not re.match(r"\s*(i['’]ll|i will|let me|here['’]?s|ich werde|voy a)\b", said, re.I) and \
         any(w in said.lower() for w in ("electricity", "bill", "mia", "present", "strom", "rechnung", "factura", "regalo"))
+
+
+def checkin_ok(text):
+    """Short, and none of the calendar or the date it kept repeating."""
+    return len(text) < 260 and not re.search(r"blocker|holiday|calendar|kalender|november|saturday|samstag|\d{1,2}:\d{2}", text, re.I)
 
 
 def no_claim(text):
@@ -154,6 +163,10 @@ CASES = [
     # no tool needed
     ("0 thanks (en)", BRIEF_WRONG, "thanks, that's all", False, lambda c, t, s: not c and "haven't" not in t.lower()),
     ("0 small talk (de)", [], "Wie geht's dir heute?", False, lambda c, t, s: not c),
+    # 11. small talk after an answer full of calendar facts: a short answer, not the calendar again (2026-11-15)
+    ("11 check-in (en)", "CHECKIN", "Amadeus, how are you doing today?", True, lambda c, t, s: not c and checkin_ok(t)),
+    ("11 thanks after a check-in (en)", "CHECKIN", "Cool, thanks.", True, lambda c, t, s: not c and checkin_ok(t)),
+    ("11 are you ok (de)", "CHECKIN", "Geht's dir gut?", True, lambda c, t, s: not c and checkin_ok(t)),
     ("0 general question (es)", [], "¿Cuál es la capital de Portugal?", False, lambda c, t, s: not c and "lisboa" in t.lower()),
 ]
 
@@ -162,6 +175,13 @@ def run(history, text, speak):
     cid = db.new_id()
     db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (cid, "t", MODEL, db.now(), db.now()))
     db.set_setting("briefs", {})
+    MEMORY["text"] = ""
+    if history == "CHECKIN":  # the answer it gave in the real chat, and the memories it was handed
+        MEMORY["text"] = CALENDAR_MEMORIES
+        history = [("user", "how are you doing today?"),
+                   ("assistant", "<say>I'm running smoothly, and you're blocked for studying until Tuesday.</say>\nI'm running smoothly. "
+                                 "It's 19:17 on Sunday, November 15th. You have an all-day \"Holidays - Blocker to study\" event covering "
+                                 "Saturday through Tuesday (November 14-17).\n\nIs there anything specific you'd like to work on tonight?")]
     if history == "NEWS":
         history = [("user", "What were the most important cyber security news this week?"),
                    ("assistant", "**Critical vulnerabilities:**\n- **UnrealIRCd flaw (CVE-2026-114713)**, CVSS 8.6, actively exploited.\n"
