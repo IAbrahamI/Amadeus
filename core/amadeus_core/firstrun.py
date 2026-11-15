@@ -24,6 +24,8 @@ pick_model = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pick_model)
 
 OLLAMA_ZIP = "https://ollama.com/download/Ollama-darwin.zip"
+OLLAMA_SETUP = "https://ollama.com/download/OllamaSetup.exe"  # Windows: Ollama's own signed installer
+OLLAMA_WIN = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Ollama")  # where it installs itself for one user
 OLLAMA_APPS = ("/Applications/Ollama.app", os.path.expanduser("~/Applications/Ollama.app"))
 _lock = threading.Lock()
 _job = {"kind": "", "text": "", "pct": None, "error": "", "done": False}
@@ -49,6 +51,8 @@ def _models():
 
 def _ollama_app_known():
     """Wherever the app is: macOS itself knows, so it doesn't have to be in Applications."""
+    if system.WIN:
+        return os.path.isfile(os.path.join(OLLAMA_WIN, "ollama.exe"))
     if not system.MAC:
         return False
     return any(os.path.isdir(a) for a in OLLAMA_APPS) or \
@@ -72,14 +76,14 @@ def needed():
         return False
     state = ollama_state()
     if state != "running":
-        return system.MAC  # (on Linux the install handles Ollama; it may just be stopped for a moment)
+        return system.desktop_app()  # (on Linux the install handles Ollama; it may just be stopped for a moment)
     return CFG["default_model"] not in _models()
 
 
 def status():
     if not needed() and (not _job["kind"] or _job["done"]):
         return {"needed": False, "job": dict(_job), "shown": _shown["yes"], "can_install": system.MAC, "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "claude": work.claude_status(), "claude": work.claude_status() if system.MAC else {}}
-    return {"needed": True, "rejected": dict(_rejected), "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC,
+    return {"needed": True, "rejected": dict(_rejected), "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC, "system": "windows" if system.WIN else "mac" if system.MAC else "linux",
             "folder": folders.paths(_own(), os.path.expanduser("~"))["folder"], "picks": _picks, "job": dict(_job),
             "hardware": pick_model.hardware()}
 
@@ -107,6 +111,10 @@ def _run(kind, work):
 
 
 def _start_ollama():
+    if system.WIN:  # its tray app runs the server; without it (an install without the tray) the server alone
+        tray = os.path.join(OLLAMA_WIN, "ollama app.exe")
+        cmd = [tray] if os.path.isfile(tray) else [os.path.join(OLLAMA_WIN, "ollama.exe"), "serve"]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=system.DETACHED)
     if system.MAC:
         subprocess.run(["/usr/bin/open", "-g", "-a", "Ollama"], capture_output=True, timeout=20)
     for second in range(60):
@@ -118,7 +126,8 @@ def _start_ollama():
                 subprocess.Popen([os.path.join(app, "Contents", "Resources", "ollama"), "serve"], stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL, start_new_session=True)
         time.sleep(1)
-    raise ValueError("Ollama didn't start. Open it once from your Applications folder, then try again.")
+    raise ValueError("Ollama didn't start. Open it once from the Start menu, then try again." if system.WIN else
+                     "Ollama didn't start. Open it once from your Applications folder, then try again.")
 
 
 def _quit_ollama():
@@ -137,11 +146,37 @@ def _update_ollama():
     _install_ollama(update=True)
 
 
+def _install_ollama_windows():
+    """Ollama's own installer, only run if Windows confirms it is signed by Ollama. It installs for you alone (no
+    administrator needed), quietly."""
+    with tempfile.TemporaryDirectory(prefix="amadeus-ollama-") as tmp:
+        setup = os.path.join(tmp, "OllamaSetup.exe")
+        with urllib.request.urlopen(urllib.request.Request(OLLAMA_SETUP, headers={"user-agent": "Amadeus"}), timeout=60) as r, open(setup, "wb") as f:
+            total, got = int(r.headers.get("content-length") or 0), 0
+            while chunk := r.read(1 << 20):
+                f.write(chunk)
+                got += len(chunk)
+                _say("Downloading Ollama", got * 100 // total if total else None)
+        _say("Checking Ollama's signature")
+        sig = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              f"$s = Get-AuthenticodeSignature -LiteralPath '{setup}'; \"$($s.Status)|$($s.SignerCertificate.Subject)\""],
+                             capture_output=True, text=True, timeout=120, creationflags=0x08000000).stdout.strip()
+        status, _, subject = sig.partition("|")
+        if status != "Valid" or "ollama" not in subject.lower():
+            raise ValueError("Windows couldn't confirm that download is really Ollama, so I didn't install it. You can get it from ollama.com.")
+        _say("Installing Ollama")
+        subprocess.run([setup, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], check=True, capture_output=True, timeout=900)
+    _say("Starting Ollama")
+    _start_ollama()
+
+
 def _install_ollama(update=False):
-    """Ollama's own signed app, only accepted if macOS confirms that signature."""
+    """Ollama's own signed app, only accepted if macOS (or Windows) confirms that signature."""
     if not update and ollama_state() != "missing":  # never a second copy of what you already have
         _say("Starting Ollama")
         return _start_ollama()
+    if system.WIN:
+        return _install_ollama_windows()
     with tempfile.TemporaryDirectory(prefix="amadeus-ollama-") as tmp:
         zipped = os.path.join(tmp, "Ollama.zip")
         with urllib.request.urlopen(urllib.request.Request(OLLAMA_ZIP, headers={"user-agent": "Amadeus"}), timeout=60) as r, open(zipped, "wb") as f:
@@ -340,7 +375,7 @@ def act(action, b):
             raise ValueError("Pick a model first.")
         finish()
     elif action == "ollama":
-        _run("ollama", _install_ollama if system.MAC else _start_ollama)
+        _run("ollama", _install_ollama if system.desktop_app() else _start_ollama)
     elif action == "remove_model":
         if not _rejected.get("downloaded"):
             raise ValueError("Nothing to remove.")

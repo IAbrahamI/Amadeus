@@ -1,0 +1,75 @@
+# Builds the Windows app and checks that it installs, starts its core and shows the setup. The installer is kept with the
+# run, to try it before it is released.
+name: windows-app
+
+on:
+  push:
+    branches: [main]
+    paths: ["core/**", "packaging/windows/**", ".github/workflows/windows-app.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Build
+        run: packaging/windows/build.ps1
+      - name: Unit tests with the bundled Python
+        continue-on-error: true  # (until the tests that assume Linux or a Mac are sorted out; the steps below don't depend on them)
+        run: |
+          $py = "dist\windows\stage\python\python.exe"
+          Set-Location core
+          & "..\$py" -m unittest -v
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Install it for this user, start the app, and the core answers from inside it
+        timeout-minutes: 8
+        run: |
+          $setup = Get-ChildItem dist\windows\Amadeus-*-x64-setup.exe | Select-Object -First 1
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList "/S"
+          $app = Get-ChildItem "$env:LOCALAPPDATA\Amadeus" -Filter "*.exe" -Recurse | Where-Object { $_.Name -notmatch "uninstall|python" } | Select-Object -First 1
+          if (-not $app) { Get-ChildItem "$env:LOCALAPPDATA\Amadeus" -Recurse -Depth 1 | Select-Object FullName; throw "The app isn't where the installer should put it." }
+          Write-Host "installed: $($app.FullName)"
+          Start-Process -FilePath $app.FullName
+          $code = ""
+          foreach ($i in 1..60) {
+            try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8095/ -TimeoutSec 3 | Out-Null; $code = "200" } catch { if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode } }
+            if ($code -eq 403) { break }
+            Start-Sleep 2
+          }
+          Get-Content "$env:LOCALAPPDATA\Amadeus\Logs\core.log" -Tail 25 -ErrorAction SilentlyContinue
+          if ($code -ne 403) { throw "The core didn't answer (last: $code)" }  # (the page itself only opens in the app's own window)
+          $token = (Get-Content "$env:APPDATA\Amadeus\core\token" -Raw).Trim()
+          $s = Invoke-RestMethod -Uri http://127.0.0.1:8095/api/setup -Headers @{ authorization = "Bearer $token" }
+          $s | ConvertTo-Json -Depth 3 | Select-Object -First 30
+          if (-not $s.needed) { throw "The setup should be needed on a new computer." }
+          if ($s.ollama -ne "missing") { throw "There is no Ollama on this computer, so it should say so." }
+          if ($s.system -ne "windows") { throw "It doesn't know it runs on Windows." }
+      - name: The core comes back after it is stopped (the app looks after it)
+        timeout-minutes: 3
+        run: |
+          Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match "run.py" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          Start-Sleep 3
+          $ok = $false
+          foreach ($i in 1..40) {
+            try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8095/ -TimeoutSec 3 | Out-Null } catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 403) { $ok = $true; break } }
+            Start-Sleep 2
+          }
+          if (-not $ok) { throw "The core didn't come back." }
+          $run = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name Amadeus -ErrorAction SilentlyContinue
+          if (-not $run) { throw "The app didn't set itself to start at login." }
+          Write-Host "starts at login: $($run.Amadeus)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: amadeus-windows
+          path: dist/windows/*.exe
+          retention-days: 14
+          if-no-files-found: error

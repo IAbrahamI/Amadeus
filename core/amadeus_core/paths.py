@@ -7,6 +7,9 @@ HOME = os.path.expanduser("~")
 if sys.platform == "darwin":
     ROOT = os.path.join(HOME, "Library", "Application Support", "Amadeus")
     CONFIG = os.path.join(ROOT, "config")
+elif sys.platform == "win32":  # %APPDATA%\Amadeus: the user's own roaming app data, like other Windows apps
+    ROOT = os.path.join(os.environ.get("APPDATA") or os.path.join(HOME, "AppData", "Roaming"), "Amadeus")
+    CONFIG = os.path.join(ROOT, "config")
 else:
     ROOT = os.path.join(HOME, ".local", "share", "amadeus")
     CONFIG = os.path.join(HOME, ".config", "amadeus-core")

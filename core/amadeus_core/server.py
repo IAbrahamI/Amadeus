@@ -909,8 +909,9 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     from . import voices, work  # noqa: F401  (work makes its tables, which the background jobs read)
     system.stop_with_app()
-    try:  # the guard for work runs always matches where your projects and notes are now
-        workguard.install(projects_dir(CFG), CFG["notes_root"])
+    try:  # the guard for work runs always matches where your projects and notes are now (no work runs on Windows: no sandbox)
+        if not system.WIN:
+            workguard.install(projects_dir(CFG), CFG["notes_root"])
     except OSError as e:
         print("the guard for work runs couldn't be written:", e, flush=True)
     if system.MAC:

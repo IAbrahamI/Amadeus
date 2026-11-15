@@ -51,25 +51,48 @@ const SVG_VOICE_OFF: &str = include_str!("../../web/tray/amadeus-tray-voice-off.
 
 /// Where Amadeus keeps its data: the same places as core/amadeus_core/paths.py.
 fn home_path(path: &str) -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(path)
+    PathBuf::from(std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default()).join(path)
 }
 #[cfg(target_os = "macos")]
 const CONFIG_FILE: &str = "Library/Application Support/Amadeus/config/config.json";
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 const CONFIG_FILE: &str = ".config/amadeus-core/config.json";
 #[cfg(target_os = "macos")]
 const DATA_DIR: &str = "Library/Application Support/Amadeus/core";
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 const DATA_DIR: &str = ".local/share/amadeus/core";
 
+/// Windows: %APPDATA%\Amadeus, like paths.py.
+#[cfg(target_os = "windows")]
+fn win_root() -> PathBuf {
+    std::env::var("APPDATA").map(PathBuf::from).unwrap_or_else(|_| home_path("AppData/Roaming")).join("Amadeus")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn config_path() -> PathBuf {
+    home_path(CONFIG_FILE)
+}
+#[cfg(target_os = "windows")]
+fn config_path() -> PathBuf {
+    win_root().join("config").join("config.json")
+}
+#[cfg(not(target_os = "windows"))]
+fn default_data_dir() -> PathBuf {
+    home_path(DATA_DIR)
+}
+#[cfg(target_os = "windows")]
+fn default_data_dir() -> PathBuf {
+    win_root().join("core")
+}
+
 fn config() -> Value {
-    fs::read_to_string(home_path(CONFIG_FILE)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({}))
+    fs::read_to_string(config_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({}))
 }
 
 fn data_dir() -> PathBuf {
     match config()["data_dir"].as_str() {
         Some(d) => PathBuf::from(d),
-        None => home_path(DATA_DIR),
+        None => default_data_dir(),
     }
 }
 
@@ -1262,6 +1285,56 @@ const UPDATER_KEY: &str = include_str!("../../../packaging/macos/updater.pub");
 #[cfg(target_os = "macos")]
 const UPDATES: &str = "https://github.com/IAbrahamI/Amadeus/releases/latest/download/latest.json";
 
+/// Windows: the app brings the core along. It runs the bundled Python with the core as a child, without a console
+/// window, and starts it again when it ends (on purpose with code 75 for a restart, or because it stopped). The app
+/// itself starts at login through the user's Run key, so nothing needs an administrator.
+#[cfg(target_os = "windows")]
+fn windows_core(app: &AppHandle) {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let (Ok(res), Ok(exe)) = (app.path().resource_dir(), std::env::current_exe()) else { return };
+    let python = res.join("python").join("python.exe");
+    let run = res.join("core").join("run.py");
+    if !python.exists() || !run.exists() {
+        return; // run from a build folder: start the core yourself
+    }
+    // start at login: HKCU\Software\Microsoft\Windows\CurrentVersion\Run (the same as Settings → Apps → Startup)
+    let _ = Command::new("reg")
+        .args(["add", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "/v", "Amadeus", "/t", "REG_SZ", "/f", "/d"])
+        .arg(format!("\"{}\" --login", exe.display()))
+        .creation_flags(0x0800_0000)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let logs = std::env::var("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|_| home_path("AppData/Local")).join("Amadeus").join("Logs");
+    let _ = fs::create_dir_all(&logs);
+    std::thread::spawn(move || {
+        let mut quick = 0u32;
+        loop {
+            let log = fs::OpenOptions::new().create(true).append(true).open(logs.join("core.log"));
+            let mut cmd = Command::new(&python);
+            cmd.arg(&run).current_dir(run.parent().unwrap_or(&res)).env("PYTHONDONTWRITEBYTECODE", "1").env("PYTHONUTF8", "1")
+                .creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            if let Ok(f) = log {
+                if let Ok(copy) = f.try_clone() {
+                    cmd.stdout(copy).stderr(f);
+                }
+            }
+            let started = Instant::now();
+            let code = match cmd.spawn() {
+                Ok(mut child) => child.wait().ok().and_then(|s| s.code()),
+                Err(e) => {
+                    eprintln!("the core didn't start: {e}");
+                    None
+                }
+            };
+            // a core that keeps stopping right away waits longer each time (up to a minute), so it can't spin
+            quick = if started.elapsed() < Duration::from_secs(20) && code != Some(75) { (quick + 1).min(6) } else { 0 };
+            std::thread::sleep(Duration::from_secs(if code == Some(75) { 1 } else { 2u64.pow(quick) }));
+        }
+    });
+}
+
 /// The core should be running while the app runs: after an update launchd may not have started it again. Does nothing if it's up.
 #[cfg(target_os = "macos")]
 fn start_core() {
@@ -1361,6 +1434,8 @@ fn main() {
             }
             #[cfg(target_os = "macos")]
             mac_services(&h);
+            #[cfg(target_os = "windows")]
+            windows_core(&h);
             #[cfg(not(target_os = "linux"))]
             watch_pointer(h.clone());
             #[cfg(target_os = "macos")]

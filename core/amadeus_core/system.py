@@ -10,6 +10,14 @@ import threading
 import time
 
 MAC = sys.platform == "darwin"
+WIN = sys.platform == "win32"
+RESTART_CODE = 75  # on Windows the core ends with this to be started again by the app (core/desktop-tauri: windows_core)
+DETACHED = 0x00000008 | 0x00000200 | 0x08000000  # Windows: DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+
+
+def desktop_app():
+    """The app brings the core along and supervises it (a Mac or Windows: no systemd there)."""
+    return MAC or WIN
 
 
 def _label(service):
@@ -18,6 +26,10 @@ def _label(service):
 
 
 def restart(*services):
+    if WIN:  # the app restarts the core when it ends with RESTART_CODE; the app itself starts again with the next login
+        if "amadeus-core" in services:
+            threading.Timer(0.5, lambda: os._exit(RESTART_CODE)).start()
+        return
     if MAC:
         for s in services:
             subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{_label(s)}"], capture_output=True, timeout=60)
@@ -52,8 +64,12 @@ def stop_with_app():
 
 
 def open_terminal(command):
-    """A command in a Terminal window you can see, on a Mac. A .command file opens there without any extra permission."""
+    """A command in a Terminal window you can see, on a Mac (a .command file opens there without any extra permission)
+    or on Windows (a console window that stays open)."""
     from . import paths
+    if WIN:
+        subprocess.Popen(["cmd", "/k", command], creationflags=0x00000010)  # CREATE_NEW_CONSOLE
+        return
     script = os.path.join(paths.DATA, "amadeus-terminal.command")
     with open(script, "w") as f:
         f.write("#!/bin/zsh -l\n" + command + "\n")
@@ -62,7 +78,7 @@ def open_terminal(command):
 
 
 def notify(title, text):
-    if MAC:  # through the app, so it's Amadeus' notification (one from osascript opens Script Editor when you click it)
+    if desktop_app():  # through the app, so it's Amadeus' notification (one from osascript opens Script Editor when you click it)
         from . import desktop
         desktop.send({"do": "notify", "data": {"title": title, "text": text}})
     else:
@@ -75,6 +91,9 @@ def launch(cmd, name="app"):
     if MAC:
         subprocess.Popen(list(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         return
+    if WIN:
+        subprocess.Popen(list(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=DETACHED)
+        return
     from .config import desktop_env
     desktop_env()  # Amadeus may have started before the desktop: apps need its display
     unit = f"amadeus-app-{re.sub(r'[^a-z0-9]', '', name.lower())[:20]}-{int(time.time())}"
@@ -84,7 +103,9 @@ def launch(cmd, name="app"):
 
 def in_background(cmd):
     """A command that may restart Amadeus itself, so it runs apart from this process."""
-    if MAC:
+    if WIN:
+        subprocess.Popen(list(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=DETACHED)
+    elif MAC:
         subprocess.Popen(list(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     else:
         subprocess.Popen(["systemd-run", "--user", "--collect", *cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -92,6 +113,8 @@ def in_background(cmd):
 
 def page_command(url, browser_cmd=None):
     """How to open a web page: in a named browser (Linux command), or the default one."""
+    if WIN:  # "start" with an empty title opens it in the default browser (or the named one, if it's installed)
+        return ["cmd", "/c", "start", "", *(browser_cmd or [])[:1], url]
     if MAC:
         names = {"firefox": "Firefox", "brave": "Brave Browser", "chromium": "Chromium"}
         name = names.get((browser_cmd or [""])[0])
@@ -111,4 +134,4 @@ def mac_apps():
 
 def service_timers():
     """Whether scheduled jobs here run as systemd timers, which can be asked how they went."""
-    return not MAC
+    return not desktop_app()
