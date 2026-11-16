@@ -12,6 +12,7 @@ One round, from core/ (needs Ollama with the model; a throw-away home folder, so
   python3 coach/tune.py score MODEL --out out/a.json             score the code's texts (all cases, 2 rounds)
   python3 coach/tune.py report out/a.json > out/a.md             what went wrong, with the texts involved: for the coach
      ... the coach writes out/try1.json (only the texts it changes) ...
+  python3 coach/tune.py stamp out/try1.json                       notes which of the code's texts it was written from
   python3 coach/tune.py score MODEL --pack out/try1.json --out out/b.json
   python3 coach/tune.py compare out/a.json out/b.json            better on the cases it was tuned on, not worse on the held-back ones?
 
@@ -215,7 +216,8 @@ def report(result, pack_file):
             out += [f"- It did: {called}", f"  - wrong because: {f['why']}", f"  - it answered: {f['shown'][:200]!r}"]
             involved |= {n.removeprefix("approved:") for n, _ in f["calls"]}
         involved |= {w for part in str(c["want"]).replace("&", "|").split("|") for w in [part] if w in tools.BY_NAME}
-        area = next((a for a, rx in tools.AREA_RE.items() if rx.search(c["text"])), "")
+        first = [("app", tools.APP_FIRST_RE)] if hasattr(tools, "APP_FIRST_RE") else []
+        area = next((a for a, rx in [*first, *tools.AREA_RE.items()] if rx.search(c["text"])), "")
         out += [f"- Area picked from its words: {area or 'none (base tools only)'}", ""]
     out += ["# The texts as they are", "", "## system", "```", texts["system"], "```", "", "## pick_ask", "```", texts["pick_ask"], "```", "",
             "## fill_ask", "```", texts["fill_ask"], "```", "", "## tools involved in the failures"]
@@ -272,6 +274,8 @@ def main():
     r = sub.add_parser("report")
     r.add_argument("result")
     r.add_argument("--pack")
+    st = sub.add_parser("stamp")
+    st.add_argument("pack")
     c = sub.add_parser("compare")
     c.add_argument("a")
     c.add_argument("b")
@@ -294,6 +298,10 @@ def main():
         from coach import pack
         pack.save(pack.current(), a.out)
         print("Written:", a.out)
+    if a.cmd == "stamp":
+        from coach import pack
+        pack.save(pack.stamp(pack.load(a.pack), pack.current()), a.pack)
+        print("Stamped:", a.pack)
     if a.cmd == "report":
         print(report(json.load(open(a.result, encoding="utf-8")), a.pack), end="")
 

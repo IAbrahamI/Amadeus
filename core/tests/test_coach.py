@@ -131,6 +131,19 @@ class Packs(unittest.TestCase):
             pack.apply({"fill_ask": "Give the arguments."})
 
 
+    def test_a_pack_written_from_an_older_text_is_refused(self):
+        base = pack.current()
+        p = pack.stamp({"tools": {"todo_add": "Add items to the to-do list when the user asks."}, "pick_ask": "Which tools?"}, base)
+        self.assertEqual(pack.problems(p, base), [])
+        later = copy.deepcopy(base)
+        later["tools"]["todo_add"] += " New: items may carry a due date."  # the code's text moved on: the pack would undo it
+        self.assertEqual(pack.stale(p, later), ["tools.todo_add"])
+        self.assertTrue(any("todo_add" in x for x in pack.problems(p, later)))
+        later = copy.deepcopy(base)
+        later["tools"]["todo_list"] += " Something else changed."  # a text the pack doesn't replace: still fine
+        self.assertEqual(pack.problems(p, later), [])
+
+
 class Verdict(unittest.TestCase):
     def result(self, train, held, fake=0, chars=9000):
         rows = {f"t{i}": {"right": 2 if i < train else 0, "of": 2, "held": False, "fake": fake if i == 0 else 0} for i in range(10)}

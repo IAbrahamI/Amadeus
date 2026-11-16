@@ -5,11 +5,13 @@
  "pick_ask": "...", "fill_ask": "...{name}...{part}...",   the two questions of the closed-list pick
  "small_talk_hint": "...",
  "tools": {"todo_add": "description"},   tool descriptions, by tool name
- "area_words": {"mail": "regex"}}        the words that put a message into an area
+ "area_words": {"mail": "regex"},        the words that put a message into an area
+ "made_from": {"tools.todo_add": 123}}   written by stamp(): what the code's own text was when the pack was made
 
 Every key is optional: what a pack leaves out stays as the code has it. Nothing here changes a model's weights."""
 import json
 import re
+import zlib
 
 from amadeus_core import agent, tools
 
@@ -25,6 +27,33 @@ def current():
             "area_words": dict(tools.AREA_WORDS)}
 
 
+def _mark(text):
+    return zlib.crc32(str(text).encode())
+
+
+def _parts(pack):
+    """What a pack replaces, as "system", "tools.todo_add", "area_words.mail"."""
+    return [k for k in TEXTS if pack.get(k)] + [f"{g}.{k}" for g in ("tools", "area_words") for k in (pack.get(g) or {})]
+
+
+def _text(texts, part):
+    group, _, key = part.partition(".")
+    return (texts.get(group) or {}).get(key) if key else texts.get(group)
+
+
+def stamp(pack, base):
+    """Notes what the code's own texts were when this pack was written. A pack replaces whole texts, so when the code's
+    text changes later (a fix, a new tool argument), the pack would quietly undo that change: problems() refuses it then."""
+    pack["made_from"] = {part: _mark(_text(base, part)) for part in _parts(pack)}
+    return pack
+
+
+def stale(pack, base):
+    """The parts whose text in the code changed since the pack was stamped."""
+    made = pack.get("made_from") or {}
+    return [part for part in _parts(pack) if part in made and made[part] != _mark(_text(base, part))]
+
+
 def size(pack):
     return sum(len(pack.get(k) or "") for k in TEXTS) + sum(len(v) for v in (pack.get("tools") or {}).values())
 
@@ -35,7 +64,7 @@ def problems(pack, base=None):
     if not isinstance(pack, dict):
         return ["a pack is a JSON object"]
     for k in pack:
-        if k not in (*TEXTS, "tools", "area_words", "model", "notes"):
+        if k not in (*TEXTS, "tools", "area_words", "model", "notes", "made_from"):
             out.append(f"unknown key {k!r}")
     for k in TEXTS:
         v = pack.get(k)
@@ -64,6 +93,8 @@ def problems(pack, base=None):
             re.compile(r"\b(?:" + words + r")\b", re.I)
         except (re.error, TypeError) as e:
             out.append(f"the words of {area} are not a valid pattern ({e})")
+    if base is not None and not out:
+        out += [f"the code's own {part} changed since this pack was written: redo that part from the new text" for part in stale(pack, base)]
     if base is not None and not out:
         merged = {**base, **{k: pack[k] for k in TEXTS if pack.get(k)}, "tools": {**base["tools"], **(pack.get("tools") or {})}}
         if size(merged) > size(base) * GROWTH:

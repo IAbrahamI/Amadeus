@@ -15,5 +15,18 @@
   "notes": "notes?|notiz\\w*|notas?|write (?:it )?down|aufschreiben|apunta\\w*|schreib auf|notier\\w*|note that",
   "web": "search|look (?:it |that )?up|google|online|internet|web|websites?|web ?pages?|pages|links?|download\\w*|hugging ?faces?|github|news|prices?|weather|wetter|tiempo|clima|latest|learn about|read this page|recherch\\w*|nachschauen|such\\w*|busca\\w*|noticias|precios?|aktuell\\w*|https?://|versi[oó]n(?:es)?|versions?|kostet|cuesta|costs?",
   "mail": "e-?mails?|mails?|inbox|unread|sender|attachments?|spam|junk|forward|reply|draft|newsletters?|verification codes?|posteingang|postfach|ungelesen\\w*|anhang|anhänge|antworte\\b|beantwort\\w*|weiterleiten|correos?|bandeja|adjuntos?|responde\\w*"
+ },
+ "made_from": {
+  "pick_ask": 4077432698,
+  "tools.web_read": 2757580652,
+  "tools.open_page": 4218692950,
+  "tools.remember": 2295400686,
+  "tools.mail_look": 2026560269,
+  "tools.app_setting_change": 1285977270,
+  "tools.notes_add": 136884977,
+  "area_words.app": 1540697377,
+  "area_words.notes": 3334694702,
+  "area_words.web": 3348794832,
+  "area_words.mail": 1658195396
  }
 }
