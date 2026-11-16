@@ -69,6 +69,15 @@ def _stand_ins(tools):
         "memory_overview": lambda **k: "- Likes hiking.\n- Works as a nurse.",
         "work_status": lambda **k: "No work runs yet.",
     }
+    from amadeus_core import mail
+    failing = mail.call
+
+    def made_up_mail(op, *a, **k):
+        """Finding which mail is meant ("Anna's mail") gets a made-up one; everything else stays "no mail in this test"."""
+        if op == "search":
+            return [{"id": 101, "from": "Anna Example <anna@example.org>", "subject": "Saturday", "date": "2026-11-14 09:12", "unread": False}]
+        return failing(op, *a, **k)
+    mail.call = made_up_mail
     for name, fn in canned.items():
         if name in tools.BY_NAME:
             tools.BY_NAME[name]["fn"] = fn
@@ -107,7 +116,12 @@ def score(model, pack_file, which, rounds, only, out):
                  "lang": case["lang"], "text": case["text"], "want": case["want"], "web": case.get("web"), "fails": []}
         for _ in range(rounds):
             WEB["now"] = case.get("web")
-            calls, shown, said = R.run(case["hist"], case["text"], case["speak"])
+            try:
+                calls, shown, said = R.run(case["hist"], case["text"], case["speak"])
+            except Exception as e:  # the turn itself broke: wrong, noted with the error, and the run goes on
+                entry["fails"].append({"why": f"the turn crashed: {type(e).__name__}: {str(e)[:200]}", "calls": [], "shown": "", "said": ""})
+                entry["crashed"] = entry.get("crashed", 0) + 1
+                continue
             fake = not any(c.startswith("approved:") or (tools.BY_NAME.get(c) or {}).get("approval") for c, _ in calls) and bool(grounding.unbacked(shown))
             if "ok" in case:
                 good, why = bool(case["ok"](calls, shown, said)), "see its check in tests/live_replay.py"
@@ -119,15 +133,21 @@ def score(model, pack_file, which, rounds, only, out):
                 entry["fails"].append({"why": why, "calls": [[c, a] for c, a in calls][:6], "shown": shown[:300], "said": said[:120]})
         result["cases"][cid] = entry
         print(f"{n:3d}/{len(todo)} {entry['right']}/{rounds} {'held ' if entry['held'] else '     '}{cid}", flush=True)
+        _save(result, out, R, start, t0)  # after every case: a run that stops early keeps what it measured
+    _save(result, out, R, start, t0)
+    print(summary(result))
+    return result
+
+
+def _save(result, out, R, start, t0):
     made = R.COST["calls"] - start["calls"]
     result.update(calls=made, chars_per_call=(R.COST["chars"] - start["chars"]) // max(made, 1),
                   tokens_read_per_call=(R.COST["read"] - start["read"]) // max(made, 1), seconds=int(time.time() - t0))
-    print(summary(result))
     if out:
         os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-        with open(out, "w", encoding="utf-8") as f:
+        with open(out + ".part", "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=1)
-    return result
+        os.replace(out + ".part", out)
 
 
 def totals(result, held=None):
@@ -138,8 +158,9 @@ def totals(result, held=None):
 
 def summary(result):
     (r, n, f), (tr, tn, _), (hr, hn, _) = totals(result), totals(result, False), totals(result, True)
+    crashed = sum(c.get("crashed", 0) for c in result["cases"].values())
     return (f"\n{result['model']}{' with ' + result['pack'] if result['pack'] else ''}: {r}/{n} right ({tr}/{tn} tuned on, {hr}/{hn} held back), "
-            f"{f} made-up \"done\". {result['calls']} model calls, {result['chars_per_call']:,} chars sent per call, "
+            f"{f} made-up \"done\"{f', {crashed} turns crashed' if crashed else ''}. {result['calls']} model calls, {result['chars_per_call']:,} chars sent per call, "
             f"{result['tokens_read_per_call']:,} tokens read per call, {result['seconds']}s")
 
 
