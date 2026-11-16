@@ -1111,8 +1111,13 @@ CANT_RE = re.compile(r"\b(i (?:can['’]?t|cannot|can not|am (?:not able|unable)
 MAYBE_CANT_RE = re.compile(r"\b(?:can['’]?t|cannot|can not|unable|not (?:currently |yet )?(?:possible|available|supported|linked)|"
                            r"isn['’]?t (?:currently |yet )?(?:possible|available|supported|linked)|no (?:way|option|setting) to|"
                            r"nicht möglich|geht (?:leider )?nicht|no es posible)\b", re.I)
+# a question for its opinion or a fact, not a request to do something: "I can't decide that for you" is no missing ability
+ASKED_A_QUESTION = re.compile(r"\b(?:in your opinion|your opinion|what do you think|do you think|would you|which (?:one|of)|"
+                              r"how many|how much|is it true|deiner meinung|was denkst du|meinst du|würdest du|welche[rs]? (?:von|davon)|"
+                              r"wie viele|stimmt es|en tu opini[oó]n|qu[eé] opinas|crees que|har[ií]as t[uú]|cu[aá]l de|cu[aá]nt[oa]s|es verdad)\b", re.I)
 CANT_ASK = ("Did the assistant leave the user's request undone because it has no tool or function for it (not because "
-            "information was missing, the user must decide something, or it's against its rules)? Reply ONLY with JSON: "
+            "information was missing, the user must decide something, it was asked for an opinion or a judgement, it "
+            "couldn't verify a fact, or it's against its rules)? Reply ONLY with JSON: "
             '{"missing_ability": true or false}')
 ABOUT_YOU_RE = re.compile(r"\b(?:what can you do|what can'?t you do|what are you able|your (?:abilities|features)|was kannst du|"
                           r"was kannst du nicht|qué puedes hacer|qué sabes hacer)\b", re.I)  # its "I can't…" there is an answer, not a gap
@@ -1152,11 +1157,13 @@ def _offer_improvement(cid, model, user_text, emit, what_happened):
 def _lacks_ability(model, asked, answer):
     """The answer says it can't do what was asked. Clear wording counts at once; softer wording ("the phone app can't
     follow that yet") is checked with one short question to the model, only then."""
-    if CANT_RE.search(answer):
+    if CANT_RE.search(answer) and not ASKED_A_QUESTION.search(asked or ""):
         return True
-    if not MAYBE_CANT_RE.search(answer):
+    if ASKED_A_QUESTION.search(asked or "") and not CANT_RE.search(answer) and not MAYBE_CANT_RE.search(answer):
         return False
-    try:
+    if not MAYBE_CANT_RE.search(answer) and not CANT_RE.search(answer):
+        return False
+    try:  # (a question answered with "I can't decide / verify that" lands here: the model says whether a tool was missing)
         out = json.loads(llm.complete(model, [{"role": "system", "content": CANT_ASK},
                                               {"role": "user", "content": f"USER: {asked[:600]}\nASSISTANT: {answer[:1200]}"}], as_json=True) or "{}")
         return out.get("missing_ability") is True

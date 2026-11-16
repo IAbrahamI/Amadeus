@@ -57,3 +57,30 @@ class MissingAbility(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FromTheCoachingRun(unittest.TestCase):
+    """Seen in the coaching run of 2026-11-16 (430 turns on qwen3.5-9b-48k)."""
+
+    def test_declining_an_opinion_or_a_fact_is_no_missing_ability(self):
+        with mock.patch.object(agent.llm, "complete", return_value='{"missing_ability": false}') as ask:
+            for asked, answer in (("Which of the two should I do first, in your opinion?", "I can't decide that for you, but here's how they compare."),
+                                  ("¿Cuál de las dos cosas harías tú primero?", "No puedo decidir por ti."),
+                                  ("¿Cuántos continentes hay?", "No puedo verificar la cifra exacta, suelen contarse siete.")):
+                self.assertFalse(agent._lacks_ability("m", asked, answer), asked)
+            self.assertEqual(ask.call_count, 3)  # the model was asked each time instead of the wording deciding
+        self.assertTrue(agent._lacks_ability("m", "Set the wake word sensitivity to high.", "I can't change that, there's no setting for it."))
+
+    def test_a_promise_to_behave_differently_needs_a_setting(self):
+        from amadeus_core import grounding
+        for t in ("Understood. I'll stop reading my responses aloud.", "Verstanden, ich werde meine Antworten nicht mehr laut vorlesen.",
+                  "Entendido, dejaré de leer mis respuestas en voz alta."):
+            self.assertEqual(grounding.unbacked(t), "promise", t)
+        self.assertIsNone(grounding.unbacked("I will always do my best to help."))
+
+    def test_the_right_area_is_offered(self):
+        for said, area in (("Stop reading your answers aloud.", "app"), ("Lies deine Antworten nicht mehr laut vor", "app"),
+                           ("Deja de leer tus respuestas en voz alta", "app"), ("Learn that word for speech recognition", "app"),
+                           ("Have Claude build a small website for my CV.", "work"), ("reply to Anna's mail", "mail"),
+                           ("give me a brief summary of my mails", "mail"), ("search the web for the weather", "web")):
+            self.assertEqual(tools.area_for(None, said), area, said)

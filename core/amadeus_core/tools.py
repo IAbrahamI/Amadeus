@@ -1825,14 +1825,20 @@ AREA_WORDS = {  # checked in this order: the first that fits is the area
                 r"verschieb\w*|every (?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|days? off|holidays?|"
                 r"urlaub|vacaciones",
     "notes": r"notes?|notiz\w*|notas?|write (?:it )?down|aufschreiben|apunta\w*",
+    "work": r"claude|projects?|projekt\w*|proyectos?|send (?:it |this )?to work|work runs?",
     "web": r"search|look (?:it |that )?up|google|online|internet|web|websites?|web ?pages?|pages|links?|download\w*|hugging ?faces?|github|"
            r"news|prices?|weather|wetter|tiempo|clima|latest|"
            r"learn about|read this page|recherch\w*|nachschauen|such\w*|busca\w*|noticias|precios?|aktuell\w*",
-    "work": r"claude|projects?|projekt\w*|proyectos?|send (?:it |this )?to work|work runs?",
     "memory": r"remember|what do you know|about me|did (?:i|we) (?:say|talk|tell)|earlier today|this morning|yesterday|"
               r"last (?:week|time)|merk dir|weißt du|gestern|heute morgen|recuerda|ayer",
 }
 AREA_RE = {k: re.compile(r"\b(?:" + v + r")\b", re.I) for k, v in AREA_WORDS.items()}
+# about the assistant itself (its voice, reading aloud, what it hears): checked before every other area, because the same
+# messages carry words of other areas ("lies deine Antworten nicht mehr vor" has "Antworten", which is mail)
+APP_FIRST_RE = re.compile(r"\b(?:(?:read|reading|say|saying|speak|speaking)\w* (?:\w+ ){0,4}(?:aloud|out loud)|aloud|out loud|"
+                          r"(?:laut )?vor(?:zu)?les\w*|laut vor|lies\w* .{0,40}\bvor\b|en voz alta|le[ae]\w* .{0,30}en voz alta|"
+                          r"speech recognition|spracherkennung|reconocimiento de voz|wake ?word|aktivierungswort|palabra de activaci[oó]n|"
+                          r"your voice|deine stimme|tu voz)\b", re.I)
 
 
 def _last_user_id(cid):
@@ -1848,7 +1854,7 @@ def area_for(cid, said=""):
     now = _last_user_id(cid)
     if picked.get("asked") and picked.get("msg") == now:
         return picked["asked"]
-    for name, rx in AREA_RE.items():
+    for name, rx in [("app", APP_FIRST_RE), *AREA_RE.items()]:
         if rx.search(said or ""):
             if cid:
                 db.set_setting(f"area:{cid}", {"area": name, "msg": now})
