@@ -128,7 +128,12 @@ PROMISE = re.compile(
     r"\b(?:i['’]ll|i will|i am going to|i['’]m going to|let me|let['’]s)\s+(?:now\s+|go ahead and\s+)?(?:add|set|create|save|schedule|put|note|remind|mark|move|remove|delete|send|draft)\b|"
     r"\b(?:adding|setting|creating|saving|scheduling)\b.{0,40}\b(?:reminder|to-?do|note|event|appointment)\b|"
     r"\bi['’]?\s?a?m\s+(?:now\s+)?(?:adding|setting|creating|saving|scheduling|blocking|putting|removing|moving|booking|marking|sending|deleting|updating)\b|"
-    r"\bich (?:werde|setze|erstelle|trage|füge)\b.{0,60}\b(?:erinner|hinzu|ein\b|eintrag|notiz|termin)", re.I)
+    r"\bich (?:werde|setze|erstelle|trage|füge)\b.{0,60}\b(?:erinner|hinzu|ein\b|eintrag|notiz|termin)|"
+    # a change in how it behaves from now on ("I'll stop reading my answers aloud"): only a setting makes that true
+    r"\b(?:i['’]ll|i will|from now on,? i(?:['’]ll| will)?)\s+(?:now\s+)?(?:stop|no longer|not \w+ (?:\w+ ){0,4}(?:anymore|any more)|"
+    r"start (?:reading|speaking|saying|answering|using|showing|calling)|always (?:read|speak|say|answer|use|show|call))\b|"
+    r"\b(?:ich werde|werde ich|ab (?:jetzt|sofort) werde ich)\b.{0,50}\b(?:nicht mehr|aufhören|immer)\b|\bich (?:höre|hör) auf\b|"
+    r"\bich (?:lese|spreche|sage)\b.{0,40}\bnicht mehr\b|\b(?:dejaré de|ya no (?:leeré|voy a)|a partir de ahora (?:voy a|leeré|no))\b", re.I)
 FACT = re.compile(r"\b(?:you have|there are|i have|du hast|es gibt)\s+(?:no|keine)\s+(?:active\s+|open\s+|aktiven\s+|offenen\s+|unread\s+|new\s+)?(?:reminders?|to-?dos?|erinnerungen|events|appointments|termine|mails?|emails?)\b", re.I)
 
 
