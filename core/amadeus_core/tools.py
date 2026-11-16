@@ -110,8 +110,23 @@ def web_search(query):
     return WEB_NOTE + _web_data("\n".join(lines)) + "\nSnippets are hints: web_read a result before relying on it."
 
 
+def _known_address(url):
+    """An address it may read: one a search in this chat returned, one on a page it read, or one the user wrote. A
+    small model otherwise reads addresses it remembers (often wrong or made up) instead of the result in front of it."""
+    want = _same_page(url).lower().removeprefix("https://").removeprefix("http://").removeprefix("www.")
+    if not want or not CURRENT_CID:
+        return True  # (outside a chat, e.g. a test or a background job: nothing to check against)
+    for m in db.messages(CURRENT_CID):
+        if m["role"] in ("user", "tool") and want in (m["content"] or "").lower():
+            return True
+    return False
+
+
 def web_read(url):
     from . import web
+    if not _known_address(url):
+        raise ValueError("that address isn't from a search result or from the user. Search first (web_search) and read "
+                         "one of the addresses it returns, exactly as written")
     page = web.read(url)
     asked = str(url).strip()
     head = f"{page['title']}\n{page['url']}\n" + (f"asked for: {asked}\n" if asked != page["url"] else "") + \

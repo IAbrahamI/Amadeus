@@ -168,6 +168,16 @@ class Turn(unittest.TestCase):
         self.assertNotIn("now blocked", said)
         self.assertNotIn("now blocked", "".join(str(d) for k, d in seen if k == "token"))
 
+    def test_mail_that_cant_be_reached_ends_the_step_not_the_turn(self):
+        from amadeus_core import tools
+        call = [{"name": "mail_write", "arguments": {"what": "reply", "mail": "Anna's email", "text": "I'll come on Saturday."}}]
+        with mock.patch.object(tools, "resolve", side_effect=OSError("mail isn't running")):
+            cid, shown, asked, db = self.run_with([("", call), ("I couldn't reach your mail: it isn't running.", [])],
+                                                  "Draft a reply to Anna's email saying I'll come on Saturday.")
+        failed = [m["content"] for m in db.messages(cid) if m["role"] == "tool"]
+        self.assertTrue(failed and failed[0].startswith("FAILED") and "mail isn't running" in failed[0], failed)
+        self.assertEqual(len(asked), 2)  # the model heard it and answered
+
     def test_a_reminders_time_is_yours(self):
         call = [{"name": "create_reminder", "arguments": {"text": "test", "when": "2099-01-01 11:00"}}]
         cid, shown, asked, db = self.run_with([("", call)], "put a reminder in one minute as a test")

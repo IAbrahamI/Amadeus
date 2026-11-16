@@ -1010,6 +1010,10 @@ def _run(cid, model, user_text, emit, max_rounds, curate, voice, speak):
             except ValueError as e:
                 db.add_message(cid, "tool", f"Invalid request: {e}", {"name": name})
                 continue
+            except Exception as e:  # finding the mail behind it can fail too (mail not running, slow, not connected): never the whole turn
+                db.add_message(cid, "tool", f"FAILED, nothing was looked up or changed: {e}. Tell the user it didn't work and why; "
+                               "don't present this as an empty result.", {"name": name})
+                continue
             t = tools.get_tool(name)
             if not t:
                 db.add_message(cid, "tool", f"Unknown tool {name}", {"name": name})
