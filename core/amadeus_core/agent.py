@@ -10,7 +10,7 @@ import re
 import threading
 import time
 
-from . import db, events, grounding, learning, llm, profile, speech, tools
+from . import db, events, grounding, learning, llm, packs, profile, speech, tools
 from .config import CFG, NAME
 from .speech import SAY_RE, SayFilter
 
@@ -386,7 +386,7 @@ def _system(cid):
     """What stays the same from message to message, first in the prompt. The model only reuses what it read if the change is
     within the last few hundred tokens (measured with qwen3.5, which otherwise reads everything again), so what's big stays here,
     even if it changes now and then, and what changes with every message stays small, at the very end: _context."""
-    text = SYSTEM.format(name=NAME) + "\nToday is " + datetime.datetime.now().strftime("%A %d %B %Y") + "."
+    text = packs.text("system", SYSTEM).format(name=NAME) + "\nToday is " + datetime.datetime.now().strftime("%A %d %B %Y") + "."
     if tools.enabled_connectors().get("calendar", True):
         try:
             today = datetime.date.today()
@@ -564,7 +564,7 @@ def _context(cid, user_text):
                  "\n".join("- " + re.sub(r"\s+", " ", w["summary"])[:200] for w in waiting))
     chat = small_talk(user_text)
     if chat:  # nothing to look up for "how are you": no memories, no lessons, no earlier chats, just a short friendly answer
-        text += "\n\n## For this message\n" + SMALL_TALK_HINT
+        text += "\n\n## For this message\n" + packs.text("small_talk_hint", SMALL_TALK_HINT)
     else:
         text += _look_back(cid, user_text)
     for rx, hint in ROUTES:  # a small model follows its own earlier answers in a long chat: this says which tools fit now
@@ -637,7 +637,8 @@ def warm_up(cid=None, model=None):
     cid = cid or quickchat.current()
     conv = db.q("SELECT model FROM conversations WHERE id=?", (cid,), one=True) or {}
     model = model or conv.get("model") or db.get_setting("chat_model", "") or CFG["default_model"]  # the one that chat answers with
-    llm.warm(model, [_system(cid)] + _history(cid) + [{"role": "user", "content": "<context>\n</context>"}], tools.schemas(cid))
+    with packs.use(model):  # the same texts the answer will be given with, or what is read ahead isn't reused
+        llm.warm(model, [_system(cid)] + _history(cid) + [{"role": "user", "content": "<context>\n</context>"}], tools.schemas(cid))
 
 
 def load_at_start():
@@ -685,7 +686,8 @@ def run(cid, model, user_text=None, emit=lambda *a: None, max_rounds=6, curate=T
     RUNNING.add(cid)
     _active = time.time()
     try:
-        _run(cid, model, user_text, emit, max_rounds, curate, voice, speak)
+        with packs.use(model):  # the texts tuned for this model, when it has some (packs.py)
+            _run(cid, model, user_text, emit, max_rounds, curate, voice, speak)
     finally:
         RUNNING.discard(cid)
         _active = time.time()
@@ -840,7 +842,7 @@ def _pick_tool(model, messages, offered):
     Returns the calls, or None to let the model answer (or call a tool) the normal way."""
     names = [s["function"]["name"] for s in offered]
     try:
-        pick = llm.structured(model, messages + [{"role": "user", "content": PICK_ASK}], {
+        pick = llm.structured(model, messages + [{"role": "user", "content": packs.text("pick_ask", PICK_ASK)}], {
             "type": "object", "properties": {"tools": {"type": "array", "items": {"type": "string", "enum": names}, "maxItems": MAX_PICKS}},
             "required": ["tools"]}, offered)
         chosen = list(dict.fromkeys(n for n in pick.get("tools") or [] if n in names))[:MAX_PICKS]
@@ -857,7 +859,7 @@ def _pick_tool(model, messages, offered):
             params = next(s["function"].get("parameters") or {} for s in offered if s["function"]["name"] == name)
             schema = {"type": "object", "properties": params.get("properties") or {}, "required": params.get("required") or []}
             part = f" (only the part for {name}; the other tools get theirs separately)" if len(chosen) > 1 else ""
-            args = llm.structured(model, messages + [{"role": "user", "content": FILL_ASK.format(name=name, part=part)}], schema, offered) \
+            args = llm.structured(model, messages + [{"role": "user", "content": packs.text("fill_ask", FILL_ASK).format(name=name, part=part)}], schema, offered) \
                 if schema["properties"] else {}
             calls.append({"name": name, "arguments": args if isinstance(args, dict) else {}})
         return calls
