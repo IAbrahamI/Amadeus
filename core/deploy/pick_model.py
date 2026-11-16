@@ -12,9 +12,10 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 
 URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 LIBRARY = "https://ollama.com"
@@ -137,13 +138,26 @@ def parse_tags(model, page):
     return list(out.items())
 
 
-def _fetch(url):
+def _fetch(url, limit=20):
+    """One page, given up after `limit` seconds in all (the socket timeout alone only bounds each wait, so a page that
+    trickles in could take minutes)."""
     req = urllib.request.Request(url, headers={"user-agent": "Amadeus installer", "HX-Request": "true"})
-    return urllib.request.urlopen(req, timeout=12).read().decode("utf-8", "replace")
+    end = time.time() + limit
+    with urllib.request.urlopen(req, timeout=12) as r:
+        parts = []
+        while chunk := r.read(65536):
+            parts.append(chunk)
+            if time.time() > end:
+                raise TimeoutError(f"{url} took too long")
+    return b"".join(parts).decode("utf-8", "replace")
+
+
+LATEST_SECONDS = 90  # reading the library: what isn't read by then is left out (the built-in list covers the rest)
 
 
 def latest_models():
     """Newest models that can use tools, newest first: [{name, versions: [(name:tag, GB)]}], or [] if offline."""
+    end = time.time() + LATEST_SECONDS
     try:
         names = []
         for p in range(1, NEWEST_PAGES + 1):
@@ -157,8 +171,11 @@ def latest_models():
             return {"name": name, "versions": parse_tags(name, _fetch(f"{LIBRARY}/library/{name}/tags"))}
         except OSError:
             return {"name": name, "versions": []}
-    with ThreadPoolExecutor(8) as pool:
-        return [m for m in pool.map(read, names) if m["versions"]]
+    pool = ThreadPoolExecutor(8)
+    futures = [pool.submit(read, n) for n in names]
+    wait(futures, timeout=max(min(5, LATEST_SECONDS), end - time.time()))
+    pool.shutdown(wait=False, cancel_futures=True)  # a slow library never holds up the setup
+    return [f.result() for f in futures if f.done() and not f.cancelled() and f.result()["versions"]]
 
 
 def suggest_latest(hw, latest, speed=None):

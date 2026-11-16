@@ -51,6 +51,11 @@ print("result:", s.get("model_ready"), job["error"] or "passed", flush=True)
 assert s["model_ready"], job
 s, job = run("memory", 25)
 print("memory:", s.get("memory_ready"), job["error"] or "passed", flush=True)
+if not s["memory_ready"]:  # what the memory itself said during its check
+    try:
+        print(open(os.path.expanduser("~/Library/Application Support/Amadeus/memory/check.log"), errors="replace").read()[-6000:], flush=True)
+    except OSError as e:
+        print("no memory log:", e)
 assert s["memory_ready"], job
 for _ in range(60):  # the service, sealed off, as it runs from now on
     try:

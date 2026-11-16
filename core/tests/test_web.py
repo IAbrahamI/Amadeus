@@ -66,6 +66,8 @@ class Web(unittest.TestCase):
         self.cid = db.new_id()
         db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (self.cid, "t", "m", db.now(), db.now()))
         tools.CURRENT_CID = self.cid
+        # a search in this chat found the stand-in page (web_read only reads addresses that were found or given)
+        db.add_message(self.cid, "tool", tools._web_data(f"1. IMAP IDLE\n   {self.base}/page"), {"name": "web_search"})
 
     def tearDown(self):
         for x in self.p:
@@ -115,6 +117,13 @@ class Web(unittest.TestCase):
         self.assertEqual(out.count("<<<WEB DATA"), 1)  # a page can't open or close the markers itself
         db.add_message(self.cid, "tool", out, {"name": "web_read"})
         self.assertEqual(tools._pages_read(), {self.base + "/page"})
+
+    def test_only_addresses_that_were_found_or_given_are_read(self):
+        with self.assertRaisesRegex(ValueError, "search result"):
+            tools.web_read(self.base + "/remembered-from-training")  # not in any result: read the one that was found
+        db.add_message(self.cid, "user", f"read {self.base}/given please")
+        with mock.patch.object(web, "read", return_value={"title": "t", "url": self.base + "/given", "text": "x", "truncated": False}):
+            self.assertIn("WEB DATA", tools.web_read("http://" + self.base.split("://")[1] + "/given/"))
 
     def _read_the_page(self):
         db.add_message(self.cid, "user", "Learn about IMAP IDLE")
