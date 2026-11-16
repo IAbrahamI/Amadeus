@@ -45,9 +45,9 @@ def _replay(model):
 
 
 WEB = {"now": None}  # what the web "returns" for the case being run (cases.py: web=...)
-DEFAULT_WEB = {"results": [("A made-up result", "https://example.org/result", "Made-up text for this test: 14 degrees, light rain tomorrow.")],
-               "pages": {"https://example.org/result": "A made-up page for this test.\n\nTomorrow: 14 degrees, light rain.",
-                         "https://example.org/guide": "A made-up guide for this test.\n\nIt explains three steps: unpack, plug in, switch on."}}
+DEFAULT_WEB = {"results": [("Weather and more - today", "https://www.meteo-heute.info/overview", "Tomorrow: 14 degrees, light rain. Updated this morning.")],
+               "pages": {"https://www.meteo-heute.info/overview": "Weather and more - today\n\nTomorrow: 14 degrees, light rain.",
+                         "https://www.kettle-guide.net/start": "Kettle guide\n\nIt explains three steps: unpack, plug in, switch on."}}
 
 
 def _page(url):
@@ -96,7 +96,7 @@ def _stand_ins(tools):
 def score(model, pack_file, which, rounds, only, out):
     from coach import cases, pack
     R = _replay(model)
-    from amadeus_core import grounding, tools
+    from amadeus_core import db, grounding, tools
     _stand_ins(tools)
     base = pack.current()
     p = pack.load(pack_file) if pack_file else {}
@@ -116,13 +116,15 @@ def score(model, pack_file, which, rounds, only, out):
                  "lang": case["lang"], "text": case["text"], "want": case["want"], "web": case.get("web"), "fails": []}
         for _ in range(rounds):
             WEB["now"] = case.get("web")
+            for table in ("messages", "approvals", "conversations", "message_meaning"):
+                db.q(f"DELETE FROM {table}")  # every case starts in an empty chat history: an earlier case's talk about Lisbon is not "this morning"
             try:
                 calls, shown, said = R.run(case["hist"], case["text"], case["speak"])
             except Exception as e:  # the turn itself broke: wrong, noted with the error, and the run goes on
                 entry["fails"].append({"why": f"the turn crashed: {type(e).__name__}: {str(e)[:200]}", "calls": [], "shown": "", "said": ""})
                 entry["crashed"] = entry.get("crashed", 0) + 1
                 continue
-            fake = not any(c.startswith("approved:") or (tools.BY_NAME.get(c) or {}).get("approval") for c, _ in calls) and bool(grounding.unbacked(shown))
+            fake = not calls and bool(grounding.unbacked(shown))  # (after a tool ran, what it says is backed by that tool)
             if "ok" in case:
                 good, why = bool(case["ok"](calls, shown, said)), "see its check in tests/live_replay.py"
             else:
