@@ -119,6 +119,8 @@ class Packs(unittest.TestCase):
             self.assertTrue(pack.areas(tools.AREA_RE)["notes"].search("jot down the code"))
             self.assertEqual(list(pack.areas(tools.AREA_RE)), list(tools.AREA_RE))  # the order decides the area
             self.assertEqual(tools.area_for(None, "jot down the code"), "notes")
+            self.assertIn("Add items to the to-do list.", [t["function"]["description"] for t in tools.schemas("c-pack", "hello")])
+        self.assertNotIn("Add items to the to-do list.", [t["function"]["description"] for t in tools.schemas("c-pack", "hello")])
         self.assertEqual(tools.area_for(None, "jot down the code"), "")
         self.assertEqual(pack.current(), before)  # the code's own texts are never touched
 
@@ -135,6 +137,13 @@ class Packs(unittest.TestCase):
             self.assertIn("understood", pack.text("pick_ask", agent.PICK_ASK))
         with pack.use("gemma4:12b"):
             self.assertEqual(pack.text("pick_ask", agent.PICK_ASK), agent.PICK_ASK)
+            plain = agent._system(None)["content"]
+        with pack.use("qwen3.5-9b-48k"):
+            self.assertEqual(agent._system(None)["content"], plain)  # this pack leaves the rules as the code has them
+        pack.force({"system": "You are {name}. Be brief."})
+        with pack.use("qwen3.5-9b-48k"):
+            self.assertTrue(agent._system(None)["content"].startswith("You are "))
+            self.assertNotEqual(agent._system(None)["content"], plain)
 
     def test_a_part_written_from_an_older_text_is_left_out(self):
         p = pack.stamp({"tools": {"todo_add": "Add items to the to-do list when the user asks."}, "pick_ask": "Which tools?"}, pack.current())

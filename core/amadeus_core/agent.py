@@ -386,7 +386,7 @@ def _system(cid):
     """What stays the same from message to message, first in the prompt. The model only reuses what it read if the change is
     within the last few hundred tokens (measured with qwen3.5, which otherwise reads everything again), so what's big stays here,
     even if it changes now and then, and what changes with every message stays small, at the very end: _context."""
-    text = SYSTEM.format(name=NAME) + "\nToday is " + datetime.datetime.now().strftime("%A %d %B %Y") + "."
+    text = packs.text("system", SYSTEM).format(name=NAME) + "\nToday is " + datetime.datetime.now().strftime("%A %d %B %Y") + "."
     if tools.enabled_connectors().get("calendar", True):
         try:
             today = datetime.date.today()
@@ -686,7 +686,8 @@ def run(cid, model, user_text=None, emit=lambda *a: None, max_rounds=6, curate=T
     RUNNING.add(cid)
     _active = time.time()
     try:
-        _run(cid, model, user_text, emit, max_rounds, curate, voice, speak)
+        with packs.use(model):  # the texts tuned for this model, when it has some (packs.py)
+            _run(cid, model, user_text, emit, max_rounds, curate, voice, speak)
     finally:
         RUNNING.discard(cid)
         _active = time.time()

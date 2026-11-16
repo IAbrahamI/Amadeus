@@ -1871,4 +1871,4 @@ def schemas(cid=None, said=""):
         return [t["schema"] for t in TOOLS if usable(t) and t["name"] != "more_tools" and t["name"] not in FACADES] + \
             [t["schema"] for t in _mcp_tools()]
     wanted = set(BASE) | set(AREAS.get(area_for(cid, said), []))
-    return [t["schema"] for t in TOOLS if t["name"] in wanted and usable(t)] + [t["schema"] for t in _mcp_tools()]
+    return [packs.schema(t["schema"]) for t in TOOLS if t["name"] in wanted and usable(t)] + [t["schema"] for t in _mcp_tools()]
