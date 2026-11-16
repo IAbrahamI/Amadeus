@@ -4,8 +4,8 @@ import copy
 import unittest
 
 from . import HOME  # noqa: F401
-from amadeus_core import agent, grounding, tools
-from coach import cases, pack, tune
+from amadeus_core import agent, grounding, packs as pack, tools
+from coach import cases, tune
 
 
 class Cases(unittest.TestCase):
@@ -100,20 +100,49 @@ class OnlineSearch(unittest.TestCase):
 
 class Packs(unittest.TestCase):
     def setUp(self):
-        self.before = copy.deepcopy(pack.current())
-        self.addCleanup(pack.apply, self.before)
+        self.addCleanup(pack.force, None)
 
     def test_the_texts_in_the_code_are_a_valid_pack(self):
         self.assertEqual(pack.problems(pack.current(), pack.current()), [])
 
-    def test_a_pack_changes_only_what_it_names(self):
-        pack.apply({"pick_ask": "Which tools does this need?", "tools": {"todo_add": "Add items to the to-do list."},
+    def test_a_pack_changes_only_what_it_names_and_only_inside_a_turn(self):
+        before = copy.deepcopy(pack.current())
+        pack.force({"pick_ask": "Which tools does this need?", "tools": {"todo_add": "Add items to the to-do list."},
                     "area_words": {"notes": r"notes?|jot down"}})
-        self.assertEqual(agent.PICK_ASK, "Which tools does this need?")
-        self.assertEqual(tools.BY_NAME["todo_add"]["schema"]["function"]["description"], "Add items to the to-do list.")
-        self.assertTrue(tools.AREA_RE["notes"].search("jot down the code"))
-        self.assertEqual(agent.SYSTEM, self.before["system"])
-        self.assertEqual(tools.BY_NAME["todo_list"]["schema"]["function"]["description"], self.before["tools"]["todo_list"])
+        described = lambda name: pack.schema(tools.BY_NAME[name]["schema"])["function"]["description"]  # noqa: E731
+        self.assertEqual(pack.text("pick_ask", agent.PICK_ASK), agent.PICK_ASK)  # no turn is being answered
+        with pack.use("any-model"):
+            self.assertEqual(pack.text("pick_ask", agent.PICK_ASK), "Which tools does this need?")
+            self.assertEqual(pack.text("system", agent.SYSTEM), agent.SYSTEM)
+            self.assertEqual(described("todo_add"), "Add items to the to-do list.")
+            self.assertEqual(described("todo_list"), before["tools"]["todo_list"])
+            self.assertTrue(pack.areas(tools.AREA_RE)["notes"].search("jot down the code"))
+            self.assertEqual(list(pack.areas(tools.AREA_RE)), list(tools.AREA_RE))  # the order decides the area
+            self.assertEqual(tools.area_for(None, "jot down the code"), "notes")
+        self.assertEqual(tools.area_for(None, "jot down the code"), "")
+        self.assertEqual(pack.current(), before)  # the code's own texts are never touched
+
+    def test_the_shipped_pack_is_only_for_its_model(self):
+        self.assertTrue(pack.file_for("qwen3.5:9b"))
+        self.assertEqual(pack.file_for("qwen3.5-9b-48k"), pack.file_for("qwen3.5:9b"))  # setup's copy with its context size
+        self.assertEqual(pack.file_for("qwen3.5:9b:latest"[:-7] + ":latest"), pack.file_for("qwen3.5:9b"))
+        for other in ("qwen3.5:4b", "gemma4:12b", "", None, "../qwen3.5-9b"):
+            self.assertIsNone(pack.file_for(other), other)
+        self.assertEqual(pack.for_model("gemma4:12b"), {})
+        mine = pack.for_model("qwen3.5-9b-48k")
+        self.assertTrue(mine.get("tools"))
+        with pack.use("qwen3.5-9b-48k"):
+            self.assertIn("understood", pack.text("pick_ask", agent.PICK_ASK))
+        with pack.use("gemma4:12b"):
+            self.assertEqual(pack.text("pick_ask", agent.PICK_ASK), agent.PICK_ASK)
+
+    def test_a_part_written_from_an_older_text_is_left_out(self):
+        p = pack.stamp({"tools": {"todo_add": "Add items to the to-do list when the user asks."}, "pick_ask": "Which tools?"}, pack.current())
+        p["made_from"]["tools.todo_add"] += 1  # as if the code's description changed after the pack was written
+        pack.force(p)
+        with pack.use("any-model"):
+            self.assertEqual(pack.text("pick_ask", agent.PICK_ASK), "Which tools?")
+            self.assertIs(pack.schema(tools.BY_NAME["todo_add"]["schema"]), tools.BY_NAME["todo_add"]["schema"])
 
     def test_a_pack_that_would_break_something_is_refused(self):
         base = pack.current()
@@ -127,9 +156,9 @@ class Packs(unittest.TestCase):
                     {"temperature": 0},
                     {"system": base["system"] + "\n- " + "Always think twice. " * 400}):  # far too long
             self.assertTrue(pack.problems(bad, base), bad)
-        with self.assertRaises(ValueError):
-            pack.apply({"fill_ask": "Give the arguments."})
-
+        pack.force({"fill_ask": "Give the arguments."})  # refused as a whole: the code's own texts are used
+        with pack.use("any-model"):
+            self.assertEqual(pack.text("fill_ask", agent.FILL_ASK), agent.FILL_ASK)
 
     def test_a_pack_written_from_an_older_text_is_refused(self):
         base = pack.current()

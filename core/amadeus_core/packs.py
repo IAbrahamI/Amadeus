@@ -1,4 +1,4 @@
-"""A pack: the texts a model is handed, as one JSON file, so a version of them can be tried, scored and kept per model.
+"""A pack: the texts a model is handed, as one JSON file, so they can be tuned, scored and kept per model.
 
 {"model": "qwen3.5:9b",                  which model it was tuned on (texts tuned for one model don't carry over)
  "system": "...{name}...",               the rules (agent.SYSTEM)
@@ -8,20 +8,119 @@
  "area_words": {"mail": "regex"},        the words that put a message into an area
  "made_from": {"tools.todo_add": 123}}   written by stamp(): what the code's own text was when the pack was made
 
-Every key is optional: what a pack leaves out stays as the code has it. Nothing here changes a model's weights."""
+Every key is optional: what a pack leaves out stays as the code has it. Nothing here changes a model's weights.
+
+The packs that ship are in packs/, one per model, named like the model (qwen3.5-9b.json). A turn answered by that model
+uses its pack (use()); every other model gets the code's own texts. A pack is only kept there when it scored better on
+the made-up cases in core/coach (see coach/tune.py). A part whose text in the code changed after the pack was written is
+left out, so a pack never quietly undoes a later fix."""
+import contextlib
 import json
+import os
 import re
+import threading
 import zlib
 
-from amadeus_core import agent, tools
-
+DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "packs")
 TEXTS = {"system": "SYSTEM", "pick_ask": "PICK_ASK", "fill_ask": "FILL_ASK", "small_talk_hint": "SMALL_TALK_HINT"}
 NEEDS = {"system": ("{name}",), "fill_ask": ("{name}", "{part}")}  # what the code fills in: a text without it breaks
 GROWTH = 1.15  # a pack may not be more than this much longer than the texts in the code: longer is slower on every request
 
+_now = threading.local()  # the pack of the turn this thread is answering
+_forced = None            # coaching: this pack for every model, instead of the shipped ones ({} = the code's own texts)
+_loaded = {}
+
+
+def _code():
+    from . import agent, tools
+    return agent, tools
+
+
+def _area_re(words):
+    return re.compile(r"\b(?:" + words + r")\b", re.I)
+
+
+def file_for(model):
+    """Where the pack of this model is, or None. Setup names its copy of a model after its context size
+    (qwen3.5-9b-48k): that copy uses the model's pack."""
+    name = re.sub(r"[^\w.-]+", "-", str(model or "").removesuffix(":latest"))
+    for n in (name, re.sub(r"-\d+k$", "", name)):
+        path = os.path.join(DIR, n + ".json")
+        if n and os.path.isfile(path):
+            return path
+    return None
+
+
+def _usable(pack, source=""):
+    """A pack ready for use: refused as a whole when it would break something, without the parts written from a text
+    the code has changed since."""
+    bad = problems(pack)
+    if bad:
+        print(f"texts for the model not used ({source}): " + "; ".join(bad), flush=True)
+        return {}
+    old = stale(pack, current())
+    if old:
+        print(f"texts for the model ({source}): left out, the code's own text changed since: " + ", ".join(old), flush=True)
+    keep = {k: pack[k] for k in TEXTS if pack.get(k) and k not in old}
+    keep["tools"] = {k: v for k, v in (pack.get("tools") or {}).items() if f"tools.{k}" not in old}
+    keep["area_re"] = {k: _area_re(v) for k, v in (pack.get("area_words") or {}).items() if f"area_words.{k}" not in old}
+    return keep
+
+
+def for_model(model):
+    """The shipped pack of this model, ready for use ({} when it has none)."""
+    if model not in _loaded:
+        path = file_for(model)
+        try:
+            _loaded[model] = _usable(load(path), os.path.basename(path)) if path else {}
+        except (OSError, ValueError) as e:
+            print(f"texts for the model not used ({path}): {e}", flush=True)
+            _loaded[model] = {}
+    return _loaded[model]
+
+
+@contextlib.contextmanager
+def use(model):
+    """While a turn is answered by this model, its texts are the ones handed out below."""
+    before = getattr(_now, "pack", None)
+    _now.pack = _forced if _forced is not None else for_model(model)
+    try:
+        yield
+    finally:
+        _now.pack = before
+
+
+def force(pack):
+    """Coaching: every turn in this process uses this pack, whatever the model ({} = the code's own texts, None = back
+    to the shipped ones)."""
+    global _forced
+    _forced = None if pack is None else _usable(pack, "being tried")
+
+
+def _pack():
+    return getattr(_now, "pack", None) or {}
+
+
+def text(key, own):
+    """One of TEXTS for this turn: the pack's, else the code's own."""
+    return _pack().get(key) or own
+
+
+def schema(tool_schema):
+    """A tool as the model is shown it: with the pack's description when it has one."""
+    desc = (_pack().get("tools") or {}).get(tool_schema["function"]["name"])
+    return {**tool_schema, "function": {**tool_schema["function"], "description": desc}} if desc else tool_schema
+
+
+def areas(own):
+    """The words of each area for this turn, in the code's order."""
+    mine = _pack().get("area_re") or {}
+    return {k: mine.get(k, rx) for k, rx in own.items()}
+
 
 def current():
-    """The texts as they are now (the code's own, or an applied pack's)."""
+    """The code's own texts, as a pack."""
+    agent, tools = _code()
     return {**{k: getattr(agent, attr) for k, attr in TEXTS.items()},
             "tools": {t["name"]: t["schema"]["function"]["description"] for t in tools.TOOLS},
             "area_words": dict(tools.AREA_WORDS)}
@@ -60,6 +159,7 @@ def size(pack):
 
 def problems(pack, base=None):
     """Why this pack can't be used ([] = it can). base: the texts it is measured against for its length."""
+    _, tools = _code()
     out = []
     if not isinstance(pack, dict):
         return ["a pack is a JSON object"]
@@ -90,7 +190,7 @@ def problems(pack, base=None):
             out.append(f"no area is called {area!r}")
             continue
         try:
-            re.compile(r"\b(?:" + words + r")\b", re.I)
+            _area_re(words)
         except (re.error, TypeError) as e:
             out.append(f"the words of {area} are not a valid pattern ({e})")
     if base is not None and not out:
@@ -100,23 +200,6 @@ def problems(pack, base=None):
         if size(merged) > size(base) * GROWTH:
             out.append(f"too long: {size(merged):,} characters against {size(base):,} in the code (at most {int((GROWTH - 1) * 100)}% more)")
     return out
-
-
-def apply(pack):
-    """Puts a pack's texts in place (in this process only). Returns what was there, for apply() to put back."""
-    bad = problems(pack)
-    if bad:
-        raise ValueError("; ".join(bad))
-    before = current()
-    for k, attr in TEXTS.items():
-        if pack.get(k):
-            setattr(agent, attr, pack[k])
-    for name, desc in (pack.get("tools") or {}).items():
-        tools.BY_NAME[name]["schema"]["function"]["description"] = desc
-    for area, words in (pack.get("area_words") or {}).items():
-        tools.AREA_WORDS[area] = words
-        tools.AREA_RE[area] = re.compile(r"\b(?:" + words + r")\b", re.I)
-    return before
 
 
 def load(path):

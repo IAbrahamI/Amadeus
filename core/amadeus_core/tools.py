@@ -12,7 +12,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from . import agenda, db, grounding, mail, system
+from . import agenda, db, grounding, mail, packs, system
 from .config import CFG, NAME
 
 
@@ -1854,7 +1854,7 @@ def area_for(cid, said=""):
     now = _last_user_id(cid)
     if picked.get("asked") and picked.get("msg") == now:
         return picked["asked"]
-    for name, rx in [("app", APP_FIRST_RE), *AREA_RE.items()]:
+    for name, rx in [("app", APP_FIRST_RE), *packs.areas(AREA_RE).items()]:
         if rx.search(said or ""):
             if cid:
                 db.set_setting(f"area:{cid}", {"area": name, "msg": now})

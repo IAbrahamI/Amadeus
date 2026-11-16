@@ -1,0 +1,32 @@
+{
+ "model": "qwen3.5:9b",
+ "notes": "Kept 2026-11-16 (coach/tune.py, 430 made-up turns, 2 rounds): 414 right against 401 with the code's own texts, held-back cases 102 against 100 of 106, no made-up \"done\" in either. Written from the failures of that run: requests answered with \"understood\" and no tool (remember, stop reading aloud), a fact to keep saved as a to-do, a to-do about a mail turned into a mail search, pages read from remembered addresses, open_page used to read; the words that pick the area widened where the right tools were never offered. The rules (system) are the code's own.",
+ "pick_ask": "(From the system, not the user.) Before you answer: which of your tools does the user's last message need now? List each one it needs (\"add a to-do and a reminder\" needs both), or an empty list if you can answer without a tool (small talk, a question you can answer from what's already in this chat, or no tool fits). Tools that already answered above, after the user's last message, are done: don't list them again. Reply in the JSON shape asked for. A request to remember, note, change, stop or switch something always needs its tool: saying \"understood\" does nothing.",
+ "tools": {
+  "web_read": "Read one public web page as text. url: copied exactly from a web_search result of this turn or from the user's message, never an address from your memory. If it can't be read, read another result or say you couldn't find it.",
+  "open_page": "Show a web page to the user in their browser, only when they ask to open or show it. It reads nothing for you: to find something out or to read a page, use web_search / web_read (more_tools area web). url: the full address (youtube.com, https://...); you may only use addresses the user said or that are obviously the site they named. browser: '' (default), 'brave' or 'firefox'. Logging in is done by the user's password manager in the browser, never by you.",
+  "remember": "Save a durable fact about the user to long-term memory. Call it whenever the user says remember / merk dir / recuerda that…; answering \"I'll remember\" without calling it saves nothing.",
+  "mail_look": "Look at the user's mail (nothing changes). what: overview (everything open, by account and folder), unread, recent, search (query), show (one mail shown to the user: which), read (one mail's full text for you: which), codes (verification codes and links), folders, folder (one folder's mails: folder), accounts, attachments (which), attachment (read one attachment: which, name), contacts (names and addresses: query), important_people, day (today's mail). which: a mail id from [brackets] or a number from the last overview. Not for a to-do, note or reminder ABOUT a mail: that is saved in the user's words with its own tool, nothing is looked up.",
+  "app_setting_change": "Change one of the app's own settings on this PC (see app_settings). Only when the user asked for exactly that setting: never as a stand-in for something else (like the phone app's look). \"Stop reading your answers aloud\" or \"use the red theme\" is this tool.",
+  "notes_add": "Add a note to the user's Notes (Notes.md) when they ask ('note that…', 'write down…'). A fact to keep (where something is, a code, a number: 'schreib auf, dass…', 'apunta que…') is a note, not a to-do."
+ },
+ "area_words": {
+  "app": "brief|briefing|evening summary|morgen\\w*bericht|abend\\w*zusammenfassung|resumen|theme|colou?rs?|farbe\\w*|spoken answers?|read (?:it )?(?:out )?aloud|vorlesen|update check|voice words?|wake word|aktivierungswort|settings?|einstellung\\w*|ajustes|aloud|laut vor|vorles\\w*|en voz alta|speech recognition|spracherkennung|mishear\\w*|reconocimiento de voz",
+  "notes": "notes?|notiz\\w*|notas?|write (?:it )?down|aufschreiben|apunta\\w*|schreib auf|notier\\w*|note that",
+  "web": "search|look (?:it |that )?up|google|online|internet|web|websites?|web ?pages?|pages|links?|download\\w*|hugging ?faces?|github|news|prices?|weather|wetter|tiempo|clima|latest|learn about|read this page|recherch\\w*|nachschauen|such\\w*|busca\\w*|noticias|precios?|aktuell\\w*|https?://|versi[oó]n(?:es)?|versions?|kostet|cuesta|costs?",
+  "mail": "e-?mails?|mails?|inbox|unread|sender|attachments?|spam|junk|forward|reply|draft|newsletters?|verification codes?|posteingang|postfach|ungelesen\\w*|anhang|anhänge|antworte\\b|beantwort\\w*|weiterleiten|correos?|bandeja|adjuntos?|responde\\w*"
+ },
+ "made_from": {
+  "pick_ask": 4077432698,
+  "tools.web_read": 2757580652,
+  "tools.open_page": 4218692950,
+  "tools.remember": 2295400686,
+  "tools.mail_look": 2026560269,
+  "tools.app_setting_change": 1285977270,
+  "tools.notes_add": 136884977,
+  "area_words.app": 1540697377,
+  "area_words.notes": 3334694702,
+  "area_words.web": 3348794832,
+  "area_words.mail": 1658195396
+ }
+}

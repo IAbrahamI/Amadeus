@@ -9,12 +9,14 @@ One round, from core/ (needs Ollama with the model; a throw-away home folder, so
 
   python3 coach/tune.py check                                    the cases and packs are sound (no model needed)
   python3 coach/tune.py baseline out/base.json                   the texts as the code has them, as a pack to edit
-  python3 coach/tune.py score MODEL --out out/a.json             score the code's texts (all cases, 2 rounds)
+  python3 coach/tune.py score MODEL --out out/a.json             score the app as it is: the model's shipped pack if it has one
+                                                                 (--pack none = the code's own texts alone; all cases, 2 rounds)
   python3 coach/tune.py report out/a.json > out/a.md             what went wrong, with the texts involved: for the coach
      ... the coach writes out/try1.json (only the texts it changes) ...
   python3 coach/tune.py stamp out/try1.json                       notes which of the code's texts it was written from
   python3 coach/tune.py score MODEL --pack out/try1.json --out out/b.json
   python3 coach/tune.py compare out/a.json out/b.json            better on the cases it was tuned on, not worse on the held-back ones?
+     ... a kept pack goes to amadeus_core/packs/<model>.json (amadeus_core/packs.py), where the app picks it up ...
 
 The coach only ever gets the report of the cases it tunes on (train). The held-back third is scored but never shown,
 so a pack that only learned the test by heart is found out."""
@@ -95,16 +97,18 @@ def _stand_ins(tools):
 
 
 def score(model, pack_file, which, rounds, only, out):
-    from coach import cases, pack
+    from coach import cases
+    from amadeus_core import packs as pack
     R = _replay(model)
     from amadeus_core import db, grounding, tools
     _stand_ins(tools)
     base = pack.current()
-    p = pack.load(pack_file) if pack_file else {}
-    bad = pack.problems(p, base)
-    if bad:
-        sys.exit("This pack can't be used: " + "; ".join(bad))
-    pack.apply(p)
+    if pack_file:  # tried instead of the model's shipped pack; "none" = the code's own texts alone
+        p = {} if pack_file == "none" else pack.load(pack_file)
+        bad = pack.problems(p, base)
+        if bad:
+            sys.exit("This pack can't be used: " + "; ".join(bad))
+        pack.force(p)
     todo = [(x["id"], x) for x in cases.split(which)]
     if which != "held":  # the failures seen in real chats (tests/live_replay.py) are tuned on too
         todo += [("replay: " + name, {"hist": hist, "text": text, "speak": speak, "ok": ok, "lang": name[-3:-1], "want": "(see tests/live_replay.py)"})
@@ -190,9 +194,8 @@ def verdict(a, b):
 
 def report(result, pack_file):
     """What the coach reads: only the cases it may tune on, what was asked, what the model did, and the texts involved."""
-    from coach import pack
-    from amadeus_core import tools
-    p = pack.load(pack_file) if pack_file else {}
+    from amadeus_core import packs as pack, tools
+    p = pack.load(pack_file) if pack_file and pack_file != "none" else {}
     texts = pack.current()
     texts.update({k: p[k] for k in pack.TEXTS if p.get(k)})
     descriptions = {**texts["tools"], **(p.get("tools") or {})}
@@ -230,7 +233,8 @@ def report(result, pack_file):
 
 def check():
     """The cases and the packs are sound. Needs no model: also run by the unit tests."""
-    from coach import cases, pack
+    from coach import cases
+    from amadeus_core import packs as pack
     from amadeus_core import tools
     bad = []
     for x in cases.CASES:
@@ -250,10 +254,9 @@ def check():
     for lang in ("en", "de", "es"):
         if not any(x["lang"] == lang for x in cases.split("held")):
             bad.append(f"no held-back case in {lang}")
-    folder = os.path.join(HERE, "packs")
-    for f in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+    for f in sorted(os.listdir(pack.DIR)) if os.path.isdir(pack.DIR) else []:  # the packs that ship
         if f.endswith(".json"):
-            bad += [f"packs/{f}: {p}" for p in pack.problems(pack.load(os.path.join(folder, f)), pack.current())]
+            bad += [f"packs/{f}: {p}" for p in pack.problems(pack.load(os.path.join(pack.DIR, f)), pack.current())]
     return bad
 
 
@@ -295,11 +298,11 @@ def main():
         print("\n".join(bad) if bad else "The cases and packs are sound.")
         sys.exit(1 if bad else 0)
     if a.cmd == "baseline":
-        from coach import pack
+        from amadeus_core import packs as pack
         pack.save(pack.current(), a.out)
         print("Written:", a.out)
     if a.cmd == "stamp":
-        from coach import pack
+        from amadeus_core import packs as pack
         pack.save(pack.stamp(pack.load(a.pack), pack.current()), a.pack)
         print("Stamped:", a.pack)
     if a.cmd == "report":
