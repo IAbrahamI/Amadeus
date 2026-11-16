@@ -18,6 +18,7 @@ PYTHON = os.path.join(HOME, "venv", "bin", "python")
 HINDSIGHT = os.path.join(HOME, "venv", "bin", "hindsight-api")
 READY_FILE = os.path.join(HOME, "installed")
 RUN_FILE = os.path.join(HOME, "run.json")
+CHECK_LOG = os.path.join(HOME, "check.log")
 PASSWORD_FILE = os.path.join(HOME, "database-password")
 RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory_runner.py")
 EXT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hindsight_ext")
@@ -47,6 +48,14 @@ def profile():
 (allow file-read* (subpath "{own}"))
 (allow file-read-metadata (subpath "{home}"))
 '''
+
+
+def check_log_tail(chars=4000):
+    """The end of what the memory said during its last setup check."""
+    try:
+        return Path(CHECK_LOG).read_text(errors="replace")[-chars:]
+    except OSError:
+        return ""
 
 
 def sealed(args):
@@ -145,7 +154,8 @@ def install(say=lambda text: None, service=True):
         first.terminate()
         first.wait(timeout=60)
     say("Checking that it works sealed off")
-    test = subprocess.Popen(sealed([PYTHON, RUNNER, RUN_FILE]), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    log = open(CHECK_LOG, "w")  # what the memory said during the check: read when it fails (no memories of yours are in it yet)
+    test = subprocess.Popen(sealed([PYTHON, RUNNER, RUN_FILE]), stdout=log, stderr=subprocess.STDOUT)
     try:
         if not _wait_healthy(180):
             raise OSError("the memory doesn't start sealed off, so it stays off")
@@ -160,6 +170,7 @@ def install(say=lambda text: None, service=True):
     finally:
         test.terminate()
         test.wait(timeout=60)
+        log.close()
     Path(READY_FILE).write_text(time.strftime("%Y-%m-%d"))
     if service:
         start_service()
