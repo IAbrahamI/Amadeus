@@ -97,3 +97,24 @@ class PickModel(unittest.TestCase):
 
     def test_offline_uses_the_built_in_list(self):
         self.assertEqual([m["model"] for m in pm.suggest_latest(hw(12), [])], ["qwen3.5:9b", "qwen3.5:4b", "qwen3.5:2b"])
+
+
+class SlowLibrary(unittest.TestCase):
+    """A slow ollama.com never holds up the setup (seen on 2026-11-16: reading the model list took over 6 minutes)."""
+
+    def test_what_isnt_read_in_time_is_left_out(self):
+        import time
+        search = '<a href="/library/fast-one"></a><a href="/library/slow-one"></a>'
+        tags = lambda m: f'<a href="/library/{m}:7b"> x 4.7GB</a>'  # noqa: E731
+
+        def fetch(url, limit=20):
+            if "search" in url:
+                return search if url.endswith("page=1") else ""
+            if "slow-one" in url:
+                time.sleep(3)
+            return tags(url.split("/library/")[1].split("/")[0])
+        with mock.patch.object(pm, "_fetch", fetch), mock.patch.object(pm, "LATEST_SECONDS", 1):
+            t0 = time.time()
+            got = pm.latest_models()
+        self.assertLess(time.time() - t0, 2.5)
+        self.assertEqual([m["name"] for m in got], ["fast-one"])
