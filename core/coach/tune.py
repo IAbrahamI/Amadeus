@@ -21,6 +21,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import sys
 import time
 
@@ -43,12 +44,26 @@ def _replay(model):
     return mod
 
 
+WEB = {"now": None}  # what the web "returns" for the case being run (cases.py: web=...)
+DEFAULT_WEB = {"results": [("A made-up result", "https://example.org/result", "Made-up text for this test: 14 degrees, light rain tomorrow.")],
+               "pages": {"https://example.org/result": "A made-up page for this test.\n\nTomorrow: 14 degrees, light rain.",
+                         "https://example.org/guide": "A made-up guide for this test.\n\nIt explains three steps: unpack, plug in, switch on."}}
+
+
+def _page(url):
+    """The made-up page behind an address; one the case doesn't have can't be read, as on the real web."""
+    pages = (WEB["now"] or DEFAULT_WEB)["pages"]
+    key = next((u for u in pages if u.rstrip("/") == str(url).strip().split("#")[0].rstrip("/")), None)
+    if key is None:
+        raise ValueError("this page could not be read")
+    text = pages[key]
+    return {"title": text.split("\n", 1)[0], "url": key, "text": text, "truncated": False}
+
+
 def _stand_ins(tools):
     """Every area is offered, and nothing reaches outside the test: no web, no programs opened, no long-term memory."""
     tools.missing = lambda connector: ""
     canned = {
-        "web_search": lambda **k: "<<<WEB DATA\n1. A made-up result - https://example.org/result\nMade-up text for this test: 14 degrees, light rain.\nWEB DATA>>>",
-        "web_read": lambda **k: "<<<WEB DATA\nhttps://example.org/guide\nA made-up page for this test. It explains three steps.\nWEB DATA>>>",
         "open_app": lambda **k: "Opened.", "open_page": lambda **k: "Opened.",
         "remember": lambda **k: "Saved.", "recall": lambda **k: "No relevant memories.",
         "memory_overview": lambda **k: "- Likes hiking.\n- Works as a nurse.",
@@ -57,6 +72,10 @@ def _stand_ins(tools):
     for name, fn in canned.items():
         if name in tools.BY_NAME:
             tools.BY_NAME[name]["fn"] = fn
+    from amadeus_core import web
+    web.search = lambda query, limit=6: [{"title": t, "url": u, "snippet": sn, "date": "", "engines": ["a", "b"]}
+                                         for t, u, sn in (WEB["now"] or DEFAULT_WEB)["results"]][:limit]
+    web.read = _page
     import datetime
     day = datetime.date.today() + datetime.timedelta(days=3)
     try:  # one event to move or cancel
@@ -85,8 +104,9 @@ def score(model, pack_file, which, rounds, only, out):
     start, t0 = dict(R.COST), time.time()
     for n, (cid, case) in enumerate(todo, 1):
         entry = {"right": 0, "of": rounds, "held": cid in {x["id"] for x in cases.CASES} and cases.held(cid), "fake": 0,
-                 "lang": case["lang"], "text": case["text"], "want": case["want"], "fails": []}
+                 "lang": case["lang"], "text": case["text"], "want": case["want"], "web": case.get("web"), "fails": []}
         for _ in range(rounds):
+            WEB["now"] = case.get("web")
             calls, shown, said = R.run(case["hist"], case["text"], case["speak"])
             fake = not any(c.startswith("approved:") or (tools.BY_NAME.get(c) or {}).get("approval") for c, _ in calls) and bool(grounding.unbacked(shown))
             if "ok" in case:
@@ -164,6 +184,9 @@ def report(result, pack_file):
         if c["held"] or not c["fails"]:
             continue
         out += [f"## {cid} ({c['lang']}): {c['right']}/{c['of']} right", f"- The user wrote: {c['text']!r}", f"- Right would be: {c['want']}"]
+        if c.get("web"):
+            out += ["- The web held (made up for the test): " + " | ".join(sn for _, _, sn in c["web"]["results"])[:300] +
+                    (" || pages: " + " | ".join(c["web"]["pages"].values())[:400] if c["web"]["pages"] else " (no results)")]
         for f in c["fails"]:
             called = ", ".join(f"{n}({json.dumps(a, ensure_ascii=False)[:120]})" for n, a in f["calls"]) or "no tool"
             out += [f"- It did: {called}", f"  - wrong because: {f['why']}", f"  - it answered: {f['shown'][:200]!r}"]
@@ -186,6 +209,11 @@ def check():
     from amadeus_core import tools
     bad = []
     for x in cases.CASES:
+        for rx in (*x["says"], *x["says_not"]):
+            try:
+                re.compile(rx)
+            except re.error as e:
+                bad.append(f"{x['id']}: /{rx}/ is not a valid pattern ({e})")
         for name in [w for part in x["want"].split("&") for w in part.split("|")] + list(x["not"]):
             if name in ("none", "cant") or (name.startswith("@") and any(t["connector"] == name[1:] for t in tools.TOOLS)):
                 continue
