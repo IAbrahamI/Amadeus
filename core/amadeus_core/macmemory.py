@@ -150,9 +150,13 @@ def install(say=lambda text: None, service=True):
         if not _wait_healthy(180):
             raise OSError("the memory doesn't start sealed off, so it stays off")
         _api("/memories", {"items": [{"content": "Amadeus was set up on this computer."}]})
-        found = _api("/memories/recall", {"query": "Was Amadeus set up on this computer?", "max_tokens": 300}).get("results", [])
-        if not found:
-            raise OSError("the memory didn't find what it just saved")
+        # saving reads the text in the background first (its facts and their meaning), so it can take a while on a slow
+        # computer before the memory finds it: look again for up to two minutes before calling it broken
+        give_up = time.time() + 120
+        while not _api("/memories/recall", {"query": "Was Amadeus set up on this computer?", "max_tokens": 300}).get("results", []):
+            if time.time() > give_up:
+                raise OSError("the memory didn't find what it just saved")
+            time.sleep(3)
     finally:
         test.terminate()
         test.wait(timeout=60)
