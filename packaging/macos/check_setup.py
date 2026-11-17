@@ -53,7 +53,9 @@ s, job = run("memory", 25)
 print("memory:", s.get("memory_ready"), job["error"] or "passed", flush=True)
 if not s["memory_ready"]:  # what the memory itself said during its check
     try:
-        print(open(os.path.expanduser("~/Library/Application Support/Amadeus/memory/check.log"), errors="replace").read()[-6000:], flush=True)
+        lines = open(os.path.expanduser("~/Library/Application Support/Amadeus/memory/check.log"), errors="replace").read().splitlines()
+        keep = [l for l in lines if any(w in l for w in ("RETAIN", "retain", "LLM", "llm", "ERROR", "Error", "WARNING", "Traceback", "facts"))]
+        print("\n".join(keep[-150:]), "\n--- last lines:\n" + "\n".join(lines[-25:]), flush=True)
     except OSError as e:
         print("no memory log:", e)
 assert s["memory_ready"], job
