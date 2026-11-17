@@ -118,3 +118,14 @@ class SlowLibrary(unittest.TestCase):
             got = pm.latest_models()
         self.assertLess(time.time() - t0, 2.5)
         self.assertEqual([m["name"] for m in got], ["fast-one"])
+
+    def test_a_library_that_hangs_gives_the_built_in_list(self):
+        import time
+
+        def stuck(url, limit=20):
+            time.sleep(5)  # (a name lookup or a connection that no timeout reaches)
+            return ""
+        with mock.patch.object(pm, "_fetch", stuck), mock.patch.object(pm, "LATEST_SECONDS", -14):
+            t0 = time.time()
+            self.assertEqual(pm.latest_models(), [])
+        self.assertLess(time.time() - t0, 2.5)

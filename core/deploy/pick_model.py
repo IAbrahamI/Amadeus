@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -156,7 +157,17 @@ LATEST_SECONDS = 90  # reading the library: what isn't read by then is left out 
 
 
 def latest_models():
-    """Newest models that can use tools, newest first: [{name, versions: [(name:tag, GB)]}], or [] if offline."""
+    """Newest models that can use tools, newest first: [{name, versions: [(name:tag, GB)]}], or [] if offline or too
+    slow. Read on the side with a hard limit: a name lookup or a connection can hang where no socket timeout reaches,
+    and that once held up the Mac setup for over 8 minutes. The built-in list covers whatever isn't read."""
+    out = []
+    reader = threading.Thread(target=lambda: out.append(_latest_models()), daemon=True)
+    reader.start()
+    reader.join(LATEST_SECONDS + 15)
+    return out[0] if out else []
+
+
+def _latest_models():
     end = time.time() + LATEST_SECONDS
     try:
         names = []
