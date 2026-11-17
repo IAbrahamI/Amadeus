@@ -168,16 +168,6 @@ fun AvatarPortrait(modifier: Modifier = Modifier, height: Dp = 300.dp) {
     }
 }
 
-/** The avatar alone, small (other screens, bottom right, standing on the menu bar): head and shoulders, no background. */
-@Composable
-fun AvatarSmall(modifier: Modifier = Modifier, height: Dp = 96.dp) {
-    val img = avatarFrame() ?: return DefaultAgent(modifier, height * 0.8f)
-    val width = height / 0.63f * (909f / 1660f)
-    Box(modifier.size(width, height).clipToBounds().fadeBottom(.86f), contentAlignment = Alignment.TopCenter) {
-        Image(img, LocalContext.current.assistantName, Modifier.requiredWidth(width), contentScale = ContentScale.FillWidth, alignment = Alignment.TopCenter)
-    }
-}
-
 /** The default agent icon, when no sprite set was added on the PC. */
 @Composable
 private fun DefaultAgent(modifier: Modifier, height: Dp) {

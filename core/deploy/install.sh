@@ -16,16 +16,13 @@ put() {  # put <template> <target>: fill in the paths and write the file
   echo "wrote $2"
 }
 if [ "$DRY" = "--uninstall" ]; then
-  units="amadeus-core amadeus-desktop amadeus-tray amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan.timer amadeus-notes-snapshot.timer"
+  units="amadeus-core amadeus-desktop amadeus-voice amadeus-wake amadeus-tn amadeus-leak-scan.timer amadeus-notes-snapshot.timer"
   systemctl --user disable --now $units 2>/dev/null || true
-  for f in amadeus-core.service amadeus-desktop.service amadeus-tray.service amadeus-voice.service amadeus-wake.service amadeus-tn.service amadeus-leak-scan.service \
+  for f in amadeus-core.service amadeus-desktop.service amadeus-voice.service amadeus-wake.service amadeus-tn.service amadeus-leak-scan.service \
            amadeus-leak-scan.timer amadeus-notes-snapshot.service amadeus-notes-snapshot.timer; do rm -fv "$HOME/.config/systemd/user/$f"; done
   systemctl --user daemon-reload
-  rm -fv "$BIN/amadeus" "$BIN/amadeus-mail-start" "$BIN/amadeus-leak-scan" "$BIN/amadeus-notes-snapshot" \
-    "$HOME/.local/share/applications/amadeus.desktop" "$HOME/.config/autostart/amadeus-thunderbird.desktop" \
-    "$HOME/.config/autostart/amadeus.desktop" "$HOME/.local/share/amadeus/kwin/minimize-thunderbird.js" \
-    "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" "$HOME/.mozilla/native-messaging-hosts/amadeus_bridge.json" \
-    "$HOME/.local/share/amadeus/amadeus-bridge.xpi"
+  rm -fv "$BIN/amadeus" "$BIN/amadeus-leak-scan" "$BIN/amadeus-notes-snapshot" \
+    "$HOME/.local/share/applications/amadeus.desktop" "$HOME/.config/autostart/amadeus.desktop"
   if [ -d "$HOME/.local/share/amadeus/work-guard" ]; then chmod -R u+w "$HOME/.local/share/amadeus/work-guard"; rm -rfv "$HOME/.local/share/amadeus/work-guard"; fi
   if command -v kwriteconfig6 >/dev/null; then  # the KWin rule for the small window
     rules=$(kreadconfig6 --file kwinrulesrc --group General --key rules | tr ',' '\n' | grep -vx 'amadeus-call\|amadeus-dash' | paste -sd, -)
@@ -49,11 +46,6 @@ put "$HERE/autostart/amadeus.desktop" "$HOME/.local/share/applications/amadeus.d
 [ "$DRY" = "--dry-run" ] && exit 0
 chmod +x "$BIN/amadeus" "$BIN/amadeus-leak-scan" "$BIN/amadeus-notes-snapshot"
 "$REPO/core/desktop-tauri/build.sh"
-systemctl --user disable --now amadeus-tray 2>/dev/null || true  # the older tray icon: now part of the desktop app
-rm -f "$HOME/.config/systemd/user/amadeus-tray.service"
-# the Thunderbird bridge of older versions: mail is connected directly now (Mail page), so its files go
-rm -f "$HOME/.thunderbird/native-messaging-hosts/amadeus_bridge.json" "$HOME/.mozilla/native-messaging-hosts/amadeus_bridge.json" \
-  "$HOME/.local/share/amadeus/amadeus-bridge.xpi" "$HOME/.local/share/amadeus/core/mail.sock" "$HOME/.local/share/amadeus/core/mail-new"
 systemctl --user daemon-reload
 systemctl --user enable --now amadeus-core amadeus-desktop amadeus-leak-scan.timer amadeus-notes-snapshot.timer
 if [ -x "$HOME/.local/share/amadeus/voice/venv-lite/bin/python" ]; then

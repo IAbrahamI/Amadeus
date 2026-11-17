@@ -4,7 +4,6 @@ cut short, and for a long answer only the start, with a pointer to the chat. Rul
 it's instant and always matches what the chat shows."""
 import datetime
 import re
-import urllib.error
 
 MONTHS = {"en": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
           "de": ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],

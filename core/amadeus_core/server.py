@@ -507,9 +507,6 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/day/now":  # "Summarize so far" in "Your day": today's mail and chats until now
             from . import digest
             return self._json({"reports": digest.now_summary()})
-        if p == "/api/quickchat/new":  # older callers (phone app): there is one chat per day, so this is today's
-            from . import quickchat
-            return self._json({"id": quickchat.new()})
         if p == "/api/app/active":  # the phone app is open (sent every 30 s while you use it)
             phoneapp.touch()
             return self._json({"ok": True})
@@ -656,12 +653,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(agent.decide(m.group(1), m.group(2) == "approve"))
         if p == "/api/voice/stt":
             return self._voice(p[len("/api/voice"):])
-        if p in ("/api/mail/markread", "/api/mail/move"):  # your own actions in the Mail page (no approval needed)
+        if p == "/api/mail/markread":  # your own action in the Mail page (no approval needed)
             try:
                 ids = [int(i) for i in b.get("ids", [])]
-                if p.endswith("markread"):
-                    return self._json(mail.call("markRead", ids=ids, read=bool(b.get("read", True))))
-                return self._json(mail.call("move", ids=ids, folderId=b["folderId"]))
+                return self._json(mail.call("markRead", ids=ids, read=bool(b.get("read", True))))
             except Exception as e:
                 return self._json({"error": str(e)}, 502)
         if p == "/api/profile":
@@ -865,11 +860,6 @@ class Handler(BaseHTTPRequestHandler):
                                                   days=min(365, int(arg("days", "7"))), limit=min(500, int(arg("limit", "80")))))
             if p == "/api/mail/unread":
                 return self._json(mail.call("unread", accountId=arg("account"), limit=100))
-            if p == "/api/mail/folders":
-                return self._json(mail.call("folders", accountId=arg("account")))
-            if p == "/api/mail/search":
-                return self._json(mail.call("search", query=arg("q"), days=int(arg("days", "365")), limit=50,
-                                                  accountId=arg("account")))
             m = re.fullmatch(r"/api/mail/message/(\d+)", p)
             if m:
                 return self._json(mail.call("read", id=int(m.group(1))))

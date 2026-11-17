@@ -98,7 +98,6 @@ fun themeFor(id: String?) = THEMES.firstOrNull { it.id == id } ?: THEMES[0]
 object C {
     var theme by mutableStateOf(THEMES[0])
     val accent get() = theme.a
-    val accent2 get() = theme.a2
     val bg get() = theme.void
     val deck get() = theme.deck
     val text get() = theme.text
@@ -112,13 +111,6 @@ object C {
     val amberInk = Color(0xFF1E1302)
     val red = Color(0xFFFF5A5F)
     val online = Color(0xFF3ECF7A)
-    // the names the rest of the app (notifications, avatar) already uses
-    val soft get() = theme.text.copy(alpha = .8f)
-    val muted get() = theme.dim
-    val onAccent get() = theme.ink
-    val no get() = red
-    val ok get() = online
-    val warn get() = amber
 }
 
 /** Labels and titles (Chakra Petch), body text (IBM Plex Sans) and data (JetBrains Mono), bundled with the app (SIL OFL). */
@@ -133,7 +125,6 @@ val Plex = FontFamily(listOf(400, 500, 600).map { w ->
 val Mono = FontFamily(listOf(400, 500).map { w ->
     Font(R.font.jetbrains_mono, FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w)))
 })
-val Display = Chakra
 
 @Composable
 fun AmadeusTheme(content: @Composable () -> Unit) {

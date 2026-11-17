@@ -323,10 +323,6 @@ def pull(model):
     return subprocess.run(["ollama", "pull", model]).returncode == 0
 
 
-class NoDownloads(Exception):
-    """Models can't be downloaded from here."""
-
-
 def registry_reachable():
     try:
         urllib.request.urlopen(urllib.request.Request("https://registry.ollama.ai/v2/", headers={"user-agent": "Amadeus installer"}), timeout=15).close()

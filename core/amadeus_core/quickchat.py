@@ -6,7 +6,6 @@ long-term memory (Hindsight) and a short recap of the last few days into its ins
 import datetime
 import re
 import threading
-import time
 
 from . import db, llm
 from .config import CFG, NAME
@@ -19,8 +18,8 @@ def _key(day):
     return f"day_chat:{day.isoformat()}"
 
 
-def current(fresh_after=None):
-    """Today's chat (created on the first message of the day). fresh_after is accepted for old callers and ignored."""
+def current():
+    """Today's chat (created on the first message of the day)."""
     today = datetime.date.today()
     with _lock:
         cid = db.get_setting(_key(today), "")
@@ -32,11 +31,6 @@ def current(fresh_after=None):
         db.set_setting(_key(today), cid)
     threading.Thread(target=check, daemon=True).start()  # a new day: put the earlier days away
     return cid
-
-
-def new():
-    """There are no extra chats any more: "new chat" is today's chat."""
-    return current()
 
 
 def _talk(cid):

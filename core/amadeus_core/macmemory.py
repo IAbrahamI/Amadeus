@@ -50,14 +50,6 @@ def profile():
 '''
 
 
-def check_log_tail(chars=4000):
-    """The end of what the memory said during its last setup check."""
-    try:
-        return Path(CHECK_LOG).read_text(errors="replace")[-chars:]
-    except OSError:
-        return ""
-
-
 def sealed(args):
     rules = os.path.join(HOME, "seal.sb")
     Path(rules).write_text(profile())

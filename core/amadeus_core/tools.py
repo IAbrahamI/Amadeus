@@ -381,8 +381,8 @@ def _folder_id(folder, account=""):
 
 
 def _ids(message_ids):
-    items = message_ids if isinstance(message_ids, list) else str(message_ids).replace(" ", "").split(",")
-    return [int(i) for i in items if str(i).strip().isdigit()]
+    """The mail ids in a list: "12345", "id:12345" or a number from the last overview ("3"). No search (see _which_mails)."""
+    return _split_mails(message_ids)[0]
 
 
 def mail_folders(account=""):
@@ -405,13 +405,13 @@ def mail_list_folder(folder, account="", days=30):
 
 
 def mail_mark_read(message_ids, read=True):
-    ids = _ids(message_ids)
+    ids = _which_mails(message_ids)
     mail.call("markRead", ids=ids, read=bool(read))
     return f"Marked {len(ids)} email(s) as {'read' if read else 'unread'}."
 
 
-def _which_mails(which):
-    """Mails named by id, by number from the last overview ("3"), or by a few words of sender / subject."""
+def _split_mails(which):
+    """(mail ids, the rest as words): ids written as "12345" or "id:12345", or a number from the last overview."""
     items = which if isinstance(which, list) else [x for x in re.split(r"[,;]", str(which)) if x.strip()]
     nums, ids, words = db.get_setting("mail_overview_numbers", {}), [], []
     for it in (str(i).strip().lstrip("#") for i in items):
@@ -423,6 +423,12 @@ def _which_mails(which):
             ids.append(int(it))
         elif it:
             words.append(it)
+    return ids, words
+
+
+def _which_mails(which):
+    """Mails named by id, by number from the last overview ("3"), or by a few words of sender / subject."""
+    ids, words = _split_mails(which)
     for w in words:  # e.g. "the mail from the landlord": search the last two weeks
         ids += [m["id"] for m in mail.call("search", query=w, days=14, limit=5)]
     return list(dict.fromkeys(ids))
@@ -490,7 +496,7 @@ def _forward_summary(a):
     mid = _one_mail(a.get("which", ""))
     a["which"], a["to"] = [f"id:{mid}"], ", ".join(_resolve_to(a.get("to", "")))
     return (f"Forward to **{a['to']}**:\n\n" + _list_for([mid]) +
-            (f"\n\n**Your note:**\n> " + str(a.get("note", ""))[:800].replace("\n", "\n> ") if a.get("note") else ""))
+            ("\n\n**Your note:**\n> " + str(a.get("note", ""))[:800].replace("\n", "\n> ") if a.get("note") else ""))
 
 
 def _attachment_of(which, name=""):
@@ -571,7 +577,7 @@ def mail_remind(which, when, note=""):
 
 
 def mail_move(message_ids, folder, account=""):
-    ids, f = _ids(message_ids), _folder_id(folder, account)
+    ids, f = _which_mails(message_ids), _folder_id(folder, account)
     mail.call("move", ids=ids, folderId=f["id"])
     return f"Moved {len(ids)} email(s) to {f['path']}."
 
@@ -1450,12 +1456,12 @@ def more_tools(area):
 # 29 mail tools were too many for a small model to choose from. It now picks among three (look, change, write) and
 # names what to do; resolve() turns that into the real tool before anything else happens, so approvals, the cards'
 # wording, what's shown directly and every check stay exactly as they are for that tool.
-def _ids(which):
+def _items(which):
     return [str(x).strip() for x in (which if isinstance(which, list) else [which]) if str(x).strip()]
 
 
 def _one(which):
-    w = _ids(which)
+    w = _items(which)
     return w[0] if w else ""
 
 
@@ -1477,20 +1483,20 @@ LOOK = {  # what -> (the tool, its arguments from the facade's)
     "day": ("day_summary", lambda a: {}),
 }
 CHANGE = {
-    "mark_read": ("mail_mark_read", lambda a: {"message_ids": _ids(a.get("which")), "read": True}),
-    "mark_unread": ("mail_mark_read", lambda a: {"message_ids": _ids(a.get("which")), "read": False}),
-    "flag": ("mail_flag", lambda a: {"which": _ids(a.get("which")), "flagged": True}),
-    "unflag": ("mail_flag", lambda a: {"which": _ids(a.get("which")), "flagged": False}),
-    "trash": ("mail_trash", lambda a: {"which": _ids(a.get("which"))}),
-    "junk": ("mail_junk", lambda a: {"which": _ids(a.get("which")), "junk": True}),
-    "not_junk": ("mail_junk", lambda a: {"which": _ids(a.get("which")), "junk": False}),
-    "move": ("mail_move", lambda a: {"message_ids": _ids(a.get("which")), "folder": a.get("folder"), "account": a.get("account")}),
+    "mark_read": ("mail_mark_read", lambda a: {"message_ids": _items(a.get("which")), "read": True}),
+    "mark_unread": ("mail_mark_read", lambda a: {"message_ids": _items(a.get("which")), "read": False}),
+    "flag": ("mail_flag", lambda a: {"which": _items(a.get("which")), "flagged": True}),
+    "unflag": ("mail_flag", lambda a: {"which": _items(a.get("which")), "flagged": False}),
+    "trash": ("mail_trash", lambda a: {"which": _items(a.get("which"))}),
+    "junk": ("mail_junk", lambda a: {"which": _items(a.get("which")), "junk": True}),
+    "not_junk": ("mail_junk", lambda a: {"which": _items(a.get("which")), "junk": False}),
+    "move": ("mail_move", lambda a: {"message_ids": _items(a.get("which")), "folder": a.get("folder"), "account": a.get("account")}),
     "create_folder": ("mail_create_folder", lambda a: {"name": a.get("name") or a.get("folder"), "parent_folder": a.get("parent_folder"),
                                                        "account": a.get("account")}),
     "save_attachment": ("mail_attachment_save", lambda a: {"which": _one(a.get("which")), "name": a.get("name")}),
     "remind": ("mail_remind", lambda a: {"which": _one(a.get("which")), "when": a.get("when"), "note": a.get("note")}),
-    "add_important": ("important_add", lambda a: {"people": _ids(a.get("people") or a.get("name"))}),
-    "remove_important": ("important_remove", lambda a: {"people": _ids(a.get("people") or a.get("name"))}),
+    "add_important": ("important_add", lambda a: {"people": _items(a.get("people") or a.get("name"))}),
+    "remove_important": ("important_remove", lambda a: {"people": _items(a.get("people") or a.get("name"))}),
 }
 WRITE = {
     "draft": ("mail_draft", lambda a: {k: a.get(k) for k in ("to", "subject", "body", "account", "reply_to_id")}),

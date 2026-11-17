@@ -134,10 +134,6 @@ def has_accounts():
     return bool(_load())
 
 
-def is_ours(account_id):
-    return str(account_id or "").startswith("d:")
-
-
 def listing():
     """For the page: never a password or token."""
     return [{"id": a["id"], "email": a["email"], "name": a.get("name", ""), "provider": a.get("provider", "other"),
@@ -499,13 +495,6 @@ def _imap(acc):
 
 # ---------- ids: Amadeus uses whole numbers for messages, IMAP (mailbox, UID) ----------
 db.q("CREATE TABLE IF NOT EXISTS mail_ids (id INTEGER PRIMARY KEY, account TEXT, folder TEXT, uid INTEGER, UNIQUE(account, folder, uid))")
-
-
-def is_our_message(message_id):
-    try:
-        return int(message_id) >= ID_BASE
-    except (TypeError, ValueError):
-        return False
 
 
 def _id(account, folder, uid):

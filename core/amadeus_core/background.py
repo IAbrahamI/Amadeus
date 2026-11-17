@@ -1,6 +1,5 @@
 """Background jobs: due reminders (desktop notification + Reminders chat) and results coming back from work."""
 import datetime
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -8,7 +7,6 @@ import threading
 import re
 import shutil
 import time
-import urllib.request
 
 from . import agenda, db, digest, events, learning, llm, macfilter, mailwatch, meaning, quickchat, system, tools
 from . import paths
@@ -118,7 +116,6 @@ def check_week_ahead():
 
 
 def _week_ahead():
-    from . import agent
     if not db.q("SELECT id FROM conversations WHERE id=?", (WEEK_CID,), one=True):
         db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)",
              (WEEK_CID, "📅 Week ahead", CFG["default_model"], db.now(), db.now()))

@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 import re
 import time
-import urllib.request
 
 from . import db, llm, mail, system, tools
 from .config import CFG, NAME

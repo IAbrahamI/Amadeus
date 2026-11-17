@@ -82,7 +82,7 @@ def needed():
 
 def status():
     if not needed() and (not _job["kind"] or _job["done"]):
-        return {"needed": False, "job": dict(_job), "shown": _shown["yes"], "can_install": system.MAC, "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "claude": work.claude_status(), "claude": work.claude_status() if system.MAC else {}}
+        return {"needed": False, "job": dict(_job), "shown": _shown["yes"], "can_install": system.MAC, "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "claude": work.claude_status() if system.MAC else {}}
     return {"needed": True, "rejected": dict(_rejected), "voice_ready": voice_ready(), "filter_ready": macfilter.ready(), "memory_ready": macmemory.ready(), "shown": _shown["yes"], "too_old": _job["kind"] == "begin" and "newer version of Ollama" in _job["error"], "model_ready": bool(_own().get("default_model")), "ollama": ollama_state(), "can_install": system.MAC, "system": "windows" if system.WIN else "mac" if system.MAC else "linux",
             "folder": folders.paths(_own(), os.path.expanduser("~"))["folder"], "picks": _picks, "job": dict(_job),
             "hardware": pick_model.hardware()}

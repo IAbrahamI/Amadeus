@@ -9,7 +9,6 @@ import time
 from . import db, events, llm, mailwatch
 from .config import CFG, NAME
 
-DAY_CID = "day"  # the old "Your day" chat (hidden now; the day's summaries open from the clock on the dashboard)
 
 
 def add_report(kind, text, day=None):

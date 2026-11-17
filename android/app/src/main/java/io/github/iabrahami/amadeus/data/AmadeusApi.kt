@@ -98,9 +98,8 @@ class AmadeusApi(private val store: DeviceStore) {
     fun appActive() { post("/api/app/active") }
 
     // ---------- talking to the assistant (the same "Quick chat" as the small window on the PC) ----------
-    /** A fresh Quick chat after a quiet break (the PC decides; it keeps a recap of the earlier ones). */
+    /** Today's chat (one per day, shared with the PC). */
     fun quickChatId(): String = JSONObject(get("/api/quickchat")).getString("id")
-    fun newQuickChat(): String = JSONObject(post("/api/quickchat/new", timeoutSec = 60)).getString("id")
 
     /** One line of a chat: what you said or what it answered, with its time (epoch seconds). */
     data class Line(val mine: Boolean, val text: String, val at: Double)

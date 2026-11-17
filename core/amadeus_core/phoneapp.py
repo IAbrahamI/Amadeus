@@ -17,8 +17,7 @@ def home():
     today = datetime.date.today()
     agenda_today = [{"title": o["title"], "start": o["occ_start"], "end": o["occ_end"], "all_day": bool(o["all_day"])}
                     for o in agenda.occurrences(today, today + datetime.timedelta(days=1))]
-    # "chats" stays empty: messengers aren't read any more (older app versions still expect the key)
-    return {"approvals": approvals, "chats": {"new": 0, "apps": []}, "today": agenda_today,
+    return {"approvals": approvals, "today": agenda_today,
             "voice": playbooks.voice_status(), "events": len(events.unseen()), "quiet_hours": CFG.get("quiet_hours", [23, 7])}
 
 
