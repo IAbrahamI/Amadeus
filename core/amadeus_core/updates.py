@@ -74,18 +74,22 @@ def status():
 
 def mode():
     """How this copy is updated: git (./install.sh --update), mac (the app updates itself, signed, from GitHub
-    releases: core/desktop-tauri), or package (the system's package manager)."""
+    releases: core/desktop-tauri), windows (the new installer from the release, run over the old one), or package
+    (the system's package manager)."""
     if os.path.isdir(os.path.join(ROOT, ".git")):
         return "git"
     if system.MAC and ".app/Contents/Resources" in ROOT:
         return "mac"
+    if system.WIN:
+        return "windows"
     return "package"
 
 
 def run():
     """Update now, for a git install: it restarts everything itself when it's done, so it runs apart from this process."""
     if status()["mode"] != "git":
-        raise ValueError("Update it with your system's package manager.")
+        raise ValueError("Install the new version from the release page." if status()["mode"] == "windows"
+                         else "Update it with your system's package manager.")
     system.in_background([os.path.join(ROOT, "install.sh"), "--update", "-y"])
     return {"ok": True}
 

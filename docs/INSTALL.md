@@ -117,9 +117,6 @@ Nothing to install: open the Mail page and connect each account with **+ Add acc
 provider). There you also choose which accounts Amadeus may read at all, and **Edit** changes an account later (its
 name, a new app password, its servers). New mail is reported by your provider the moment it arrives (IMAP IDLE).
 
-Older versions read mail through Thunderbird. Updating removes that bridge's files; remove the Amadeus Bridge add-on in
-Thunderbird yourself (Add-ons and Themes) and connect the accounts on the Mail page.
-
 ## Optional: the web
 
 Say yes to the web in `./install.sh` (or set `AMADEUS_WEB=1` in `amadeus.env` and run `./install.sh --only search`).
@@ -358,6 +355,9 @@ archive, checks its signature against the key built into the app, replaces itsel
 makes that key with `packaging/macos/updater-key.sh` (it puts the private half into the GitHub secrets and the public
 half into `packaging/macos/updater.pub`, to commit) and keeps a backup of `~/.tauri/amadeus-updater.key`: without it,
 installed Macs can only be updated by installing the new version by hand.
+
+**Windows:** when a new version is out, Settings → Assistant shows it with **Open the release**. Download
+`Amadeus-<version>-x64-setup.exe` there and run it: it installs over the old version and keeps your data.
 
 ## Uninstall
 

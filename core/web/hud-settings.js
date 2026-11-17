@@ -21,6 +21,7 @@ async function updatesBox() {
     : u.available ? `${note(`Version ${esc(u.latest)} is available.`)}<pre class="updnotes">${esc(u.notes)}</pre>` +
       (u.mode === "git" ? `<div class="acts"><span class="grow"></span><button class="btn go" data-act="updrun">Update now</button></div>`
         : u.mode === "mac" ? `<div class="acts"><span class="grow"></span><button class="btn go" data-act="updmac">Install and restart</button></div>`
+        : u.mode === "windows" ? `${note("Download the installer (Amadeus-…-x64-setup.exe) from the release and run it: it installs over this one and keeps your data.")}<div class="acts"><span class="grow"></span><a class="btn go" href="https://github.com/IAbrahamI/Amadeus/releases/latest" target="_blank" rel="noopener">Open the release</a></div>`
         : note("Update it with your system's package manager, like your other apps."))
     : note(u.latest ? "This is the newest version." : "No newer version known.");
   return `<h3 style="margin-top:22px">Updates</h3>${note(`This is version ${esc(u.version)}. It asks GitHub once a day whether there's a newer one and sends nothing about you.`)}

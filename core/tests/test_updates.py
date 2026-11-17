@@ -21,6 +21,15 @@ class Updates(unittest.TestCase):
     def fake(self, tag="v9.9.9", body="notes"):
         return io.BytesIO(json.dumps({"tag_name": tag, "body": body}).encode())
 
+    def test_each_install_is_told_how_it_updates(self):
+        with mock.patch.object(updates, "ROOT", "/opt/amadeus"):  # (no .git there)
+            with mock.patch.object(updates.system, "WIN", True), mock.patch.object(updates.system, "MAC", False):
+                self.assertEqual(updates.mode(), "windows")
+                with self.assertRaisesRegex(ValueError, "release page"):
+                    updates.run()
+            with mock.patch.object(updates.system, "WIN", False), mock.patch.object(updates.system, "MAC", False):
+                self.assertEqual(updates.mode(), "package")
+
     def test_newer_compares_numbers(self):
         self.assertTrue(updates.newer("0.10.0", "0.9.0"))
         self.assertFalse(updates.newer("0.9.0", "0.9.0"))
