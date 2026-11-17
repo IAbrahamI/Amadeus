@@ -4,7 +4,7 @@ name: windows-app
 
 on:
   push:
-    branches: [main]
+    branches: [main, "work/**"]  # a change is pushed to its work/ branch first, checked, then main is moved to it
     paths: ["core/**", "packaging/windows/**", ".github/workflows/windows-app.yml"]
   workflow_dispatch:
   workflow_call:

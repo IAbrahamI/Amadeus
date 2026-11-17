@@ -3,7 +3,7 @@ name: mac-app
 
 on:
   push:
-    branches: [main]
+    branches: [main, "work/**"]  # a change is pushed to its work/ branch first, checked, then main is moved to it
     paths: ["core/**", "packaging/macos/**", ".github/workflows/mac-app.yml"]
   workflow_dispatch:
   workflow_call:
@@ -176,8 +176,11 @@ jobs:
           # the whole setup with a real model takes about 7 minutes: it runs for releases, at night, by hand, and when
           # something it goes through changed (not for every change to the pages or the chat)
           if [ "${{ github.event_name }}" != push ]; then echo full=true >> "$GITHUB_OUTPUT"; exit 0; fi
-          git fetch -q --depth=50 origin "${{ github.event.before }}" 2>/dev/null || true
-          changed="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || echo all)"
+          base="${{ github.event.before }}"
+          # a new work/ branch has no "before": compare with main
+          if [ "$base" = 0000000000000000000000000000000000000000 ]; then git fetch -q --depth=50 origin main && base=FETCH_HEAD;
+          else git fetch -q --depth=50 origin "$base" 2>/dev/null || true; fi
+          changed="$(git diff --name-only "$base" "${{ github.sha }}" 2>/dev/null || echo all)"
           echo "$changed" | grep -qE '^(all|core/amadeus_core/(firstrun|macmemory|macfilter|memory_runner|memory|llm|config|paths|system)\.py|core/deploy/pick_model\.py|core/hindsight_ext/|packaging/macos/|core/desktop-tauri/|\.github/workflows/mac-app\.yml)' \
             && echo full=true >> "$GITHUB_OUTPUT" || echo full=false >> "$GITHUB_OUTPUT"
       - name: The whole setup with a real Ollama and a real model
