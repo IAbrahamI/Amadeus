@@ -185,3 +185,36 @@ class FirstStart(unittest.TestCase):
             hw = firstrun.pick_model._mac_hardware()
         self.assertEqual((hw["ram_gb"], hw["gpu_gb"], hw["gpu"]), (16.0, 11.2, "Apple M1"))
         self.assertEqual(firstrun.pick_model.runs_on(6, hw), "gpu")
+
+
+class Download(unittest.TestCase):
+    """A hiccup at Ollama's library is tried again; a real error stops at once (2026-11-17: a 503 failed the Mac build)."""
+
+    def pull(self, answers):
+        from unittest import mock
+        from amadeus_core import firstrun
+        calls = []
+
+        def api(path, body=None, method=None, timeout=10):
+            calls.append(path)
+            err = answers[min(len(calls), len(answers)) - 1]
+            if err:
+                raise ValueError(err)
+            r = mock.MagicMock()
+            r.__enter__.return_value = [b'{"status":"success"}']
+            return r
+        with mock.patch.object(firstrun, "_api", api), mock.patch.object(firstrun.time, "sleep"), mock.patch.object(firstrun, "_say"):
+            try:
+                firstrun._pull("m", "Getting it")
+                return len(calls), None
+            except ValueError as e:
+                return len(calls), str(e)
+
+    def test_a_503_is_tried_again(self):
+        self.assertEqual(self.pull(["pull model manifest: 503: upstream connect error", None]), (2, None))
+
+    def test_a_missing_model_is_not(self):
+        self.assertEqual(self.pull(["pull model manifest: file does not exist"]), (1, "pull model manifest: file does not exist"))
+
+    def test_it_gives_up_after_a_few_tries(self):
+        self.assertEqual(self.pull(["connection reset"] * 9)[0], 4)

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import re
 import threading
 import time
 import urllib.error
@@ -216,13 +217,26 @@ def _install_ollama(update=False):
     _start_ollama()
 
 
-def _pull(model, label):
-    with _api("/api/pull", {"model": model, "stream": True}, timeout=120) as r:
-        for line in r:
-            s = json.loads(line)
-            if s.get("error"):
-                raise ValueError(s["error"])
-            _say(label, s["completed"] * 100 // s["total"] if s.get("total") and s.get("completed") else None)
+PASSING = re.compile(r"\b5\d\d\b|timeout|timed out|connection|reset|refused|EOF|TLS|temporar", re.I)  # the library, not the model
+
+
+def _pull(model, label, tries=4):
+    """Downloads a model. A hiccup at Ollama's library (503, a dropped connection) is tried again a few times: Ollama
+    goes on where it stopped. Any other error (no such model, no space left) stops at once."""
+    for n in range(tries):
+        try:
+            with _api("/api/pull", {"model": model, "stream": True}, timeout=120) as r:
+                for line in r:
+                    s = json.loads(line)
+                    if s.get("error"):
+                        raise ValueError(s["error"])
+                    _say(label, s["completed"] * 100 // s["total"] if s.get("total") and s.get("completed") else None)
+            return
+        except (ValueError, OSError) as e:
+            if n == tries - 1 or not PASSING.search(str(e)):
+                raise
+            _say(f"{label} (the library didn't answer, trying again)")
+            time.sleep((5, 15, 30)[min(n, 2)])
 
 
 def _baseline():
