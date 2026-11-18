@@ -19,6 +19,12 @@ def call(body=None):
         return json.load(r)
 
 
+# what each step leaves behind: when the page in the app's window starts the next step on its own (it starts "scan" as
+# soon as Ollama runs), the job shown is already that next one, so a finished step is recognised by this instead
+REACHED = {"ollama": lambda s: s.get("ollama") == "running", "scan": lambda s: bool(s.get("picks")),
+           "begin": lambda s: bool(s.get("model_ready")), "memory": lambda s: bool(s.get("memory_ready"))}
+
+
 def run(action, minutes, **extra):
     print(f"--- {action}", flush=True)
     try:
@@ -35,6 +41,8 @@ def run(action, minutes, **extra):
             print(" ", said, flush=True)
         if job.get("done") and job.get("kind") == action:
             return s, job
+        if job.get("kind") not in (action, None, "") and REACHED[action](s):  # (the page went on to the next step)
+            return s, {"kind": action, "error": "", "done": True, "text": "done, the page went on"}
         time.sleep(3)
     sys.exit(f"{action} took more than {minutes} minutes")
 
