@@ -22,6 +22,11 @@ os.environ["HOME"] = HOME
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from amadeus_core import paths  # noqa: E402
 
+# never your real settings: if amadeus_core was imported before HOME was set (another script importing this one), its
+# paths still point at your home folder, and writing the test config there would replace yours (it did, 2026-11-18)
+if not os.path.realpath(paths.CONFIG_FILE).startswith(os.path.realpath(HOME) + os.sep):
+    sys.exit(f"Refusing to run: the settings path {paths.CONFIG_FILE} is outside the throw-away folder {HOME}. "
+             "Run this file directly, or set HOME to a temporary folder before importing amadeus_core.")
 os.makedirs(paths.CONFIG, exist_ok=True)
 MODEL = sys.argv[1] if len(sys.argv) > 1 else real.get("default_model", "qwen3.5-9b-48k")
 with open(paths.CONFIG_FILE, "w") as f:

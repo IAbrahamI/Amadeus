@@ -480,6 +480,16 @@ hindsight_repair() {
     "[ -d $d/data ] && [ ! -s $d/instance.json ] && v=\$(cat $d/data/PG_VERSION) && i=\$(ls /home/hindsight/.pg0/installation | grep \"^\$v\\.\" | head -1) && [ -n \"\$i\" ] &&
      printf '{\\n  \"pid\": 4194303,\\n  \"port\": 5432,\\n  \"data_dir\": \"%s/data\",\\n  \"installation_dir\": \"/home/hindsight/.pg0/installation\",\\n  \"username\": \"hindsight\",\\n  \"password\": \"hindsight\",\\n  \"database\": \"hindsight\",\\n  \"version\": \"%s\"\\n}\\n' $d \"\$i\" > $d/instance.json && echo repaired" \
     2>/dev/null | grep -q repaired && ok "repaired the memory database's empty status file (left by a hard power-off)" || true
+  # its lock file in the container's /tmp (kept across restarts) can be left empty the same way; Postgres then refuses to
+  # start. Only an empty one, and only while no Postgres runs in the container, is removed: it makes a new one itself.
+  local i said
+  for i in 1 2 3; do  # (it may be restarting right now: then the command doesn't get through, and it's tried again)
+    said="$(docker exec "$HINDSIGHT_CONTAINER" sh -c 'l=/tmp/.s.PGSQL.5432.lock
+      if [ -f $l ] && [ ! -s $l ] && ! pgrep -x postgres >/dev/null; then rm -f $l /tmp/.s.PGSQL.5432 && echo cleared; else echo fine; fi' 2>/dev/null)"
+    [[ "$said" == cleared ]] && ok "cleared the memory database's empty lock file (left by a hard power-off)"
+    [[ -n "$said" ]] && break
+    sleep 2
+  done
 }
 check_hindsight_health() {
   curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:$HINDSIGHT_API_PORT/health" 2>/dev/null \
