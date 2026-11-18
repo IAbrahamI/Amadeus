@@ -416,6 +416,7 @@ phase_hindsight() {
   if docker container inspect "$HINDSIGHT_CONTAINER" >/dev/null 2>&1; then
     local state; state="$(docker inspect -f '{{.State.Status}}' "$HINDSIGHT_CONTAINER")"
     ok "container $HINDSIGHT_CONTAINER exists ($state); leaving its configuration untouched"
+    [[ "$MODE" == install ]] && hindsight_repair
     if [[ "$state" != running ]]; then run docker start "$HINDSIGHT_CONTAINER"; fi
   else
     docker volume inspect "$HINDSIGHT_VOLUME" >/dev/null 2>&1 \
@@ -454,12 +455,31 @@ phase_hindsight() {
   fi
 
   [[ "$MODE" == install ]] || { info "health check skipped in $MODE mode"; check_hindsight_health; return; }
-  info "waiting for Hindsight API (first start downloads embedding models)"
-  if wait_http "http://127.0.0.1:$HINDSIGHT_API_PORT/health" 300; then
-    ok "Hindsight API http://127.0.0.1:$HINDSIGHT_API_PORT  ·  UI http://127.0.0.1:$HINDSIGHT_UI_PORT"
-  else
-    err "Hindsight did not become healthy. Check: docker logs $HINDSIGHT_CONTAINER"
-  fi
+  info "waiting for Hindsight API (first start downloads embedding models, up to 5 minutes)"
+  local restarts i why; restarts="$(docker inspect -f '{{.RestartCount}}' "$HINDSIGHT_CONTAINER" 2>/dev/null || echo 0)"
+  for ((i = 0; i < 300; i++)); do
+    if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$HINDSIGHT_API_PORT/health" 2>/dev/null; then
+      ok "Hindsight API http://127.0.0.1:$HINDSIGHT_API_PORT  ·  UI http://127.0.0.1:$HINDSIGHT_UI_PORT"; return
+    fi
+    # it keeps failing on start (it restarts itself): say why now instead of waiting the full five minutes
+    if (( $(docker inspect -f '{{.RestartCount}}' "$HINDSIGHT_CONTAINER" 2>/dev/null || echo 0) > restarts + 1 )); then break; fi
+    (( i % 30 == 29 )) && info "still waiting ($((i + 1)) s)"
+    sleep 1
+  done
+  why="$(docker logs --tail 80 "$HINDSIGHT_CONTAINER" 2>&1 | grep -E 'Error|error:' | grep -v '^ *|' | tail -1)"
+  err "The memory doesn't start${why:+: $why}. Your memories stay where they are. Full log: docker logs $HINDSIGHT_CONTAINER"
+}
+
+# The memory's database keeps a small status file next to its data (port, user, which binaries). After a hard power-off
+# it can be left empty, and the memory then fails on every start ("JSON error: EOF"). Rewritten here from what it always
+# holds; the memories themselves aren't touched.
+hindsight_repair() {
+  local image; image="$(docker inspect -f '{{.Config.Image}}' "$HINDSIGHT_CONTAINER")"
+  local d=/home/hindsight/.pg0/instances/hindsight
+  docker run --rm --network none --entrypoint sh -v "$HINDSIGHT_VOLUME:/home/hindsight/.pg0" "$image" -c \
+    "[ -d $d/data ] && [ ! -s $d/instance.json ] && v=\$(cat $d/data/PG_VERSION) && i=\$(ls /home/hindsight/.pg0/installation | grep \"^\$v\\.\" | head -1) && [ -n \"\$i\" ] &&
+     printf '{\\n  \"pid\": 4194303,\\n  \"port\": 5432,\\n  \"data_dir\": \"%s/data\",\\n  \"installation_dir\": \"/home/hindsight/.pg0/installation\",\\n  \"username\": \"hindsight\",\\n  \"password\": \"hindsight\",\\n  \"database\": \"hindsight\",\\n  \"version\": \"%s\"\\n}\\n' $d \"\$i\" > $d/instance.json && echo repaired" \
+    2>/dev/null | grep -q repaired && ok "repaired the memory database's empty status file (left by a hard power-off)" || true
 }
 check_hindsight_health() {
   curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:$HINDSIGHT_API_PORT/health" 2>/dev/null \

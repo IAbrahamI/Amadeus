@@ -26,7 +26,7 @@ REPLY_CHARS = 600       # how much of the answer goes with your message
 QUERY = "Instruct: Given something the user refers back to, retrieve the earlier chat message about it\nQuery: "
 MIN_SCORE = 0.33        # below this a match is noise (measured on EN/DE/ES pairs: right ones 0.36-0.70, others under 0.33)
 _lock = threading.Lock()
-_state = {"at": 0.0, "have": False}
+_state = {"at": float("-inf"), "have": False}
 
 
 def enabled():
@@ -40,14 +40,14 @@ def set_enabled(on):
 
 def installed(force=False):
     """The model is in Ollama (asked at most once a minute)."""
-    if not force and time.time() - _state["at"] < 60:
+    if not force and time.monotonic() - _state["at"] < 60:
         return _state["have"]
     try:
         tags = json.load(urllib.request.urlopen(CFG["ollama_url"] + "/api/tags", timeout=5)).get("models", [])
         have = any(m["name"].removesuffix(":latest") == MODEL.removesuffix(":latest") for m in tags)
     except (OSError, ValueError):
         have = False
-    _state.update(at=time.time(), have=have)
+    _state.update(at=time.monotonic(), have=have)
     return have
 
 

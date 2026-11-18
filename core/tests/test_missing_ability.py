@@ -84,3 +84,14 @@ class FromTheCoachingRun(unittest.TestCase):
                            ("Have Claude build a small website for my CV.", "work"), ("reply to Anna's mail", "mail"),
                            ("give me a brief summary of my mails", "mail"), ("search the web for the weather", "web")):
             self.assertEqual(tools.area_for(None, said), area, said)
+
+
+class NotRunningIsNoGap(unittest.TestCase):
+    def test_no_card_when_the_tool_exists_but_isnt_running(self):
+        # 2026-11-18: "check GTA 6 news" while the search engine was (thought to be) stopped got a "missing ability" card
+        cid = chat(("user", "can you check GTA 6? What are the newest things?", {}))
+        with mock.patch.object(tools, "missing", side_effect=lambda c: "The search engine isn't running." if c == "web" else ""), \
+                mock.patch.object(agent.llm, "complete") as ask:
+            self.assertFalse(agent._offer_improvement(cid, "m", "can you check GTA 6 news? What are the newest things?", lambda *a: None,
+                                                      "it answered that it can't do it"))
+            ask.assert_not_called()

@@ -62,7 +62,7 @@ class Web(unittest.TestCase):
         self.p = [mock.patch.object(web, "URL", self.base), mock.patch.object(web, "_check_url", local_ok)]
         for x in self.p:
             x.start()
-        web._state["at"] = 0
+        web._state["at"] = float("-inf")
         self.cid = db.new_id()
         db.q("INSERT INTO conversations(id,title,model,created,updated) VALUES(?,?,?,?,?)", (self.cid, "t", "m", db.now(), db.now()))
         tools.CURRENT_CID = self.cid
@@ -124,6 +124,23 @@ class Web(unittest.TestCase):
         db.add_message(self.cid, "user", f"read {self.base}/given please")
         with mock.patch.object(web, "read", return_value={"title": "t", "url": self.base + "/given", "text": "x", "truncated": False}):
             self.assertIn("WEB DATA", tools.web_read("http://" + self.base.split("://")[1] + "/given/"))
+
+    def test_a_clock_jump_doesnt_freeze_the_check(self):
+        # 2026-11-18: the PC's clock jumped an hour back after booting; the "not running" it saw before stayed for that hour
+        web._state.update(at=float("-inf"), ok=False)
+        with mock.patch.object(web.time, "time", return_value=10 ** 10):  # (the wall clock no longer matters)
+            self.assertTrue(web.ready())
+
+    def test_a_stopped_search_engine_is_started_once(self):
+        import subprocess
+        web._started["at"] = float("-inf")
+        with mock.patch("shutil.which", return_value="/usr/bin/docker"), \
+                mock.patch.object(subprocess, "run", return_value=mock.Mock(returncode=0)) as run, \
+                mock.patch.object(web, "ready", return_value=True):
+            self.assertTrue(web.real_start())
+            self.assertEqual(run.call_args[0][0], ["docker", "start", "amadeus-searxng"])
+            self.assertFalse(web.real_start())  # not again within five minutes
+            self.assertEqual(run.call_count, 1)
 
     def _read_the_page(self):
         db.add_message(self.cid, "user", "Learn about IMAP IDLE")

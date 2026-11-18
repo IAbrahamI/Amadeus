@@ -29,7 +29,7 @@ TIMEOUT = 20
 AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"  # a plain browser's, nothing about you
 IN_A_SEARCH = ("EMAIL", "KEY", "TOKEN", "IBAN", "PHONE", "PATH", "URL")  # privacy.PATTERNS that stop a search
 IN_AN_ADDRESS = ("EMAIL", "KEY")  # web addresses are full of long ids and paths: only what is clearly yours stops one
-_state = {"at": 0.0, "ok": False}
+_state = {"at": float("-inf"), "ok": False}  # (monotonic: a clock that jumps, e.g. an hour back after booting from Windows, can't freeze it)
 _lock = threading.Lock()
 
 
@@ -40,7 +40,7 @@ class NotAllowed(ValueError):
 # ---------- is the search engine there? ----------
 def ready(force=False):
     with _lock:
-        if not force and time.time() - _state["at"] < CHECK_SECONDS:
+        if not force and time.monotonic() - _state["at"] < CHECK_SECONDS:
             return _state["ok"]
     try:
         with urllib.request.urlopen(urllib.request.Request(URL + "/healthz"), timeout=3) as r:
@@ -48,12 +48,39 @@ def ready(force=False):
     except (OSError, ValueError):
         ok = False
     with _lock:
-        _state.update(at=time.time(), ok=ok)
+        _state.update(at=time.monotonic(), ok=ok)
     return ok
 
 
+CONTAINER = "amadeus-searxng"
+_started = {"at": float("-inf")}
+
+
+def _start():
+    """The search engine is set up but stopped (after a restart Docker sometimes leaves it): start it, at most once every
+    five minutes, and wait a few seconds for it to answer."""
+    import shutil
+    import subprocess
+    if time.monotonic() - _started["at"] < 300 or not shutil.which("docker"):
+        return False
+    _started["at"] = time.monotonic()
+    try:
+        if subprocess.run(["docker", "start", CONTAINER], capture_output=True, timeout=30).returncode:
+            return False  # (not set up on this PC)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    for _ in range(10):
+        if ready(force=True):
+            print("search engine started", flush=True)
+            return True
+        time.sleep(1)
+    return False
+
+
 def missing():
-    return "" if ready() else "The search engine isn't running: ./install.sh --only search (or docker start amadeus-searxng)."
+    if ready() or _start():
+        return ""
+    return "The search engine isn't running: ./install.sh --only search (or docker start amadeus-searxng)."
 
 
 # ---------- what may leave ----------

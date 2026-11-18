@@ -60,26 +60,26 @@ VIEWING = {}  # project name (casefolded) -> when its page or workspace on the d
 VIEW_SECONDS = 20
 
 
-DASHBOARD = {"at": 0.0}  # when the dashboard last said it's on screen (every 10 s while it is)
+DASHBOARD = {"at": float("-inf")}  # (monotonic, so a clock jump can't freeze it) when the dashboard last said it's on screen (every 10 s while it is)
 
 
 def _viewed(title):
     """You're looking at it: that project's page, or the dashboard at all (a run's result lands in its chat or its
     project's timeline there, so you see it come in; you were just talking about it)."""
     name = str(title).split(":", 1)[0].strip().casefold()
-    now = time.time()
-    return now - VIEWING.get(name, 0) < VIEW_SECONDS or now - DASHBOARD["at"] < VIEW_SECONDS + 5
+    now = time.monotonic()
+    return now - VIEWING.get(name, float("-inf")) < VIEW_SECONDS or now - DASHBOARD["at"] < VIEW_SECONDS + 5
 
 
 def dashboard_here():
-    DASHBOARD["at"] = time.time()
+    DASHBOARD["at"] = time.monotonic()
 
 
 def seen_project(name):
     """A project's page is open on the dashboard: what its runs reported is in its timeline there, so those events are
     seen, and new ones arrive seen while it stays open (otherwise the mini core called you about them as soon as you
     closed the dashboard)."""
-    VIEWING[str(name).strip().casefold()] = time.time()
+    VIEWING[str(name).strip().casefold()] = time.monotonic()
     rows = [r for r in db.q("SELECT id, title FROM events WHERE seen=0 AND kind IN ('work','job_failed')")
             if r["title"].casefold().startswith(str(name).casefold() + ":")]
     for r in rows:

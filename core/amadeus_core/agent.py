@@ -1137,6 +1137,9 @@ def _offer_improvement(cid, model, user_text, emit, what_happened):
         if m["role"] == "user":
             break
         turn.append(m)
+    area = tools.area_for(None, user_text or "")
+    if area and tools.missing(area):  # it can do this, it just isn't running or set up here (the answer says how): no gap
+        return False
     if not user_text or BY_DESIGN.search(user_text) or cid.startswith(BACKGROUND_PREFIX) or \
             any(m["meta"].get("tool") == "suggest_improvement" or m["meta"].get("name") == "suggest_improvement" for m in turn):
         return False

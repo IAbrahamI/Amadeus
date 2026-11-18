@@ -18,7 +18,7 @@ from . import paths
 
 EXTERNAL = os.path.join(paths.SECRETS, "hindsight-external.json")
 CHECK_SECONDS = 30  # how long an answer to "does it answer?" is reused
-_state = {"at": 0.0, "ok": False, "error": "", "key": None}
+_state = {"at": float("-inf"), "ok": False, "error": "", "key": None}
 _lock = threading.Lock()
 
 
@@ -76,7 +76,7 @@ def check(force=False):
     """(answers, why not). Asked before every answer, so it's reused for CHECK_SECONDS; a change of setup asks again."""
     key = (conn(), _installed())
     with _lock:
-        if not force and _state["key"] == key and time.time() - _state["at"] < CHECK_SECONDS:
+        if not force and _state["key"] == key and time.monotonic() - _state["at"] < CHECK_SECONDS:
             return _state["ok"], _state["error"]
     if not key[1]:
         from . import system
@@ -84,7 +84,7 @@ def check(force=False):
     else:
         err = _probe()
     with _lock:
-        _state.update(at=time.time(), ok=not err, error=err, key=key)
+        _state.update(at=time.monotonic(), ok=not err, error=err, key=key)
     return not err, err
 
 

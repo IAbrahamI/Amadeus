@@ -37,25 +37,25 @@ def todo_done(item):
 CALL_KINDS = {"mail_code", "mail", "message", "reminder", "calendar", "digest", "test"}
 
 
-_active = {"at": 0.0}
+_active = {"at": float("-inf")}  # (monotonic: a clock that jumps, e.g. an hour back after booting from Windows, can't freeze it)
 
 
 def touch():
     """The phone app is open right now (it says so every 30 s while you use it)."""
-    _active["at"] = time.time()
+    _active["at"] = time.monotonic()
 
 
 def in_use():
     """You're using the phone app: the PC window doesn't ring then (you see everything in the app)."""
-    return time.time() - _active["at"] < 75
+    return time.monotonic() - _active["at"] < 75
 
 
-_pc = {"at": 0.0, "used": False}
+_pc = {"at": float("-inf"), "used": False}
 
 
 def pc_in_use():
     """You're at the PC: your session is unlocked (KDE locks it a few minutes after you leave). Checked every 10 s."""
-    if time.time() - _pc["at"] > 10:
+    if time.monotonic() - _pc["at"] > 10:
         import subprocess
         try:
             sid = subprocess.run(["loginctl", "show-user", str(os.getuid()), "-p", "Display", "--value"],
@@ -65,7 +65,7 @@ def pc_in_use():
             _pc["used"] = bool(sid) and locked == "no"
         except Exception:
             _pc["used"] = False
-        _pc["at"] = time.time()
+        _pc["at"] = time.monotonic()
     return _pc["used"]
 
 

@@ -178,7 +178,7 @@ class SeenOnScreen(unittest.TestCase):
         with mock.patch.object(events, "maybe_ring") as ring:
             events.dashboard_here()
             eid = events.add("work", "Chat Project: done", "answered while you chatted")
-            events.DASHBOARD["at"] = 0
+            events.DASHBOARD["at"] = float("-inf")
             later = events.add("work", "Chat Project: questions for you", "after you closed it")
         seen = {r["id"]: r["seen"] for r in db.q("SELECT id, seen FROM events WHERE id IN (?,?)", (eid, later))}
         self.assertEqual((seen[eid], seen[later]), (1, 0))

@@ -33,6 +33,10 @@ from amadeus_core import meaning  # noqa: E402
 
 meaning.installed = lambda force=False: False  # no Ollama in the unit tests: looking back uses the word search (test_meaning covers this one)
 
+from amadeus_core import web  # noqa: E402
+
+web.real_start, web._start = web._start, lambda: False  # never Docker from a test (a stopped search engine would be started for real); test_web covers it
+
 from amadeus_core import system  # noqa: E402
 
 # The tests describe Linux unless they say otherwise (they patch system.MAC / system.WIN), also when they run on

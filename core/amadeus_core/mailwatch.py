@@ -13,7 +13,7 @@ from .config import CFG
 
 MAIL_CID = "mail"
 SKILL_DIRS = [os.path.join(CFG["data_dir"], "skills"), os.path.join(os.path.dirname(os.path.dirname(__file__)), "skills")]
-_last = [0.0]
+_last = [float("-inf")]  # (monotonic: a clock that jumps, e.g. an hour back after booting from Windows, can't freeze it)
 db.q("""CREATE TABLE IF NOT EXISTS mail_day (id TEXT PRIMARY KEY, created REAL, sender TEXT, subject TEXT, summary TEXT,
         important INTEGER, urgent INTEGER, vip INTEGER, folder TEXT)""")  # for the evening summary; kept 3 days
 _busy = threading.Lock()
@@ -142,9 +142,9 @@ def _check(force=False):
     mode = CFG.get("mail_notify", "important")  # important | all | off
     if not mail.configured():
         return
-    if mode == "off" or (not force and time.time() - _last[0] < CFG.get("mail_check_minutes", 10) * 60):
+    if mode == "off" or (not force and time.monotonic() - _last[0] < CFG.get("mail_check_minutes", 10) * 60):
         return
-    _last[0] = time.time()
+    _last[0] = time.monotonic()
     since = db.get_setting("mail_watch_since", 0)
     now = time.time()
     if not since:  # first run: only mail arriving from now on counts as new
