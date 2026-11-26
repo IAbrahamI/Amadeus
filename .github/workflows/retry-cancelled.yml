@@ -1,0 +1,36 @@
+# GitHub sometimes has no Mac free: the job waits, isn't picked up ("not acquired by Runner ... capacity constraints")
+# and is cancelled, which shows as a red X although nothing failed. Such a run is started again, up to three times.
+# Only runs cancelled that way: a run someone stopped by hand, or one that really failed, stays as it is.
+name: retry-cancelled
+
+on:
+  workflow_run:
+    workflows: [mac-app, windows-app, tests]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  retry:
+    if: github.event.workflow_run.conclusion == 'cancelled' && github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          REPO: ${{ github.repository }}
+        run: |
+          jobs="$(gh api "repos/$REPO/actions/runs/$RUN/attempts/$ATTEMPT/jobs" --jq '[.jobs[] | select(.conclusion == "cancelled")] | map(.id)[]')"
+          capacity=false
+          for j in $jobs; do
+            gh api "repos/$REPO/check-runs/$j/annotations" --jq '.[].message' | grep -qiE "not acquired by Runner|capacity constraints" && capacity=true
+          done
+          if [ "$capacity" = true ]; then
+            echo "cancelled because no machine was free: starting it again (attempt $((ATTEMPT + 1)))"
+            sleep 120
+            gh run rerun "$RUN" --failed --repo "$REPO"
+          else
+            echo "cancelled for another reason (by hand, or a newer push): left as it is"
+          fi
