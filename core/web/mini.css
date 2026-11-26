@@ -54,6 +54,7 @@ body.minibody::before, body.minibody::after { display: none; }
 .separate #bubbles { visibility: hidden; left: -9999px; right: auto; width: 280px; }
 /* a call's text is cut to fit, its buttons always show */
 .bubble.call .tx { max-height: none; }
+.bubble.call ul.calls { margin: 5px 0 0; padding-left: 14px; } .bubble.call ul.calls li { margin: 2px 0; }
 .bubble.call small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .bubble.call { border-color: rgba(var(--w),.85); box-shadow: 0 0 24px rgba(var(--w),.2); } .bubble.call::after { border-color: rgba(var(--w),.85); }
 .bubble.call .who { color: var(--amber); }

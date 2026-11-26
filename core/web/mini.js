@@ -203,6 +203,11 @@ function line(e) {
     calendar: `Coming up: ${e.title}.`, approval: `This needs your OK: ${e.title}`, reminder: `Reminder: ${e.title}`, work: `The work run finished: ${e.title}`, job: e.title,
     job_failed: `Something went wrong: ${e.title}.` }[e.kind] || e.title;
 }
+// What only tells you something (a reminder, an alert, the brief being ready, a finished run, new mail) is gathered into
+// one call when several come together, e.g. everything that came due while the PC was off: one bubble with all of them
+// and one Got it, instead of a popup each. What needs its own answer (an approval, a code to copy) still rings alone.
+const SHARED = new Set(["reminder", "calendar", "job", "digest", "work", "job_failed", "mail", "message"]);
+const items = (c) => (c ? c.items || [c] : []);
 let seenAtStart = null;
 async function refresh() {
   let fresh, rule; try { [fresh, rule] = await Promise.all([api("/api/events"), api("/api/ringable")]); } catch { return; }
@@ -211,22 +216,54 @@ async function refresh() {
   const may = (e) => !rule.phone && (!rule.quiet || rule.urgent.includes(e.kind));
   if (seenAtStart === null && !CALL) { seenAtStart = true; fresh.forEach((e) => handled.add(e.id)); }  // opened by you: old ones don't ring
   for (const e of fresh) {
-    if (handled.has(e.id) || queue.some((q) => q.id === e.id) || snoozed[e.id] > now || (ringing && ringing.id === e.id)) continue;
+    if (handled.has(e.id) || queue.some((q) => q.id === e.id) || snoozed[e.id] > now || items(ringing).some((x) => x.id === e.id)) continue;
     if (may(e)) queue.push(e); else handled.add(e.id);
   }
   for (let i = queue.length - 1; i >= 0; i--) if (!fresh.some((f) => f.id === queue[i].id)) queue.splice(i, 1);  // handled elsewhere
-  if (ringing && !fresh.some((f) => f.id === ringing.id)) endCall(null);  // answered on the dashboard or the phone
+  if (ringing) {  // what was answered on the dashboard or the phone leaves the call; more of the same kind joins it
+    const left = items(ringing).filter((x) => fresh.some((f) => f.id === x.id));
+    if (!left.length) endCall(null);
+    else {
+      const more = SHARED.has(ringing.kind) || ringing.kind === "bundle" ? queue.filter((q) => SHARED.has(q.kind)) : [];
+      if (more.length || left.length !== items(ringing).length) {
+        more.forEach((q) => queue.splice(queue.indexOf(q), 1));
+        show(group([...left, ...more]), true);
+      }
+    }
+  }
   if (!ringing && queue.length && !busy && !listenB) ring(queue.pop());  // the newest first: what just came in beats what's been waiting
 }
+// one event, or several that only tell you something, as one call
+function group(list) {
+  return list.length === 1 ? list[0] : { id: list[0].id, kind: "bundle", items: list, title: `${list.length} things for you` };
+}
 function ring(e) {
-  ringing = e; native("calling:1"); $("#mini").classList.add("ringing"); Aloud.stop(); setMode("think");  // the heartbeat; the ring plays on each beat
-  const acts = e.kind === "approval" && e.status === "pending"
+  if (SHARED.has(e.kind)) {  // everything else waiting that only tells you something comes along in the same call
+    const more = queue.filter((q) => SHARED.has(q.kind));
+    more.forEach((q) => queue.splice(queue.indexOf(q), 1));
+    e = group([e, ...more]);
+  }
+  native("calling:1"); $("#mini").classList.add("ringing"); Aloud.stop(); setMode("think");  // the heartbeat; the ring plays on each beat
+  show(e, false);
+}
+function show(e, again) {
+  const old = again && document.querySelector(`.bubble.call[data-ev="${ringing && ringing.id}"]`);
+  ringing = e;
+  if (e.kind === "bundle") {
+    const reminders = e.items.some((x) => x.kind === "reminder");
+    const list = e.items.map((x) => `<li>${esc(line(x))}</li>`).join("");
+    const acts = `<button class="go" data-a="ok">Got it</button>${reminders ? '<button data-a="snooze">Snooze 10 min</button>' : ""}<button data-a="open">Open</button>`;
+    if (old) { old.querySelector(".tx").innerHTML = `${esc(e.title)}<ul class="calls">${list}</ul><div class="acts">${acts}</div>`; old.dataset.ev = e.id; shape(); }
+    else bubble("call", "INCOMING", `${esc(e.title)}<ul class="calls">${list}</ul><div class="acts">${acts}</div>`, true).dataset.ev = e.id;
+  } else {
+    const acts = e.kind === "approval" && e.status === "pending"
     ? '<button data-a="reject">Reject</button><button class="adj" data-a="adjust">Adjust</button><button class="go" data-a="approve">Approve</button>'
     : e.kind === "reminder" ? '<button class="go" data-a="ok">Got it</button><button data-a="snooze">Snooze 10 min</button>'
     : e.kind === "mail_code" && e.ref ? '<button class="go" data-a="copy">Copy code</button><button data-a="ok">Got it</button>'
     : '<button class="go" data-a="ok">Got it</button><button data-a="open">Open</button>';
-  const b = bubble("call", "INCOMING", `${esc(line(e))}${e.body ? `<br><small>${esc(e.body.slice(0, 160))}</small>` : ""}<div class="acts">${acts}</div>`, true);
-  b.dataset.ev = e.id;
+    const b = bubble("call", "INCOMING", `${esc(line(e))}${e.body ? `<br><small>${esc(e.body.slice(0, 160))}</small>` : ""}<div class="acts">${acts}</div>`, true);
+    b.dataset.ev = e.id;
+  }
   clearTimeout(ringTimer);
   ringTimer = setTimeout(() => { if (ringing === e) { endCall(null); say("It's waiting for you on the dashboard."); } }, 30000);  // nobody answered
 }
@@ -243,7 +280,7 @@ function stopRing() { clearTimeout(ringTimer); }
 function endCall(reply) {
   stopRing();
   const b = document.querySelector(`.bubble.call[data-ev="${ringing && ringing.id}"]`); drop(b);
-  if (ringing) handled.add(ringing.id);
+  items(ringing).forEach((x) => handled.add(x.id));
   ringing = null; native("calling:0"); $("#mini").classList.remove("ringing"); if (!busy) setMode("idle");
   if (reply) say(reply);
   setTimeout(refresh, 600);
@@ -262,6 +299,17 @@ $("#bubbles").addEventListener("click", async (ev) => {
   const e = ringing, a = btn.dataset.a;
   btn.closest(".acts").querySelectorAll("button").forEach((x) => (x.disabled = true));
   post("/api/call/answered", {}).catch(() => {});
+  if (e.kind === "bundle") {  // the whole call at once: Got it / Open mark all of it seen; Snooze keeps the reminders for later
+    const later = a === "snooze" ? e.items.filter((x) => x.kind === "reminder") : [];
+    later.forEach((x) => (snoozed[x.id] = Date.now() + 10 * 60000));
+    await Promise.all(e.items.filter((x) => !later.includes(x)).map((x) => post(`/api/events/${x.id}/seen`).catch(() => {})));
+    if (a === "open") native("dash:/#home");
+    if (later.length) { stopRing(); drop(document.querySelector(`.bubble.call[data-ev="${e.id}"]`)); e.items.forEach((x) => later.includes(x) || handled.add(x.id));
+      ringing = null; native("calling:0"); $("#mini").classList.remove("ringing"); setMode("idle"); say("I'll remind you again in ten minutes."); return; }
+    endCall(null);
+    if (a === "ok") quick("okay");
+    return;
+  }
   if (a === "approve" || a === "reject") {
     const r = await post(`/api/approvals/${e.ref}/${a}`).catch((x) => ({ status: "failed", error: x.message }));
     await post(`/api/events/${e.id}/seen`).catch(() => {});
@@ -289,7 +337,7 @@ $("#bubbles").addEventListener("click", async (ev) => {
 setInterval(async () => {
   if (!ringing) return;
   const c = await api("/api/call").catch(() => null);
-  if (c && c.by === "phone" && c.at * 1000 > Date.now() - 30000) { handled.add(ringing.id); endCall(null); }
+  if (c && c.by === "phone" && c.at * 1000 > Date.now() - 30000) endCall(null);
 }, 2000);
 
 // opened only for a call: once everything is handled and her reply has faded, the window closes again

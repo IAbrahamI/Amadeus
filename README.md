@@ -1,6 +1,9 @@
 # Amadeus
 
 [![tests](https://github.com/IAbrahamI/Amadeus/actions/workflows/tests.yml/badge.svg)](https://github.com/IAbrahamI/Amadeus/actions/workflows/tests.yml)
+[![Mac app](https://github.com/IAbrahamI/Amadeus/actions/workflows/mac-app.yml/badge.svg)](https://github.com/IAbrahamI/Amadeus/actions/workflows/mac-app.yml)
+[![Windows app](https://github.com/IAbrahamI/Amadeus/actions/workflows/windows-app.yml/badge.svg)](https://github.com/IAbrahamI/Amadeus/actions/workflows/windows-app.yml)
+[![release](https://img.shields.io/github/v/release/IAbrahamI/Amadeus)](https://github.com/IAbrahamI/Amadeus/releases/latest)
 ![license: personal use](https://img.shields.io/badge/license-personal%20non--commercial-blue)
 
 **Your own private AI assistant, running on your own PC.** Amadeus runs on a local model, knows your calendar, mail,
@@ -9,8 +12,9 @@ or your phone). It never changes anything without your OK, and your private life
 (code, documents, research) it hands to Claude Code, but only through a privacy filter and only after you approved
 the exact text that leaves.
 
-> **Status:** a personal project, built for and tested on one Linux PC (CachyOS, KDE Plasma, NVIDIA 12 GB) by one
-> user. It works every day there; on other setups expect rough edges. Issues are welcome, pull requests aren't expected.
+> **Status:** a personal project by one user. It's used every day on a Linux PC (CachyOS, KDE Plasma, NVIDIA 12 GB);
+> the Mac app (M1 or newer) and the Windows app are built and checked on every change (the Mac's whole setup with a
+> real model whenever it changes, and every night), but see far less daily use. On other setups expect rough edges. Issues are welcome, pull requests aren't expected.
 
 You decide who your assistant is: its name, its personality, and whether it has a face and a voice.
 
@@ -25,14 +29,18 @@ You decide who your assistant is: its name, its personality, and whether it has 
   everything else, with the assistant as a living core of its memories in the middle. Type or talk (a wake word
   with its name, local speech recognition).
 - **Calendar, reminders, to-dos.** It plans your day, adds and moves appointments, and calls you before they start.
+  What comes due together (say, everything from while the PC was off) arrives as one call, not a popup each.
 - **Your mail, connected directly.** Gmail, Outlook, Yahoo, iCloud, Proton (with its Bridge) and others, no other mail app needed; new mail is reported the moment it arrives. Overviews, verification codes, drafts in your style, filing. Only urgent mail
   calls you; the rest goes into a short evening summary.
-- **Memory.** A long-term memory (Hindsight) and a profile of how you work and communicate, which it adapts to.
+- **Memory.** A long-term memory (Hindsight), a profile of how you work and communicate, which it adapts to, and
+  "what did we say about …" across your earlier chats, found by meaning (a small local model), not only by the words.
 - **The web, if you want it.** A search engine of its own on your PC (SearXNG, no account anywhere): it looks things
   up, reads the pages itself and names its sources. "Learn about …" shows you what it would remember; only your OK keeps it.
 - **Work runs.** "Send this to work": the text is anonymised, you approve exactly what leaves, and one
   Claude Code run works on it in a project folder of its own. The result comes back into the chat.
-- **Phone.** An Android app reaches it over your private Tailscale network, rings for its calls and syncs with the PC.
+- **Phone.** An Android app in the same look and theme as the dashboard reaches it over your private Tailscale
+  network: chat (read aloud on the phone if you like), today and reminders, approvals, mail, and calls that ring like
+  a phone call while you're away from the PC.
 - **Approvals for everything.** Every action that changes something becomes a card you approve, reject, or adjust
   ("make it 16:00 instead", and it redrafts the same action for your OK).
 - **Learns from you.** Rate answers with 👍 / 👎. Every night it turns its mistakes into short lessons, and keeps a
@@ -90,6 +98,13 @@ you approved. More detail, including the privacy filter step by step: [docs/ARCH
 
 ## Getting started
 
+**Mac or Windows:** download the app from the [latest release](https://github.com/IAbrahamI/Amadeus/releases/latest)
+(`.dmg` for a Mac with M1 or newer, `-setup.exe` for Windows 10/11). It brings everything with it and sets up a model
+that fits your computer on first start. On Windows the long-term memory, the privacy filter and voice are still to come.
+
+**Linux:** each release also has `.deb`, `.rpm` and pacman packages and a signed repository, so updates come with your
+system's updates. Or install from the repository as below.
+
 You need Linux with systemd (KDE Plasma gives the best experience, other desktops work too), Python 3.10 or newer,
 Docker, Ollama, GTK 3 with WebKit2GTK 4.1 for the window and tray, GStreamer for sound, about 17 GB of
 disk (mostly the local model, the memory and privacy-filter images, and the desktop app's build tools), and ideally an NVIDIA GPU with about 12 GB.
@@ -101,6 +116,11 @@ git clone https://github.com/IAbrahamI/Amadeus.git && cd Amadeus
 ./install.sh                # installs what's missing after asking, suggests a model for this PC, then sets everything up
 amadeus                     # open it; later, amadeus update gets the newest version
 ```
+
+**Updates:** Amadeus asks GitHub once a day whether there's a newer release and shows it in the dashboard. A git
+install updates with `amadeus update`, packages with your system's updates, the Mac app with **Install and restart** (once
+the release signing key is set up, see [the install guide](docs/INSTALL.md#updates)), and Windows with the new installer
+from the release.
 
 The full guide, including the phone app and work runs, is in [docs/INSTALL.md](docs/INSTALL.md).
 Everything your assistant knows is stored in `~/.local/share/amadeus/` on your PC and never in this repository.
@@ -137,7 +157,9 @@ More, including the limits of the privacy filter: [docs/ARCHITECTURE.md](docs/AR
 |---|---|
 | `core/` | The assistant: server, web UI, desktop window and tray, voice, mail, privacy filter, skills, personas |
 | `android/` | The phone app |
-| `install.sh` | Sets up the local services |
+| `install.sh` | Sets up the local services (and repairs them: `amadeus update` runs it again) |
+| `packaging/` | The Linux packages, the Mac app and the Windows installer, and the app icon made from its SVGs |
+| `.github/workflows/` | Tests on every change; the Mac and Windows apps built and checked; a release for each version tag |
 | `docs/` | [Install guide](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [features and settings](docs/FEATURES.md) |
 
 ## Security
