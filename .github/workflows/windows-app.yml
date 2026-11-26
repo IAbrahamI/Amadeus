@@ -10,7 +10,30 @@ on:
   workflow_call:
 
 jobs:
+  # main is only ever moved to a commit that was already built and checked on its work/ branch: don't build the same
+  # commit a second time (a Mac is often not free on GitHub, and the second run then gets cancelled and shows red)
+  checked:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      done: ${{ steps.c.outputs.done }}
+    steps:
+      - id: c
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          done=false
+          if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref_name }}" = main ]; then
+            n="$(gh api "repos/${{ github.repository }}/actions/workflows/windows-app.yml/runs?head_sha=${{ github.sha }}&status=success" \
+              --jq '[.workflow_runs[] | select(.head_branch | startswith("work/"))] | length' || echo 0)"
+            [ "${n:-0}" -gt 0 ] && done=true
+          fi
+          echo "already checked on its work/ branch: $done"
+          echo "done=$done" >> "$GITHUB_OUTPUT"
   build:
+    needs: checked
+    if: needs.checked.outputs.done != 'true'
     runs-on: windows-2025
     timeout-minutes: 60
     defaults:

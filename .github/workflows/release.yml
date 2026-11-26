@@ -11,6 +11,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: read  # (the Mac and Windows workflows look up whether a commit was already checked)
 
 jobs:
   tests:
